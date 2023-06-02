@@ -1,0 +1,16 @@
+[package]
+name = "voxel-game"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+cgmath = "0.18"
+winit = "0.28"
+vulkano = "0.33.0"
+vulkano-util = "0.33.0"
+vulkano-shaders = "0.33.0"
+rand = "0.8.4"
+noise = "0.8.2"
