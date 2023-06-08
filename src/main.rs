@@ -1,13 +1,14 @@
 mod app;
-mod sim_manager;
 mod pixels_draw;
 mod render_pass;
+mod sim_manager;
+mod world_gen;
 
 use crate::app::{App, RenderPipeline};
-use cgmath::{Vector2, Vector3, InnerSpace};
+use cgmath::{InnerSpace, Vector2, Vector3};
 use rand::Rng;
 use std::time::Instant;
-use vulkano_util::renderer::VulkanoWindowRenderer;
+use vulkano_util::{renderer::VulkanoWindowRenderer};
 use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -16,7 +17,11 @@ use winit::{
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
-pub const GRID_SIZE: [u32; 3] = [256, 256, 256];
+pub const RENDER_SIZE: [u32; 3] = [8, 8, 8];
+pub const CHUNK_SIZE: u32 = 16;
+pub const TOTAL_VOXEL_COUNT: usize =
+    (RENDER_SIZE[0] * RENDER_SIZE[1] * RENDER_SIZE[2] * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE)
+        as usize;
 
 struct SimSettings {
     pub max_dist: u32,
@@ -25,9 +30,8 @@ struct SimSettings {
 
 pub struct SimData {
     max_dist: u32,
-    grid_size: [u32; 3],
+    render_size: [u32; 3],
     start_pos: [i32; 3],
-    is_a_in_buffer: bool,
 }
 
 pub struct CamData {
@@ -46,6 +50,7 @@ pub struct Controls {
     down: bool,
     mouse_left: bool,
     mouse_right: bool,
+    do_chunk_load: bool,
 }
 
 fn main() {
@@ -58,23 +63,27 @@ fn main() {
 
     // Time & inputs...
     let mut time = Instant::now();
+    let mut chunk_time = Instant::now();
     let mut cursor_pos = Vector2::new(0.0, 0.0);
-    let mut cam_data = CamData {
-        pos: Vector3::new((GRID_SIZE[0]/2) as f32, (GRID_SIZE[1]/2) as f32, (GRID_SIZE[2]/2) as f32),
-        dir: Vector3::new(0.0, 0.0, 1.0),
-        up: Vector3::new(0.0, 1.0, 0.0),
-        right: Vector3::new(1.0, 0.0, 0.0),
-    };
     let mut sim_settings = SimSettings {
-        max_dist: 2,
+        max_dist: 15,
         do_compute: true,
     };
 
     let mut sim_data = SimData {
         max_dist: sim_settings.max_dist,
-        grid_size: GRID_SIZE,
-        start_pos: [0, 0, 0],
-        is_a_in_buffer: true,
+        render_size: RENDER_SIZE,
+        start_pos: [100, 100, 100],
+    };
+    let mut cam_data = CamData {
+        pos: Vector3::new(
+            ((sim_data.start_pos[0] + (RENDER_SIZE[0] as i32) / 2) * CHUNK_SIZE as i32) as f32,
+            ((sim_data.start_pos[1] + (RENDER_SIZE[1] as i32) / 2) * CHUNK_SIZE as i32) as f32,
+            ((sim_data.start_pos[2] + (RENDER_SIZE[2] as i32) / 2) * CHUNK_SIZE as i32) as f32,
+        ),
+        dir: Vector3::new(0.0, 0.0, 1.0),
+        up: Vector3::new(0.0, 1.0, 0.0),
+        right: Vector3::new(1.0, 0.0, 0.0),
     };
 
     let mut controls = Controls {
@@ -86,6 +95,7 @@ fn main() {
         down: false,
         mouse_left: false,
         mouse_right: false,
+        do_chunk_load: false,
     };
 
     loop {
@@ -102,6 +112,16 @@ fn main() {
         }
 
         // Compute voxels & render 60fps.
+        if (Instant::now() - chunk_time).as_secs_f64() > 2.0 && controls.do_chunk_load {
+            let diff_from_mid:Vector3<i32> = (cam_data.pos.map(|c| c as i32) - (Vector3::from(sim_data.start_pos) + Vector3::from(RENDER_SIZE).map(|c| c as i32)/2) * (CHUNK_SIZE as i32)) / (CHUNK_SIZE as i32);
+            if diff_from_mid != Vector3::new(0, 0, 0) {
+                for (window_id, _) in app.windows.iter_mut() {
+                    let pipeline = app.pipelines.get_mut(window_id).unwrap();
+                    pipeline.compute.move_start_pos(&mut sim_data, diff_from_mid.into());
+                }
+            }
+            chunk_time = Instant::now();
+        }
         if (Instant::now() - time).as_secs_f64() > 1.0 / 60.0 {
             if controls.up {
                 cam_data.pos += 0.1 * cam_data.up;
@@ -163,8 +183,10 @@ fn handle_events(
                 WindowEvent::CursorMoved { position, .. } => {
                     // turn camera
                     if controls.mouse_left {
-                        let delta = Vector2::new(position.x as f32, position.y as f32) - *cursor_pos;
-                        cam_data.dir = (cam_data.dir + cam_data.right * delta.x * 0.001).normalize();
+                        let delta =
+                            Vector2::new(position.x as f32, position.y as f32) - *cursor_pos;
+                        cam_data.dir =
+                            (cam_data.dir + cam_data.right * delta.x * 0.001).normalize();
                         cam_data.dir = (cam_data.dir + cam_data.up * -delta.y * 0.001).normalize();
                         cam_data.right = cam_data.dir.cross(cam_data.up).normalize();
                         cam_data.up = cam_data.right.cross(cam_data.dir).normalize();
@@ -226,6 +248,12 @@ fn handle_events(
                                 println!("cam_dir: {:?}", cam_data.dir);
                             }
                         }
+                        winit::event::VirtualKeyCode::C => {
+                            if input.state == ElementState::Released {
+                                controls.do_chunk_load = !controls.do_chunk_load;
+                                println!("chunk load: {}", controls.do_chunk_load);
+                            }
+                        }
                         _ => (),
                     });
                 }
@@ -280,18 +308,17 @@ fn compute_then_render(
     let after_render = if sim_settings.do_compute {
         sim_data.max_dist = sim_settings.max_dist;
         // create a set of random chunk coordinates to compute
-        let mut chunk_updates:Vec<[i32;3]> = Vec::new();
+        let mut chunk_updates: Vec<[i32; 3]> = Vec::new();
+        const UPDATES_PER_CHUNK:u32 = CHUNK_SIZE / 8;
         for _ in 0..50 {
-            let x = rand::thread_rng().gen_range(0..sim_data.grid_size[0]/8) as i32;
-            let y = rand::thread_rng().gen_range(0..sim_data.grid_size[1]/8) as i32;
-            let z = rand::thread_rng().gen_range(0..sim_data.grid_size[2]/8) as i32;
+            let x = rand::thread_rng().gen_range(0..sim_data.render_size[0] * UPDATES_PER_CHUNK) as i32 + sim_data.start_pos[0] * (UPDATES_PER_CHUNK as i32);
+            let y = rand::thread_rng().gen_range(0..sim_data.render_size[1] * UPDATES_PER_CHUNK) as i32 + sim_data.start_pos[1] * (UPDATES_PER_CHUNK as i32);
+            let z = rand::thread_rng().gen_range(0..sim_data.render_size[2] * UPDATES_PER_CHUNK) as i32 + sim_data.start_pos[2] * (UPDATES_PER_CHUNK as i32);
             chunk_updates.push([x, y, z]);
         }
         pipeline.compute.queue_updates(&chunk_updates);
         // Compute.
-        let after_compute = pipeline
-            .compute
-            .compute(before_pipeline_future, sim_data);
+        let after_compute = pipeline.compute.compute(before_pipeline_future, sim_data);
 
         // Render.
         let voxels = pipeline.compute.voxels();
@@ -305,9 +332,13 @@ fn compute_then_render(
         let voxels = pipeline.compute.voxels();
         let target_image = window_renderer.swapchain_image_view();
 
-        pipeline
-            .place_over_frame
-            .render(before_pipeline_future, voxels, target_image, cam_data, sim_data)
+        pipeline.place_over_frame.render(
+            before_pipeline_future,
+            voxels,
+            target_image,
+            cam_data,
+            sim_data,
+        )
     };
 
     // Finish the frame. Wait for the future so resources are not in use when we render.

@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::App, SimData, GRID_SIZE};
-use noise::{NoiseFn, OpenSimplex};
-use std::{sync::Arc, collections::VecDeque};
+use crate::{app::App, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE};
+use noise::{NoiseFn, OpenSimplex, ScalePoint};
+use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
@@ -37,17 +37,18 @@ pub struct DistanceComputePipeline {
     compute_life_pipeline: Arc<ComputePipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    life_a: Subbuffer<[[u32;2]]>,
-    life_b: Subbuffer<[[u32;2]]>,
-    chunk_update_queue: VecDeque<[i32;3]>,
-    chunk_updates: Subbuffer<[[i32;3];128]>,
+    life_a: Subbuffer<[[u32; 2]]>,
+    life_b: Subbuffer<[[u32; 2]]>,
+    chunk_update_queue: VecDeque<[i32; 3]>,
+    chunk_updates: Subbuffer<[[i32; 4]; 128]>,
     uniform_buffer: SubbufferAllocator,
+    world_gen: WorldGen,
+    is_a_in_buffer: bool,
 }
 
-fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 3]) -> Subbuffer<[[u32;2]]> {
-    // generate based on simplex noise
-    let noise = OpenSimplex::new(10);
-    const SCALE:f64 = 0.1;
+fn empty_grid(
+    memory_allocator: &impl MemoryAllocator,
+) -> Subbuffer<[[u32; 2]]> {
     Buffer::from_iter(
         memory_allocator,
         BufferCreateInfo {
@@ -58,20 +59,16 @@ fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 3]) -> Subbuff
             usage: MemoryUsage::Upload,
             ..Default::default()
         },
-        (0..size[0])
-            .flat_map(|x| {
-                if x % 10 == 0 {
-                    println!("Generating x: {}", x);
+        (0..RENDER_SIZE[0])
+            .flat_map(|chunk_x| {
+                if chunk_x % 3 == 0 {
+                    println!("Generating chunk_x: {}", chunk_x);
                 }
-                (0..size[1])
-                    .flat_map(|y| {
-                        (0..size[1])
-                            .map(|z| {
-                                if noise.get([x as f64 * SCALE, z as f64 * SCALE])*20.0 > (y as f64 - size[1] as f64 / 2.0) {
-                                    [1, 0x00000000]
-                                } else {
-                                    [0, 0x11111111]
-                                }
+                (0..RENDER_SIZE[1])
+                    .flat_map(|_chunk_y| {
+                        (0..RENDER_SIZE[2])
+                            .flat_map(|_chunk_z| {
+                                vec![[0, 0x11111111]; (CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE) as usize]
                             })
                             .collect::<Vec<_>>()
                     })
@@ -85,8 +82,15 @@ fn rand_grid(memory_allocator: &impl MemoryAllocator, size: [u32; 3]) -> Subbuff
 impl DistanceComputePipeline {
     pub fn new(app: &App, compute_queue: Arc<Queue>) -> DistanceComputePipeline {
         let memory_allocator = app.context.memory_allocator();
-        let life_a = rand_grid(memory_allocator, GRID_SIZE);
-        let life_b = life_a.clone();
+
+        // generate based on simplex noise
+        const SCALE: f64 = 0.1;
+        let noise: Box<dyn NoiseFn<f64, 3>> =
+            Box::new(ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE));
+        let world_gen = WorldGen::new(noise);
+
+        let life_a = empty_grid(memory_allocator);
+        let life_b = empty_grid(memory_allocator);
 
         let compute_life_pipeline = {
             let shader = compute_dists_cs::load(compute_queue.device().clone()).unwrap();
@@ -117,8 +121,9 @@ impl DistanceComputePipeline {
             AllocationCreateInfo {
                 usage: MemoryUsage::Upload,
                 ..Default::default()
-            }
-        ).unwrap();
+            },
+        )
+        .unwrap();
 
         DistanceComputePipeline {
             compute_queue,
@@ -130,15 +135,120 @@ impl DistanceComputePipeline {
             chunk_update_queue: VecDeque::new(),
             chunk_updates,
             uniform_buffer,
+            world_gen,
+            is_a_in_buffer: true,
         }
     }
 
-    pub fn voxels(&self) -> Subbuffer<[[u32;2]]> {
-        self.life_b.clone()
+    pub fn voxels(&self) -> Subbuffer<[[u32; 2]]> {
+        if self.is_a_in_buffer {
+            self.life_b.clone()
+        } else {
+            self.life_a.clone()
+        }
     }
 
-    pub fn queue_updates(&mut self, queued: &[[i32;3]]) {
+    pub fn queue_updates(&mut self, queued: &[[i32; 3]]) {
         self.chunk_update_queue.extend(queued);
+    }
+
+    fn get_chunk_idx(&self, pos: [i32; 3]) -> usize {
+        let adj_pos = [0, 1, 2].map(|i| pos[i].rem_euclid(RENDER_SIZE[i] as i32));
+        (adj_pos[0] * (RENDER_SIZE[1] as i32) * (RENDER_SIZE[2] as i32)
+            + adj_pos[1] * (RENDER_SIZE[2] as i32)
+            + adj_pos[2]) as usize
+    }
+
+    fn write_chunk(&mut self, chunk_location: [i32; 3]) {
+        let mut a_chunk_buffer = self.life_a.write().unwrap();
+        let mut b_chunk_buffer = self.life_b.write().unwrap();
+        let chunk_idx = self.get_chunk_idx(chunk_location);
+        for (i, vox) in self
+            .world_gen
+            .gen_chunk(chunk_location)
+            .into_iter()
+            .enumerate()
+        {
+            a_chunk_buffer[chunk_idx
+                * (CHUNK_SIZE as usize)
+                * (CHUNK_SIZE as usize)
+                * (CHUNK_SIZE as usize)
+                + i] = vox;
+            b_chunk_buffer[chunk_idx
+                * (CHUNK_SIZE as usize)
+                * (CHUNK_SIZE as usize)
+                * (CHUNK_SIZE as usize)
+                + i] = vox;
+        }
+        for i in 0..CHUNK_SIZE / 8 {
+            for j in 0..CHUNK_SIZE / 8 {
+                for k in 0..CHUNK_SIZE / 8 {
+                    self.chunk_update_queue.push_back([
+                        chunk_location[0] * (CHUNK_SIZE / 8) as i32 + i as i32,
+                        chunk_location[1] * (CHUNK_SIZE / 8) as i32 + j as i32,
+                        chunk_location[2] * (CHUNK_SIZE / 8) as i32 + k as i32,
+                    ]);
+                }
+            }
+        }
+    }
+
+    pub fn move_start_pos(&mut self, sim_data: &mut SimData, offset: [i32; 3]) {
+        sim_data.start_pos = [0, 1, 2].map(|i| sim_data.start_pos[i] + offset[i]);
+        
+        let [load_range_x, load_range_y, load_range_z] = [0, 1, 2].map(|i| if offset[i] > 0 {
+            (RENDER_SIZE[i] as i32) - offset[i]..=(RENDER_SIZE[i] as i32) - 1
+        } else {
+            0..=offset[i]-1
+        });
+
+        for x_offset in load_range_x.clone() {
+            for y_i in 0..RENDER_SIZE[1] {
+                for z_i in 0..RENDER_SIZE[2] {
+                    let chunk_location = [
+                        sim_data.start_pos[0] + x_offset,
+                        sim_data.start_pos[1] + y_i as i32,
+                        sim_data.start_pos[2] + z_i as i32,
+                    ];
+                    self.write_chunk(chunk_location);
+                }
+            }
+        }
+
+        for x_i in 0..RENDER_SIZE[0] as i32 {
+            if load_range_x.contains(&(x_i as i32)) {
+                continue;
+            }
+            for y_offset in load_range_y.clone() {
+                for z_i in 0..RENDER_SIZE[2] {
+                    let chunk_location = [
+                        sim_data.start_pos[0] + x_i as i32,
+                        sim_data.start_pos[1] + y_offset,
+                        sim_data.start_pos[2] + z_i as i32,
+                    ];
+                    self.write_chunk(chunk_location);
+                }
+            }
+        }
+
+        for x_i in 0..RENDER_SIZE[0] {
+            if load_range_x.contains(&(x_i as i32)) {
+                continue;
+            }
+            for y_i in 0..RENDER_SIZE[1] {
+                if load_range_y.contains(&(y_i as i32)) {
+                    continue;
+                }
+                for z_offset in load_range_z.clone() {
+                    let chunk_location = [
+                        sim_data.start_pos[0] + x_i as i32,
+                        sim_data.start_pos[1] + y_i as i32,
+                        sim_data.start_pos[2] + z_offset,
+                    ];
+                    self.write_chunk(chunk_location);
+                }
+            }
+        }
     }
 
     pub fn compute(
@@ -167,7 +277,7 @@ impl DistanceComputePipeline {
             .unwrap();
         let after_pipeline = finished.then_signal_fence_and_flush().unwrap().boxed();
 
-        sim_data.is_a_in_buffer = !sim_data.is_a_in_buffer;
+        self.is_a_in_buffer = !self.is_a_in_buffer;
 
         after_pipeline
     }
@@ -188,8 +298,7 @@ impl DistanceComputePipeline {
         let uniform_buffer_subbuffer = {
             let uniform_data = compute_dists_cs::SimData {
                 max_dist: sim_data.max_dist.into(),
-                grid_size: sim_data.grid_size.into(),
-                is_a_in_buffer: sim_data.is_a_in_buffer.into(),
+                render_size: sim_data.render_size.into(),
                 start_pos: sim_data.start_pos.into(),
             };
 
@@ -200,10 +309,12 @@ impl DistanceComputePipeline {
         };
 
         //send chunk updates
+        let chunk_update_count = 128.min(self.chunk_update_queue.len());
         {
             let mut chunk_updates_buffer = self.chunk_updates.write().unwrap();
-            for i in 0..127.max(self.chunk_update_queue.len()-1) {
-                chunk_updates_buffer[i] = self.chunk_update_queue.pop_front().unwrap();
+            for i in 0..chunk_update_count {
+                let new_update = self.chunk_update_queue.pop_front().unwrap();
+                chunk_updates_buffer[i] = [new_update[0], new_update[1], new_update[2], 0];
             }
         }
 
@@ -211,8 +322,22 @@ impl DistanceComputePipeline {
             &self.descriptor_set_allocator,
             desc_layout.clone(),
             [
-                WriteDescriptorSet::buffer(0, self.life_a.clone()),
-                WriteDescriptorSet::buffer(1, self.life_b.clone()),
+                WriteDescriptorSet::buffer(
+                    0,
+                    if self.is_a_in_buffer {
+                        self.life_a.clone()
+                    } else {
+                        self.life_b.clone()
+                    },
+                ),
+                WriteDescriptorSet::buffer(
+                    1,
+                    if self.is_a_in_buffer {
+                        self.life_b.clone()
+                    } else {
+                        self.life_a.clone()
+                    },
+                ),
                 WriteDescriptorSet::buffer(2, self.chunk_updates.clone()),
                 WriteDescriptorSet::buffer(3, uniform_buffer_subbuffer),
             ],
@@ -221,7 +346,7 @@ impl DistanceComputePipeline {
         builder
             .bind_pipeline_compute(self.compute_life_pipeline.clone())
             .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
-            .dispatch([self.chunk_update_queue.len() as u32, 1, 1])
+            .dispatch([chunk_update_count as u32, 1, 1])
             .unwrap();
     }
 }

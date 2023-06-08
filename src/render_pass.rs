@@ -8,7 +8,6 @@
 // according to those terms.
 
 use crate::{app::App, pixels_draw::PixelsDrawPipeline, SimData, CamData};
-use cgmath::{Vector3, Vector2};
 use std::sync::Arc;
 use vulkano::{
     buffer::Subbuffer,

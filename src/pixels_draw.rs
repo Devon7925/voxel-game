@@ -7,8 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::App, SimData, CamData};
-use cgmath::Vector3;
+use crate::{app::App, CamData, SimData};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -170,8 +169,7 @@ impl PixelsDrawPipeline {
 
         let sim_uniform_buffer_subbuffer = {
             let uniform_data = fs::SimData {
-                grid_size: sim_data.grid_size.into(),
-                is_a_in_buffer: sim_data.is_a_in_buffer.into(),
+                render_size: sim_data.render_size.into(),
                 max_dist: sim_data.max_dist.into(),
                 start_pos: sim_data.start_pos.into(),
             };
