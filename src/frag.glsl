@@ -18,17 +18,17 @@ layout(set = 0, binding = 2) uniform SimData {
     ivec3 start_pos;
 } sim_data;
 
+const vec3 light_dir = normalize(vec3(0.5, -1, 0.5));
+
 uvec2 get_data(ivec3 global_pos) {
+    vec3 rel_pos = global_pos - CHUNK_SIZE * sim_data.start_pos;
+    if (any(lessThan(rel_pos, vec3(0))) || any(greaterThanEqual(rel_pos, CHUNK_SIZE * vec3(sim_data.render_size)))) return uvec2(2, 0);
     uint index = get_index(global_pos, sim_data.render_size);
     return voxels[index];
 }
 
-uint get_dist(vec3 pos, uint offset) {
-    vec3 rel_pos = pos - CHUNK_SIZE * sim_data.start_pos;
-    if (any(lessThan(rel_pos, vec3(0))) || any(greaterThanEqual(rel_pos, CHUNK_SIZE * vec3(sim_data.render_size)))) return 16;
-    uvec2 voxel_data = get_data(ivec3(pos));
+uint get_dist(uvec2 voxel_data, uint offset) {
     if (voxel_data.x == 1) return 0;
-    if (voxel_data.x == 2) return 16;
     return (voxel_data.y >> (offset * 4)) & 0xF;
 }
 
@@ -39,28 +39,48 @@ float RayBoxDist(vec3 pos, vec3 ray, vec3 vmin, vec3 vmax) {
     return min(maxDiff.x, min(maxDiff.y, maxDiff.z));
 }
 
-void main() {
-    vec3 ray = normalize(cam_data.dir + v_tex_coords.x * cam_data.right + v_tex_coords.y * cam_data.up);
-    
+struct RaycastResult {
+    vec3 pos;
+    vec3 normal;
+    uvec2 voxel_data;
+    float dist;
+    bool hit;
+};
+
+vec3 pos_to_normal(vec3 pos) {
+    vec3 normal = mod(pos, 1) - vec3(0.5);
+    if (abs(normal.x) > abs(normal.y) && abs(normal.x) > abs(normal.z)) {
+        normal.y = 0;
+        normal.z = 0;
+    } else if (abs(normal.y) > abs(normal.x) && abs(normal.y) > abs(normal.z)) {
+        normal.x = 0;
+        normal.z = 0;
+    } else {
+        normal.x = 0;
+        normal.y = 0;
+    }
+    return normalize(normal);
+}
+
+RaycastResult raycast(vec3 pos, vec3 ray) {
     uint offset = 0;
     if(ray.x < 0) offset += 1;
     if(ray.y < 0) offset += 2;
     if(ray.z < 0) offset += 4;
 
-    vec3 pos = cam_data.pos;
     float depth = 0;
+    uvec2 voxel_data = uvec2(20, 0);
     for(int i = 0; i < 100; i++) {
-        uint dist = get_dist(pos, offset);
+        voxel_data = get_data(ivec3(pos));
+        if(voxel_data.x != 0) {
+            break;
+        }
+        uint dist = get_dist(voxel_data, offset);
         if(dist == 0) {
             break;
         }
         if(i == 99) {
-            f_color = vec4(1.0, 0.0, 0.0, 1.0);
-            return;
-        }
-        if(dist == 16) {
-            f_color = vec4(0.0, 0.0, 1.0, 1.0);
-            return;
+            return RaycastResult(pos, vec3(0), voxel_data, depth, false);
         }
         vec3 min = vec3(floor(pos.x), floor(pos.y), floor(pos.z)) - vec3(dist-1);
         vec3 max = vec3(ceil(pos.x), ceil(pos.y), ceil(pos.z)) + vec3(dist-1);
@@ -68,5 +88,27 @@ void main() {
         depth += delta;
         pos += ray * delta;
     }
-    f_color = vec4(vec3(depth/(sim_data.render_size.x * CHUNK_SIZE)), 1.0);
+    return RaycastResult(pos, pos_to_normal(pos), voxel_data, depth, true);
+}
+
+void main() {
+    vec3 ray = normalize(cam_data.dir + v_tex_coords.x * cam_data.right + v_tex_coords.y * cam_data.up);
+
+    vec3 pos = cam_data.pos;
+    RaycastResult result = raycast(pos, ray);
+    if (!result.hit) {
+        f_color = vec4(1.0, 0.0, 0.0, 1.0);
+        return;
+    } else if (result.voxel_data.x == 2) {
+        f_color = vec4(0.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    RaycastResult shade_check = raycast(result.pos + 0.02*result.normal, -light_dir);
+    vec3 ambient_light = vec3(0.1, 0.1, 0.1);
+    if (shade_check.hit && shade_check.voxel_data.x != 2) {
+        f_color = vec4(ambient_light, 1.0);
+        return;
+    }
+    float diffuse = 0.9*max(dot(result.normal, -light_dir), 0.0);
+    f_color = vec4(vec3(diffuse) + ambient_light, 1.0);
 }

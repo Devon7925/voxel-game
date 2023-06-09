@@ -95,7 +95,7 @@ fn main() {
         down: false,
         mouse_left: false,
         mouse_right: false,
-        do_chunk_load: false,
+        do_chunk_load: true,
     };
 
     loop {

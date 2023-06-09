@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{app::App, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE};
-use noise::{NoiseFn, OpenSimplex, ScalePoint};
+use noise::{NoiseFn, OpenSimplex, ScalePoint, Multiply, Add, Constant};
 use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
     buffer::{
@@ -84,9 +84,18 @@ impl DistanceComputePipeline {
         let memory_allocator = app.context.memory_allocator();
 
         // generate based on simplex noise
-        const SCALE: f64 = 0.1;
+        const SCALE: f64 = 0.2;
         let noise: Box<dyn NoiseFn<f64, 3>> =
-            Box::new(ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE));
+            Box::new(Add::new(
+                Add::new(
+                    ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE),
+                    Multiply::new(
+                        ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE/40.0).set_y_scale(SCALE/12.0),
+                        Constant::new(5.0),
+                    ),
+                ),
+                Constant::new(-1.0),
+            ));
         let world_gen = WorldGen::new(noise);
 
         let life_a = empty_grid(memory_allocator);
