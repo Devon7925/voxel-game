@@ -23,7 +23,7 @@ uvec2 get_data(ivec3 global_pos) {
     if (
         any(lessThan(rel_pos, ivec3(0)))
         ||
-        any(greaterThanEqual(rel_pos, int(CHUNK_SIZE)*ivec3(sim_data.render_size)))
+        any(greaterThanEqual(rel_pos, ivec3(CHUNK_SIZE*sim_data.render_size)))
     ) return uvec2(2, 0);
     return get_data_unchecked(global_pos);
 }
@@ -54,7 +54,7 @@ void main() {
                 direction_dist = 0;
                 break;
             } else if (dir_data.x == 2) {
-                direction_dist = min(direction_dist, (pos_data.y >> (4*(7 - i))) & 0xF - 1);
+                direction_dist = min(direction_dist, ((pos_data.y >> (4*(7 - i))) & 0xF) - 1);
                 continue;
             }
             direction_dist = min(direction_dist, (dir_data.y >> (4*(7 - i))) & 0xF);
