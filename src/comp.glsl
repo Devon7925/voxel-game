@@ -13,6 +13,8 @@ layout(set = 0, binding = 3) uniform SimData {
     ivec3 start_pos;
 } sim_data;
 
+layout(set = 0, binding = 4) buffer Projectiles { Projectile projectiles[]; };
+
 uvec2 get_data_unchecked(ivec3 global_pos) {
     uint index = get_index(global_pos, sim_data.render_size);
     return voxel_in[index];

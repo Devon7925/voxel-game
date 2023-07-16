@@ -3,12 +3,14 @@ mod pixels_draw;
 mod render_pass;
 mod sim_manager;
 mod world_gen;
+mod projectiles;
 
 use crate::app::{App, RenderPipeline};
 use cgmath::{InnerSpace, Vector2, Vector3};
 use rand::Rng;
+use projectiles::Projectile;
 use std::time::Instant;
-use vulkano_util::{renderer::VulkanoWindowRenderer};
+use vulkano_util::renderer::VulkanoWindowRenderer;
 use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -97,6 +99,11 @@ fn main() {
         mouse_right: false,
         do_chunk_load: true,
     };
+
+    for (window_id, _) in app.windows.iter_mut() {
+        let pipeline = app.pipelines.get_mut(window_id).unwrap();
+        pipeline.compute.load_chunks(&mut sim_data);
+    }
 
     loop {
         // Event handling.
@@ -200,6 +207,36 @@ fn handle_events(
                     }
                     if button == &MouseButton::Right {
                         controls.mouse_right = state == &ElementState::Pressed;
+                        if controls.mouse_right {
+                            let pipeline = app.pipelines.get_mut(window_id).unwrap();
+                            let rotation = quaternion::rotation_from_to([1.0,0.0,0.0], cam_data.dir.into());
+                            pipeline.projectiles.push_projectile(Projectile {
+                                pos: [
+                                    cam_data.pos.x,
+                                    cam_data.pos.y,
+                                    cam_data.pos.z,
+                                    1.0,
+                                ],
+                                dir: [
+                                    rotation.1[0],
+                                    rotation.1[1],
+                                    rotation.1[2],
+                                    rotation.0,
+                                ],
+                                size: [
+                                    1.0,
+                                    1.0,
+                                    1.0,
+                                    1.0,
+                                ],
+                                vel: [
+                                    cam_data.dir.x * 0.1,
+                                    cam_data.dir.y * 0.1,
+                                    cam_data.dir.z * 0.1,
+                                    1.0,
+                                ]
+                            })
+                        }
                     }
                 }
                 WindowEvent::KeyboardInput { input, .. } => {
@@ -319,22 +356,26 @@ fn compute_then_render(
         pipeline.compute.queue_updates(&chunk_updates);
         // Compute.
         let after_compute = pipeline.compute.compute(before_pipeline_future, sim_data);
+        let after_projectiles = pipeline.projectiles.compute(after_compute, sim_data);
 
         // Render.
         let voxels = pipeline.compute.voxels();
+        let projectiles = pipeline.projectiles.projectiles();
         let target_image = window_renderer.swapchain_image_view();
 
         pipeline
             .place_over_frame
-            .render(after_compute, voxels, target_image, cam_data, sim_data)
+            .render(after_projectiles, voxels, projectiles, target_image, cam_data, sim_data)
     } else {
         // Render.
         let voxels = pipeline.compute.voxels();
+        let projectiles = pipeline.projectiles.projectiles();
         let target_image = window_renderer.swapchain_image_view();
 
         pipeline.place_over_frame.render(
             before_pipeline_future,
             voxels,
+            projectiles,
             target_image,
             cam_data,
             sim_data,

@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::App, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE};
+use crate::{app::App, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE, projectiles::Projectile};
 use noise::{NoiseFn, OpenSimplex, ScalePoint, Multiply, Add, Constant};
 use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
@@ -39,11 +39,11 @@ pub struct DistanceComputePipeline {
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     life_a: Subbuffer<[[u32; 2]]>,
     life_b: Subbuffer<[[u32; 2]]>,
+    is_a_in_buffer: bool,
     chunk_update_queue: VecDeque<[i32; 3]>,
     chunk_updates: Subbuffer<[[i32; 4]; 128]>,
     uniform_buffer: SubbufferAllocator,
     world_gen: WorldGen,
-    is_a_in_buffer: bool,
 }
 
 fn empty_grid(
@@ -253,6 +253,21 @@ impl DistanceComputePipeline {
                         sim_data.start_pos[0] + x_i as i32,
                         sim_data.start_pos[1] + y_i as i32,
                         sim_data.start_pos[2] + z_offset,
+                    ];
+                    self.write_chunk(chunk_location);
+                }
+            }
+        }
+    }
+
+    pub fn load_chunks(&mut self, sim_data: &mut SimData) {
+        for x_i in 0..RENDER_SIZE[0] {
+            for y_i in 0..RENDER_SIZE[1] {
+                for z_i in 0..RENDER_SIZE[2] {
+                    let chunk_location = [
+                        sim_data.start_pos[0] + x_i as i32,
+                        sim_data.start_pos[1] + y_i as i32,
+                        sim_data.start_pos[2] + z_i as i32,
                     ];
                     self.write_chunk(chunk_location);
                 }

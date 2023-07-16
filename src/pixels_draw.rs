@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::App, CamData, SimData};
+use crate::{app::App, CamData, SimData, projectiles::Projectile};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -150,6 +150,7 @@ impl PixelsDrawPipeline {
         voxels: Subbuffer<[[u32; 2]]>,
         cam_data: &CamData,
         sim_data: &mut SimData,
+        projectiles: Subbuffer<[Projectile;128]>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
 
@@ -187,6 +188,7 @@ impl PixelsDrawPipeline {
                 WriteDescriptorSet::buffer(0, voxels.clone()),
                 WriteDescriptorSet::buffer(1, cam_uniform_buffer_subbuffer),
                 WriteDescriptorSet::buffer(2, sim_uniform_buffer_subbuffer),
+                WriteDescriptorSet::buffer(3, projectiles.clone()),
             ],
         )
         .unwrap()
@@ -197,6 +199,7 @@ impl PixelsDrawPipeline {
         &self,
         viewport_dimensions: [u32; 2],
         voxels: Subbuffer<[[u32; 2]]>,
+        projectiles: Subbuffer<[Projectile; 128]>,
         cam_data: &CamData,
         sim_data: &mut SimData,
     ) -> SecondaryAutoCommandBuffer {
@@ -210,7 +213,7 @@ impl PixelsDrawPipeline {
             },
         )
         .unwrap();
-        let desc_set = self.create_desc_set(voxels, cam_data, sim_data);
+        let desc_set = self.create_desc_set(voxels, cam_data, sim_data, projectiles);
         builder
             .set_viewport(
                 0,

@@ -9,7 +9,7 @@
 
 use crate::{
     sim_manager::DistanceComputePipeline, render_pass::RenderPassPlaceOverFrame,
-    WINDOW_HEIGHT, WINDOW_WIDTH,
+    WINDOW_HEIGHT, WINDOW_WIDTH, projectiles::ProjectilePipeline,
 };
 use std::{collections::HashMap, sync::Arc};
 use vulkano::{
@@ -24,6 +24,7 @@ use winit::{event_loop::EventLoop, window::WindowId};
 
 pub struct RenderPipeline {
     pub compute: DistanceComputePipeline,
+    pub projectiles: ProjectilePipeline,
     pub place_over_frame: RenderPassPlaceOverFrame,
 }
 
@@ -31,11 +32,13 @@ impl RenderPipeline {
     pub fn new(
         app: &App,
         compute_queue: Arc<Queue>,
+        projectiles_queue: Arc<Queue>,
         gfx_queue: Arc<Queue>,
         swapchain_format: Format,
     ) -> RenderPipeline {
         RenderPipeline {
             compute: DistanceComputePipeline::new(app, compute_queue),
+            projectiles: ProjectilePipeline::new(app, projectiles_queue),
             place_over_frame: RenderPassPlaceOverFrame::new(app, gfx_queue, swapchain_format),
         }
     }
@@ -68,6 +71,7 @@ impl App {
             RenderPipeline::new(
                 self,
                 // Use same queue.. for synchronization.
+                self.context.graphics_queue().clone(),
                 self.context.graphics_queue().clone(),
                 self.context.graphics_queue().clone(),
                 self.windows

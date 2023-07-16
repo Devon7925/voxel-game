@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::App, pixels_draw::PixelsDrawPipeline, SimData, CamData};
+use crate::{app::App, pixels_draw::PixelsDrawPipeline, SimData, CamData, projectiles::Projectile};
 use std::sync::Arc;
 use vulkano::{
     buffer::Subbuffer,
@@ -70,6 +70,7 @@ impl RenderPassPlaceOverFrame {
         &self,
         before_future: F,
         voxels: Subbuffer<[[u32;2]]>,
+        projectiles: Subbuffer<[Projectile; 128]>,
         target: SwapchainImageView,
         cam_data: &CamData,
         sim_data: &mut SimData,
@@ -112,7 +113,7 @@ impl RenderPassPlaceOverFrame {
         // Create a secondary command buffer from the texture pipeline & send draw commands.
         let cb = self
             .pixels_draw_pipeline
-            .draw(img_dims.width_height(), voxels, cam_data, sim_data);
+            .draw(img_dims.width_height(), voxels, projectiles, cam_data, sim_data);
 
         // Execute above commands (subpass).
         command_buffer_builder.execute_commands(cb).unwrap();
