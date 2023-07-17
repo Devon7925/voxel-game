@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::App, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE, projectiles::Projectile};
+use crate::{app::App, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE};
 use noise::{NoiseFn, OpenSimplex, ScalePoint, Multiply, Add, Constant};
 use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
@@ -208,7 +208,7 @@ impl DistanceComputePipeline {
         let [load_range_x, load_range_y, load_range_z] = [0, 1, 2].map(|i| if offset[i] > 0 {
             (RENDER_SIZE[i] as i32) - offset[i]..=(RENDER_SIZE[i] as i32) - 1
         } else {
-            0..=offset[i]-1
+            0..=-offset[i]-1
         });
 
         for x_offset in load_range_x.clone() {

@@ -129,6 +129,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
                 } else {
                     min_normal = vec3(0, 0, -sign(ray.z));
                 }
+                min_normal = quat_transform(projectiles[i].dir, min_normal);
             }
         }
         if (length(min_normal) > 0) {
@@ -162,35 +163,35 @@ void main() {
         float diffuse = 0.7*max(dot(primary_ray.normal, -light_dir), 0.0);
         color += diffuse*vec3(1.0);
     }
-    vec3 ambient_check_offsets[21] = {
-        vec3(0.9, 0.9, 0.9),
-        vec3(-0.9, 0.9, 0.9),
-        vec3(0.9, -0.9, 0.9),
-        vec3(-0.9, -0.9, 0.9),
-        vec3(0.9, 0.9, -0.9),
-        vec3(-0.9, 0.9, -0.9),
-        vec3(0.9, -0.9, -0.9),
-        vec3(-0.9, -0.9, -0.9),
-        vec3(0.0, 0.9, 0.9),
-        vec3(0.0, -0.9, 0.9),
-        vec3(0.0, 0.9, -0.9),
-        vec3(0.0, -0.9, -0.9),
-        vec3(0.9, 0.0, 0.9),
-        vec3(-0.9, 0.0, 0.9),
-        vec3(0.9, 0.0, -0.9),
-        vec3(-0.9, 0.0, -0.9),
-        vec3(0.9, 0.9, 0.0),
-        vec3(-0.9, 0.9, 0.0),
-        vec3(0.9, -0.9, 0.0),
-        vec3(-0.9, -0.9, 0.0),
-        vec3(0.0, 0.0, 0.0),
-    };
-    for (int i = 0; i < 21; i++) {
-        vec3 ambient_ray = normalize(primary_ray.normal + ambient_check_offsets[i]);
-        RaycastResult ambient_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, ambient_ray, 50, false);
-        if (!ambient_check.hit || ambient_check.voxel_data.x == 2) {
-            color += vec3(0.015) * dot(ambient_ray, primary_ray.normal) * vec3(0.529, 0.808, 0.922);
-        }
-    }
+    // vec3 ambient_check_offsets[21] = {
+    //     vec3(0.9, 0.9, 0.9),
+    //     vec3(-0.9, 0.9, 0.9),
+    //     vec3(0.9, -0.9, 0.9),
+    //     vec3(-0.9, -0.9, 0.9),
+    //     vec3(0.9, 0.9, -0.9),
+    //     vec3(-0.9, 0.9, -0.9),
+    //     vec3(0.9, -0.9, -0.9),
+    //     vec3(-0.9, -0.9, -0.9),
+    //     vec3(0.0, 0.9, 0.9),
+    //     vec3(0.0, -0.9, 0.9),
+    //     vec3(0.0, 0.9, -0.9),
+    //     vec3(0.0, -0.9, -0.9),
+    //     vec3(0.9, 0.0, 0.9),
+    //     vec3(-0.9, 0.0, 0.9),
+    //     vec3(0.9, 0.0, -0.9),
+    //     vec3(-0.9, 0.0, -0.9),
+    //     vec3(0.9, 0.9, 0.0),
+    //     vec3(-0.9, 0.9, 0.0),
+    //     vec3(0.9, -0.9, 0.0),
+    //     vec3(-0.9, -0.9, 0.0),
+    //     vec3(0.0, 0.0, 0.0),
+    // };
+    // for (int i = 0; i < 21; i++) {
+    //     vec3 ambient_ray = normalize(primary_ray.normal + ambient_check_offsets[i]);
+    //     RaycastResult ambient_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, ambient_ray, 50, false);
+    //     if (!ambient_check.hit || ambient_check.voxel_data.x == 2) {
+    //         color += vec3(0.015) * dot(ambient_ray, primary_ray.normal) * vec3(0.529, 0.808, 0.922);
+    //     }
+    // }
     f_color = vec4(color, 1.0);
 }

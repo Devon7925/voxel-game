@@ -50,6 +50,7 @@ pub struct Controls {
     right: bool,
     up: bool,
     down: bool,
+    sprint: bool,
     mouse_left: bool,
     mouse_right: bool,
     do_chunk_load: bool,
@@ -95,6 +96,7 @@ fn main() {
         right: false,
         up: false,
         down: false,
+        sprint: false,
         mouse_left: false,
         mouse_right: false,
         do_chunk_load: true,
@@ -130,23 +132,24 @@ fn main() {
             chunk_time = Instant::now();
         }
         if (Instant::now() - time).as_secs_f64() > 1.0 / 60.0 {
+            let speed = if controls.sprint { 0.5 } else { 0.1 };
             if controls.up {
-                cam_data.pos += 0.1 * cam_data.up;
+                cam_data.pos += speed * cam_data.up;
             }
             if controls.down {
-                cam_data.pos -= 0.1 * cam_data.up;
+                cam_data.pos -= speed * cam_data.up;
             }
             if controls.right {
-                cam_data.pos += 0.1 * cam_data.right;
+                cam_data.pos += speed * cam_data.right;
             }
             if controls.left {
-                cam_data.pos -= 0.1 * cam_data.right;
+                cam_data.pos -= speed * cam_data.right;
             }
             if controls.forward {
-                cam_data.pos += 0.1 * cam_data.dir;
+                cam_data.pos += speed * cam_data.dir;
             }
             if controls.backward {
-                cam_data.pos -= 0.1 * cam_data.dir;
+                cam_data.pos -= speed * cam_data.dir;
             }
             time = Instant::now();
             compute_then_render_per_window(&mut app, &cam_data, &sim_settings, &mut sim_data);
@@ -262,6 +265,9 @@ fn handle_events(
                         winit::event::VirtualKeyCode::S => {
                             controls.backward = input.state == ElementState::Pressed;
                         }
+                        winit::event::VirtualKeyCode::LShift => {
+                            controls.sprint = input.state == ElementState::Pressed;
+                        }
                         winit::event::VirtualKeyCode::Up => {
                             if input.state == ElementState::Released {
                                 sim_settings.max_dist += 1;
@@ -282,6 +288,7 @@ fn handle_events(
                         }
                         winit::event::VirtualKeyCode::R => {
                             if input.state == ElementState::Released {
+                                println!("cam_pos: {:?}", cam_data.pos);
                                 println!("cam_dir: {:?}", cam_data.dir);
                             }
                         }

@@ -1,9 +1,7 @@
-use crate::{app::App, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE};
-use noise::{NoiseFn, OpenSimplex, ScalePoint, Multiply, Add, Constant};
-use std::{collections::VecDeque, sync::Arc};
+use crate::{app::App, SimData};
+use std::sync::Arc;
 use vulkano::{
     buffer::{
-        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
         Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
     },
     command_buffer::{
@@ -14,7 +12,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
+    memory::allocator::{AllocationCreateInfo, MemoryUsage},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::GpuFuture,
 };
@@ -113,7 +111,7 @@ impl ProjectilePipeline {
 
         let projectile_count = 128.min(self.projectiles.len());
         {
-            let mut projectiles_buffer = self.projectile_buffer.read().unwrap();
+            let projectiles_buffer = self.projectile_buffer.read().unwrap();
             for i in 0..projectile_count {
                 self.projectiles[i] = projectiles_buffer[i].clone();
             }
@@ -129,7 +127,7 @@ impl ProjectilePipeline {
             PrimaryAutoCommandBuffer,
             Arc<StandardCommandBufferAllocator>,
         >,
-        sim_data: &mut SimData,
+        _sim_data: &mut SimData,
     ) {
         // Resize image if needed.
         let pipeline_layout = self.compute_life_pipeline.layout();
