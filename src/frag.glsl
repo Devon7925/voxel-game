@@ -5,19 +5,14 @@ layout(location = 0) in vec2 v_tex_coords;
 layout(location = 0) out vec4 f_color;
 
 layout(set = 0, binding = 0) buffer VoxelBuffer { uvec2 voxels[]; };
-layout(set = 0, binding = 1) uniform CamData {
-    vec3 pos;
-    vec3 dir;
-    vec3 up;
-    vec3 right;
-} cam_data;
 
-layout(set = 0, binding = 2) uniform SimData {
+layout(set = 0, binding = 1) uniform SimData {
     uint max_dist;
     uvec3 render_size;
     ivec3 start_pos;
 } sim_data;
 
+layout(set = 0, binding = 2) buffer Players { Player players[]; };
 layout(set = 0, binding = 3) buffer Projectiles { Projectile projectiles[]; };
 
 const vec3 light_dir = normalize(vec3(0.5, -1, 0.25));
@@ -106,8 +101,8 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             vec3 proj_size = projectiles[i].size.xyz;
             float does_exist = projectiles[i].pos.w;
             if (does_exist == 0.0) continue;
-            vec3 transformed_pos = quat_transform(proj_rot_quaternion, (pos - proj_pos) / proj_size);
-            vec3 ray = quat_transform(proj_rot_quaternion, ray / proj_size);
+            vec3 transformed_pos = quat_transform(projectiles[i].dir, (pos - proj_pos) / proj_size);
+            vec3 ray = quat_transform(projectiles[i].dir, ray / proj_size);
             vec2 t_x = vec2(-transformed_pos.x/ray.x, (1 - transformed_pos.x) / ray.x);
             t_x = vec2(max(min(t_x.x, t_x.y), 0.0), min(max(t_x.x, t_x.y), depth));
             if (t_x.y < 0 || t_x.x > depth) continue;
@@ -129,7 +124,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
                 } else {
                     min_normal = vec3(0, 0, -sign(ray.z));
                 }
-                min_normal = quat_transform(projectiles[i].dir, min_normal);
+                min_normal = quat_transform(proj_rot_quaternion, min_normal);
             }
         }
         if (length(min_normal) > 0) {
@@ -145,9 +140,10 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
 }
 
 void main() {
-    vec3 ray = normalize(cam_data.dir + v_tex_coords.x * cam_data.right + v_tex_coords.y * cam_data.up);
+    Player cam_data = players[0];
+    vec3 ray = normalize(cam_data.dir.xyz + v_tex_coords.x * cam_data.right.xyz + v_tex_coords.y * cam_data.up.xyz);
 
-    vec3 pos = cam_data.pos;
+    vec3 pos = cam_data.pos.xyz;
     RaycastResult primary_ray = raycast(pos, ray, 100, true);
     
     if (!primary_ray.hit) {

@@ -7,6 +7,16 @@ struct Projectile {
     vec4 vel;
 };
 
+struct Player {
+    vec4 pos;
+    vec4 rot;
+    vec4 size;
+    vec4 vel;
+    vec4 dir;
+    vec4 up;
+    vec4 right;
+};
+
 uint get_index(ivec3 global_pos, uvec3 render_size) {
     uvec3 chunk_pos = (global_pos / CHUNK_SIZE) % render_size;
     uvec3 pos_in_chunk = global_pos % CHUNK_SIZE;

@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::App, CamData, SimData, projectiles::Projectile};
+use crate::{SimData, rollback_manager::{Projectile, UploadPlayer}, app::VulkanoInterface};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -81,7 +81,7 @@ pub struct PixelsDrawPipeline {
 }
 
 impl PixelsDrawPipeline {
-    pub fn new(app: &App, gfx_queue: Arc<Queue>, subpass: Subpass) -> PixelsDrawPipeline {
+    pub fn new(app: &VulkanoInterface, gfx_queue: Arc<Queue>, subpass: Subpass) -> PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let memory_allocator = app.context.memory_allocator();
         let vertex_buffer = Buffer::from_iter(
@@ -148,25 +148,11 @@ impl PixelsDrawPipeline {
     fn create_desc_set(
         &self,
         voxels: Subbuffer<[[u32; 2]]>,
-        cam_data: &CamData,
         sim_data: &mut SimData,
         projectiles: Subbuffer<[Projectile;128]>,
+        players: Subbuffer<[UploadPlayer;128]>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
-
-        let cam_uniform_buffer_subbuffer = {
-            let uniform_data = fs::CamData {
-                pos: [cam_data.pos.x, cam_data.pos.y, cam_data.pos.z].into(),
-                dir: [cam_data.dir.x, cam_data.dir.y, cam_data.dir.z].into(),
-                up: [cam_data.up.x, cam_data.up.y, cam_data.up.z].into(),
-                right: [cam_data.right.x, cam_data.right.y, cam_data.right.z].into(),
-            };
-
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
-
-            subbuffer
-        };
 
         let sim_uniform_buffer_subbuffer = {
             let uniform_data = fs::SimData {
@@ -186,8 +172,8 @@ impl PixelsDrawPipeline {
             layout.clone(),
             [
                 WriteDescriptorSet::buffer(0, voxels.clone()),
-                WriteDescriptorSet::buffer(1, cam_uniform_buffer_subbuffer),
-                WriteDescriptorSet::buffer(2, sim_uniform_buffer_subbuffer),
+                WriteDescriptorSet::buffer(1, sim_uniform_buffer_subbuffer),
+                WriteDescriptorSet::buffer(2, players.clone()),
                 WriteDescriptorSet::buffer(3, projectiles.clone()),
             ],
         )
@@ -200,7 +186,7 @@ impl PixelsDrawPipeline {
         viewport_dimensions: [u32; 2],
         voxels: Subbuffer<[[u32; 2]]>,
         projectiles: Subbuffer<[Projectile; 128]>,
-        cam_data: &CamData,
+        players: Subbuffer<[UploadPlayer; 128]>,
         sim_data: &mut SimData,
     ) -> SecondaryAutoCommandBuffer {
         let mut builder = AutoCommandBufferBuilder::secondary(
@@ -213,7 +199,7 @@ impl PixelsDrawPipeline {
             },
         )
         .unwrap();
-        let desc_set = self.create_desc_set(voxels, cam_data, sim_data, projectiles);
+        let desc_set = self.create_desc_set(voxels, sim_data, projectiles, players);
         builder
             .set_viewport(
                 0,

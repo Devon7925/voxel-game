@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::App, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE};
+use crate::{world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE, app::VulkanoInterface};
 use noise::{NoiseFn, OpenSimplex, ScalePoint, Multiply, Add, Constant};
 use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
@@ -59,28 +59,15 @@ fn empty_grid(
             usage: MemoryUsage::Upload,
             ..Default::default()
         },
-        (0..RENDER_SIZE[0])
-            .flat_map(|chunk_x| {
-                if chunk_x % 3 == 0 {
-                    println!("Generating chunk_x: {}", chunk_x);
-                }
-                (0..RENDER_SIZE[1])
-                    .flat_map(|_chunk_y| {
-                        (0..RENDER_SIZE[2])
-                            .flat_map(|_chunk_z| {
-                                vec![[0, 0x11111111]; (CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE) as usize]
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>(),
+        vec![[0, 0x11111111]; (
+            CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE * RENDER_SIZE[0] * RENDER_SIZE[1] * RENDER_SIZE[2]
+        ) as usize],
     )
     .unwrap()
 }
 
 impl DistanceComputePipeline {
-    pub fn new(app: &App, compute_queue: Arc<Queue>) -> DistanceComputePipeline {
+    pub fn new(app: &VulkanoInterface, compute_queue: Arc<Queue>) -> DistanceComputePipeline {
         let memory_allocator = app.context.memory_allocator();
 
         // generate based on simplex noise

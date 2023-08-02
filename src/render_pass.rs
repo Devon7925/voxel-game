@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::App, pixels_draw::PixelsDrawPipeline, SimData, CamData, projectiles::Projectile};
+use crate::{app::VulkanoInterface, pixels_draw::PixelsDrawPipeline, SimData, rollback_manager::{Projectile, UploadPlayer}};
 use std::sync::Arc;
 use vulkano::{
     buffer::Subbuffer,
@@ -33,7 +33,7 @@ pub struct RenderPassPlaceOverFrame {
 
 impl RenderPassPlaceOverFrame {
     pub fn new(
-        app: &App,
+        app: &VulkanoInterface,
         gfx_queue: Arc<Queue>,
         output_format: Format,
     ) -> RenderPassPlaceOverFrame {
@@ -71,8 +71,8 @@ impl RenderPassPlaceOverFrame {
         before_future: F,
         voxels: Subbuffer<[[u32;2]]>,
         projectiles: Subbuffer<[Projectile; 128]>,
+        players: Subbuffer<[UploadPlayer; 128]>,
         target: SwapchainImageView,
-        cam_data: &CamData,
         sim_data: &mut SimData,
     ) -> Box<dyn GpuFuture>
     where
@@ -113,7 +113,7 @@ impl RenderPassPlaceOverFrame {
         // Create a secondary command buffer from the texture pipeline & send draw commands.
         let cb = self
             .pixels_draw_pipeline
-            .draw(img_dims.width_height(), voxels, projectiles, cam_data, sim_data);
+            .draw(img_dims.width_height(), voxels, projectiles, players, sim_data);
 
         // Execute above commands (subpass).
         command_buffer_builder.execute_commands(cb).unwrap();
