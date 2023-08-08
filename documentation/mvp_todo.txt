@@ -1,0 +1,9 @@
+projectile rasterization
+projectile <-> world collision
+proper player rendering
+projectile <-> player collision
+server multiplayer test
+basic materials
+player <-> world collision
+basic card system
+projectile <-> projectile collision
