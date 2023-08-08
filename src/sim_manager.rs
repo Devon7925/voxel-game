@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE, app::VulkanoInterface};
-use noise::{NoiseFn, OpenSimplex, ScalePoint, Multiply, Add, Constant};
+use crate::{app::VulkanoInterface, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE};
+use noise::{Add, Constant, Multiply, NoiseFn, OpenSimplex, ScalePoint};
 use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
     buffer::{
@@ -46,9 +46,7 @@ pub struct DistanceComputePipeline {
     world_gen: WorldGen,
 }
 
-fn empty_grid(
-    memory_allocator: &impl MemoryAllocator,
-) -> Subbuffer<[[u32; 2]]> {
+fn empty_grid(memory_allocator: &impl MemoryAllocator) -> Subbuffer<[[u32; 2]]> {
     Buffer::from_iter(
         memory_allocator,
         BufferCreateInfo {
@@ -59,30 +57,37 @@ fn empty_grid(
             usage: MemoryUsage::Upload,
             ..Default::default()
         },
-        vec![[0, 0x11111111]; (
-            CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE * RENDER_SIZE[0] * RENDER_SIZE[1] * RENDER_SIZE[2]
-        ) as usize],
+        vec![
+            [0, 0x11111111];
+            (CHUNK_SIZE
+                * CHUNK_SIZE
+                * CHUNK_SIZE
+                * RENDER_SIZE[0]
+                * RENDER_SIZE[1]
+                * RENDER_SIZE[2]) as usize
+        ],
     )
     .unwrap()
 }
 
 impl DistanceComputePipeline {
     pub fn new(app: &VulkanoInterface, compute_queue: Arc<Queue>) -> DistanceComputePipeline {
-        let memory_allocator = app.context.memory_allocator();
+        let memory_allocator = &app.memory_allocator;
 
         // generate based on simplex noise
         const SCALE: f64 = 0.2;
-        let noise: Box<dyn NoiseFn<f64, 3>> =
-            Box::new(Add::new(
-                Add::new(
-                    ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE),
-                    Multiply::new(
-                        ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE/40.0).set_y_scale(SCALE/12.0),
-                        Constant::new(5.0),
-                    ),
+        let noise: Box<dyn NoiseFn<f64, 3>> = Box::new(Add::new(
+            Add::new(
+                ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE),
+                Multiply::new(
+                    ScalePoint::new(OpenSimplex::new(10))
+                        .set_scale(SCALE / 40.0)
+                        .set_y_scale(SCALE / 12.0),
+                    Constant::new(5.0),
                 ),
-                Constant::new(-1.0),
-            ));
+            ),
+            Constant::new(-1.0),
+        ));
         let world_gen = WorldGen::new(noise);
 
         let life_a = empty_grid(memory_allocator);
@@ -191,11 +196,13 @@ impl DistanceComputePipeline {
 
     pub fn move_start_pos(&mut self, sim_data: &mut SimData, offset: [i32; 3]) {
         sim_data.start_pos = [0, 1, 2].map(|i| sim_data.start_pos[i] + offset[i]);
-        
-        let [load_range_x, load_range_y, load_range_z] = [0, 1, 2].map(|i| if offset[i] > 0 {
-            (RENDER_SIZE[i] as i32) - offset[i]..=(RENDER_SIZE[i] as i32) - 1
-        } else {
-            0..=-offset[i]-1
+
+        let [load_range_x, load_range_y, load_range_z] = [0, 1, 2].map(|i| {
+            if offset[i] > 0 {
+                (RENDER_SIZE[i] as i32) - offset[i]..=(RENDER_SIZE[i] as i32) - 1
+            } else {
+                0..=-offset[i] - 1
+            }
         });
 
         for x_offset in load_range_x.clone() {
@@ -262,11 +269,10 @@ impl DistanceComputePipeline {
         }
     }
 
-    pub fn compute(
-        &mut self,
-        before_future: Box<dyn GpuFuture>,
-        sim_data: &mut SimData,
-    ) -> Box<dyn GpuFuture> {
+    pub fn compute<F>(&mut self, before_future: F, sim_data: &mut SimData) -> Box<dyn GpuFuture>
+    where
+        F: GpuFuture + 'static,
+    {
         let mut builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
             self.compute_queue.queue_family_index(),
@@ -365,7 +371,7 @@ impl DistanceComputePipeline {
 mod compute_dists_cs {
     vulkano_shaders::shader! {
         ty: "compute",
-        path: "src/comp.glsl",
-        include: ["src"],
+        path: "assets/shaders/comp.glsl",
+        include: ["assets/shaders"],
     }
 }

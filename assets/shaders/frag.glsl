@@ -1,19 +1,35 @@
 #version 450
 #include <common.glsl>
-layout(location = 0) in vec2 v_tex_coords;
 
-layout(location = 0) out vec4 f_color;
+// The `color_input` parameter of the `draw` method.
+layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput u_diffuse;
+// The `normals_input` parameter of the `draw` method.
+layout(input_attachment_index = 1, set = 0, binding = 1) uniform subpassInput u_normals;
+// The `depth_input` parameter of the `draw` method.
+layout(input_attachment_index = 2, set = 0, binding = 2) uniform subpassInput u_depth;
 
-layout(set = 0, binding = 0) buffer VoxelBuffer { uvec2 voxels[]; };
+layout(set = 1, binding = 0) buffer VoxelBuffer { uvec2 voxels[]; };
 
-layout(set = 0, binding = 1) uniform SimData {
+layout(set = 1, binding = 1) uniform SimData {
     uint max_dist;
     uvec3 render_size;
     ivec3 start_pos;
 } sim_data;
 
-layout(set = 0, binding = 2) buffer Players { Player players[]; };
-layout(set = 0, binding = 3) buffer Projectiles { Projectile projectiles[]; };
+layout(set = 1, binding = 2) buffer Players { Player players[]; };
+layout(set = 1, binding = 3) buffer Projectiles { Projectile projectiles[]; };
+
+layout(push_constant) uniform PushConstants {
+    // The `screen_to_world` parameter of the `draw` method.
+    mat4 screen_to_world;
+    // The `color` parameter of the `draw` method.
+    vec4 color;
+    // The `position` parameter of the `draw` method.
+    vec4 position;
+} push_constants;
+
+layout(location = 0) in vec2 v_screen_coords;
+layout(location = 0) out vec4 f_color;
 
 const vec3 light_dir = normalize(vec3(0.5, -1, 0.25));
 
@@ -43,7 +59,7 @@ struct RaycastResult {
     bool hit;
 };
 
-RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles) {
+RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles, float max_depth) {
     uint offset = 0;
     if(ray.x < 0) offset += 1;
     if(ray.y < 0) offset += 2;
@@ -65,6 +81,9 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         vec3 v_max = floor(ray_pos) + vec3(dist);
         vec3 delta = RayBoxDist(ray_pos, ray, v_min, v_max);
         float dist_diff = min(delta.x, min(delta.y, delta.z));
+        if (depth + dist_diff > max_depth && max_depth > 0) {
+            break;
+        }
         depth += dist_diff;
         ray_pos += ray * dist_diff;
         if (delta.x < delta.y && delta.x < delta.z) {
@@ -141,53 +160,57 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
 
 void main() {
     Player cam_data = players[0];
-    vec3 ray = normalize(cam_data.dir.xyz + v_tex_coords.x * cam_data.right.xyz + v_tex_coords.y * cam_data.up.xyz);
+
+    float in_depth = subpassLoad(u_depth).x;
+
+    float n = 0.01;
+    float f = 100.0;
+
+    float z_ndc = 2.0 * in_depth - 1.0;
+    float z_eye = 2.0 * n * f / (f + n - z_ndc * (f - n));
+
+    float tanFov = tan(radians(90) / 2.0);
+    float aspect = 1.0;
+
+    vec3 viewPos = vec3(
+        z_eye * v_screen_coords.x * aspect * tanFov,
+        z_eye * v_screen_coords.y * tanFov,
+        -z_eye
+    );
+
+    float max_depth = 0.0;
+    if (in_depth < 1.0) {
+        max_depth = length(viewPos);
+    }
+    vec3 ray = normalize(cam_data.dir.xyz + v_screen_coords.x * cam_data.right.xyz - v_screen_coords.y * cam_data.up.xyz);
 
     vec3 pos = cam_data.pos.xyz;
-    RaycastResult primary_ray = raycast(pos, ray, 100, true);
+    RaycastResult primary_ray = raycast(pos, ray, 100, true, max_depth);
     
     if (!primary_ray.hit) {
-        f_color = vec4(1.0, 0.0, 0.0, 1.0);
-        return;
+        if (in_depth >= 1.0) {
+            f_color = vec4(1.0, 0.0, 0.0, 1.0);
+            return;
+        }
+        vec3 in_normal = normalize(subpassLoad(u_normals).rgb);
+
+        vec3 in_diffuse = subpassLoad(u_diffuse).rgb;
+        // f_color.rgb = push_constants.color.rgb * light_percent * in_diffuse;
+        primary_ray.hit = true;
+        primary_ray.normal = in_normal;
+        primary_ray.pos = pos + max_depth*ray;
+        primary_ray.dist = max_depth;
+        primary_ray.voxel_data = uvec2(1, 0);
     } else if (primary_ray.voxel_data.x == 2) {
         f_color = vec4(0.529, 0.808, 0.922, 1.0);
         return;
     }
-    RaycastResult shade_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, -light_dir, 100, true);
+    RaycastResult shade_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, -light_dir, 100, true, 0.0);
     vec3 color = vec3(0.1, 0.1, 0.1);
     if (!shade_check.hit || shade_check.voxel_data.x == 2) {
         float diffuse = 0.7*max(dot(primary_ray.normal, -light_dir), 0.0);
         color += diffuse*vec3(1.0);
     }
-    // vec3 ambient_check_offsets[21] = {
-    //     vec3(0.9, 0.9, 0.9),
-    //     vec3(-0.9, 0.9, 0.9),
-    //     vec3(0.9, -0.9, 0.9),
-    //     vec3(-0.9, -0.9, 0.9),
-    //     vec3(0.9, 0.9, -0.9),
-    //     vec3(-0.9, 0.9, -0.9),
-    //     vec3(0.9, -0.9, -0.9),
-    //     vec3(-0.9, -0.9, -0.9),
-    //     vec3(0.0, 0.9, 0.9),
-    //     vec3(0.0, -0.9, 0.9),
-    //     vec3(0.0, 0.9, -0.9),
-    //     vec3(0.0, -0.9, -0.9),
-    //     vec3(0.9, 0.0, 0.9),
-    //     vec3(-0.9, 0.0, 0.9),
-    //     vec3(0.9, 0.0, -0.9),
-    //     vec3(-0.9, 0.0, -0.9),
-    //     vec3(0.9, 0.9, 0.0),
-    //     vec3(-0.9, 0.9, 0.0),
-    //     vec3(0.9, -0.9, 0.0),
-    //     vec3(-0.9, -0.9, 0.0),
-    //     vec3(0.0, 0.0, 0.0),
-    // };
-    // for (int i = 0; i < 21; i++) {
-    //     vec3 ambient_ray = normalize(primary_ray.normal + ambient_check_offsets[i]);
-    //     RaycastResult ambient_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, ambient_ray, 50, false);
-    //     if (!ambient_check.hit || ambient_check.voxel_data.x == 2) {
-    //         color += vec3(0.015) * dot(ambient_ray, primary_ray.normal) * vec3(0.529, 0.808, 0.922);
-    //     }
-    // }
+
     f_color = vec4(color, 1.0);
 }

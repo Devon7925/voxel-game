@@ -1,14 +1,13 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
 use bytemuck::{Zeroable, Pod};
-use cgmath::{Vector3, InnerSpace, Quaternion, Rotation, One};
+use cgmath::{Vector3, InnerSpace, Quaternion, Rotation, One, Point3};
 use vulkano::{
     buffer::{
         Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
     },
-    memory::allocator::{AllocationCreateInfo, MemoryUsage},
+    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
 };
-use vulkano_util::context::VulkanoContext;
 
 const ACTIVE_BUTTON: u8 = 1;
 
@@ -45,7 +44,7 @@ pub struct PlayerAction {
 
 #[derive(Clone, Debug)]
 pub struct Player {
-    pub pos: Vector3<f32>,
+    pub pos: Point3<f32>,
     pub rot: Quaternion<f32>,
     pub size: Vector3<f32>,
     pub vel: Vector3<f32>,
@@ -94,7 +93,7 @@ impl Default for PlayerAction {
 impl Default for Player {
     fn default() -> Self {
         Player {
-            pos: Vector3::new(0.0, 0.0, 0.0),
+            pos: Point3::new(0.0, 0.0, 0.0),
             dir: Vector3::new(0.0, 0.0, 1.0),
             up: Vector3::new(0.0, 1.0, 0.0),
             right: Vector3::new(1.0, 0.0, 0.0),
@@ -106,9 +105,7 @@ impl Default for Player {
 }
 
 impl RollbackData {
-    pub fn new(context: &VulkanoContext) -> Self {
-        let memory_allocator = context.memory_allocator();
-
+    pub fn new(memory_allocator: &Arc<StandardMemoryAllocator>) -> Self {
         let projectile_buffer = Buffer::new_sized(
             memory_allocator,
             BufferCreateInfo {
