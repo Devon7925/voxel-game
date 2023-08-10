@@ -397,7 +397,7 @@ fn compute_then_render(
                 let cb = pipeline
                     .vulkano_interface
                     .rasterizer_system
-                    .draw(draw_pass.viewport_dimensions(), view_matrix);
+                    .draw(draw_pass.viewport_dimensions(), view_matrix, &pipeline.rollback_data.cached_current_state);
                 draw_pass.execute(cb);
             }
             Pass::Lighting(mut lighting) => {

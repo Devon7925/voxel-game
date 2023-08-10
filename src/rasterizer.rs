@@ -1,5 +1,6 @@
 use std::{sync::Arc, fs::File, io::BufReader};
-use cgmath::{Rad, Matrix4, Vector3};
+use bytemuck::{Zeroable, Pod};
+use cgmath::{Rad, Matrix4, Vector3, SquareMatrix};
 use obj::{Obj, load_obj};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer, allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}},
@@ -21,15 +22,30 @@ use vulkano::{
     render_pass::Subpass, descriptor_set::{PersistentDescriptorSet, allocator::StandardDescriptorSetAllocator, WriteDescriptorSet},
 };
 
+use crate::rollback_manager::WorldState;
+
 pub struct RasterizerSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Subbuffer<[TrianglePos]>,
-    normals_buffer: Subbuffer<[TriangleNormal]>,
+    normal_buffer: Subbuffer<[TriangleNormal]>,
+    instance_data: Subbuffer<[ProjectileInstanceData; 1024]>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     uniform_buffer: SubbufferAllocator,
+}
+
+/// The vertex type that describes the unique data per instance.
+#[derive(Vertex, Clone, Copy, Zeroable, Debug, Pod)]
+#[repr(C)]
+struct ProjectileInstanceData {
+    #[format(R32G32B32_SFLOAT)]
+    instance_position: [f32; 3],
+    #[format(R32G32B32A32_SFLOAT)]
+    instance_rotation: [f32; 4],
+    #[format(R32G32B32_SFLOAT)]
+    instance_scale: [f32; 3],
 }
 
 impl RasterizerSystem {
@@ -41,7 +57,7 @@ impl RasterizerSystem {
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> RasterizerSystem {
-        let (vertices, normals) = load_obj_to_vecs("assets/player.obj");
+        let (vertices, normals) = cube_vecs();
         let vertex_buffer = Buffer::from_iter(
             &memory_allocator,
             BufferCreateInfo {
@@ -70,12 +86,25 @@ impl RasterizerSystem {
         )
         .expect("failed to create buffer");
 
+        let instance_data = Buffer::new_sized(
+            &memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+        )
+        .expect("failed to create buffer");
+
         let pipeline = {
             let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
 
             GraphicsPipeline::start()
-                .vertex_input_state([TrianglePos::per_vertex(), TriangleNormal::per_vertex()])
+                .vertex_input_state([TrianglePos::per_vertex(), TriangleNormal::per_vertex(), ProjectileInstanceData::per_instance()])
                 .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -97,7 +126,8 @@ impl RasterizerSystem {
         RasterizerSystem {
             gfx_queue,
             vertex_buffer,
-            normals_buffer: normal_buffer,
+            normal_buffer,
+            instance_data,
             subpass,
             pipeline,
             command_buffer_allocator,
@@ -107,10 +137,10 @@ impl RasterizerSystem {
     }
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
-    pub fn draw(&self, viewport_dimensions: [u32; 2], view_matrix: Matrix4<f32>) -> SecondaryAutoCommandBuffer {
+    pub fn draw(&self, viewport_dimensions: [u32; 2], view_matrix: Matrix4<f32>, world_state: &WorldState) -> SecondaryAutoCommandBuffer {
 
         let uniform_buffer_subbuffer = {
-            let model_matrix = Matrix4::from_translation(Vector3::new(-1664.0, -1664.0, -1664.0));
+            let model_matrix = Matrix4::identity();
 
             // note: this teapot was meant for OpenGL where the origin is at the lower left
             //       instead the origin is at the upper left in Vulkan, so we reverse the Y axis
@@ -134,6 +164,13 @@ impl RasterizerSystem {
 
             subbuffer
         };
+
+        let mut projectile_writer = self.instance_data.write().unwrap();
+        for (i, projectile) in world_state.projectiles.iter().enumerate() {
+            projectile_writer[i].instance_position = [-projectile.pos[0], -projectile.pos[1], -projectile.pos[2]];
+            projectile_writer[i].instance_rotation = projectile.dir;
+            projectile_writer[i].instance_scale = [projectile.size[0], projectile.size[1], projectile.size[2]];
+        }
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
         let descriptor_set = PersistentDescriptorSet::new(
@@ -169,8 +206,8 @@ impl RasterizerSystem {
                 0,
                 descriptor_set,
             )
-            .bind_vertex_buffers(0, (self.vertex_buffer.clone(), self.normals_buffer.clone()))
-            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
+            .bind_vertex_buffers(0, (self.vertex_buffer.clone(), self.normal_buffer.clone(), self.instance_data.clone()))
+            .draw(self.vertex_buffer.len() as u32, world_state.projectiles.len() as u32, 0, 0)
             .unwrap();
         builder.build().unwrap()
     }
@@ -223,6 +260,40 @@ fn load_obj_to_vecs(path: &str) -> (Vec<TrianglePos>, Vec<TriangleNormal>) {
     (positions, normals)
 }
 
+fn cube_vecs() -> (Vec<TrianglePos>, Vec<TriangleNormal>) {
+    (
+        vec![
+            [-1.0, -1.0, -1.0], [-1.0, -1.0,  1.0], [ 1.0, -1.0, -1.0],
+            [ 1.0, -1.0,  1.0], [-1.0, -1.0,  1.0], [ 1.0, -1.0, -1.0],
+            [-1.0, -1.0, -1.0], [-1.0, -1.0,  1.0], [-1.0,  1.0, -1.0],
+            [-1.0,  1.0,  1.0], [-1.0, -1.0,  1.0], [-1.0,  1.0, -1.0],
+            [-1.0, -1.0, -1.0], [-1.0,  1.0, -1.0], [ 1.0, -1.0, -1.0],
+            [ 1.0,  1.0, -1.0], [-1.0,  1.0, -1.0], [ 1.0, -1.0, -1.0],
+
+            [ 1.0,  1.0,  1.0], [ 1.0,  1.0, -1.0], [-1.0,  1.0,  1.0],
+            [-1.0,  1.0, -1.0], [ 1.0,  1.0, -1.0], [-1.0,  1.0,  1.0],
+            [ 1.0,  1.0,  1.0], [ 1.0,  1.0, -1.0], [ 1.0, -1.0,  1.0],
+            [ 1.0, -1.0, -1.0], [ 1.0,  1.0, -1.0], [ 1.0, -1.0,  1.0],
+            [ 1.0,  1.0,  1.0], [ 1.0, -1.0,  1.0], [-1.0,  1.0,  1.0],
+            [-1.0, -1.0,  1.0], [ 1.0, -1.0,  1.0], [-1.0,  1.0,  1.0],
+        ].iter().map(|&[x, y, z]| TrianglePos { position: [x, y, z] }).collect(),
+        vec![
+            [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
+            [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+            [0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
+            [0.0,  1.0, 0.0], [0.0,  1.0, 0.0], [0.0,  1.0, 0.0],
+            [0.0,  1.0, 0.0], [0.0,  1.0, 0.0], [0.0,  1.0, 0.0],
+            [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0],
+            [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0],
+            [0.0, 0.0,  1.0], [0.0, 0.0,  1.0], [0.0, 0.0,  1.0],
+            [0.0, 0.0,  1.0], [0.0, 0.0,  1.0], [0.0, 0.0,  1.0],
+        ].iter().map(|&[x, y, z]| TriangleNormal { normal: [x, y, z] }).collect()
+    )
+}
+
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
@@ -232,6 +303,10 @@ mod vs {
             layout(location = 0) in vec3 position;
             layout(location = 1) in vec3 normal;
 
+            layout(location = 2) in vec3 instance_position;
+            layout(location = 3) in vec4 instance_rotation;
+            layout(location = 4) in vec3 instance_scale;
+
             layout(location = 0) out vec3 v_normal;
 
             layout(set = 0, binding = 0) uniform Data {
@@ -240,10 +315,20 @@ mod vs {
                 mat4 proj;
             } uniforms;
 
+            vec3 quat_transform(vec4 q, vec3 v) {
+                return v + 2.*cross( q.xyz, cross( q.xyz, v ) + q.w*v ); 
+            }
+
+            vec4 quat_inverse(vec4 q) {
+                return vec4(-q.xyz, q.w) / dot(q, q);
+            }
+
             void main() {
                 mat4 worldview = uniforms.view * uniforms.world;
-                v_normal = -transpose(inverse(mat3(uniforms.world))) * normal;
-                gl_Position = uniforms.proj * worldview * vec4(position, 1.0);
+                vec4 proj_rot_quaternion = quat_inverse(instance_rotation);
+                v_normal = -transpose(inverse(mat3(uniforms.world))) * quat_transform(proj_rot_quaternion, normal);
+                vec3 instance_vertex_pos = quat_transform(proj_rot_quaternion, instance_scale * position) + instance_position;
+                gl_Position = uniforms.proj * worldview * vec4(instance_vertex_pos, 1.0);
             }
         ",
     }

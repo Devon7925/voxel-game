@@ -1,4 +1,3 @@
-projectile rasterization
 projectile <-> world collision
 proper player rendering
 projectile <-> player collision

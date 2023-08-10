@@ -122,13 +122,13 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             if (does_exist == 0.0) continue;
             vec3 transformed_pos = quat_transform(projectiles[i].dir, (pos - proj_pos) / proj_size);
             vec3 ray = quat_transform(projectiles[i].dir, ray / proj_size);
-            vec2 t_x = vec2(-transformed_pos.x/ray.x, (1 - transformed_pos.x) / ray.x);
+            vec2 t_x = vec2((-1 - transformed_pos.x) / ray.x, (1 - transformed_pos.x) / ray.x);
             t_x = vec2(max(min(t_x.x, t_x.y), 0.0), min(max(t_x.x, t_x.y), depth));
             if (t_x.y < 0 || t_x.x > depth) continue;
-            vec2 t_y = vec2(-transformed_pos.y/ray.y, (1 - transformed_pos.y) / ray.y);
+            vec2 t_y = vec2((-1 - transformed_pos.y) / ray.y, (1 - transformed_pos.y) / ray.y);
             t_y = vec2(max(min(t_y.x, t_y.y), 0.0), min(max(t_y.x, t_y.y), depth));
             if (t_y.y < 0 || t_y.x > depth) continue;
-            vec2 t_z = vec2(-transformed_pos.z/ray.z, (1 - transformed_pos.z) / ray.z);
+            vec2 t_z = vec2((-1 - transformed_pos.z) / ray.z, (1 - transformed_pos.z) / ray.z);
             t_z = vec2(max(min(t_z.x, t_z.y), 0.0), min(max(t_z.x, t_z.y), depth));
             if (t_z.y < 0 || t_z.x > depth) continue;
             float t_min = max(max(t_x.x, t_y.x), t_z.x);
@@ -185,7 +185,7 @@ void main() {
     vec3 ray = normalize(cam_data.dir.xyz + v_screen_coords.x * cam_data.right.xyz - v_screen_coords.y * cam_data.up.xyz);
 
     vec3 pos = cam_data.pos.xyz;
-    RaycastResult primary_ray = raycast(pos, ray, 100, true, max_depth);
+    RaycastResult primary_ray = raycast(pos, ray, 100, false, max_depth);
     
     if (!primary_ray.hit) {
         if (in_depth >= 1.0) {
