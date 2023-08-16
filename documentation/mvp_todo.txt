@@ -1,4 +1,3 @@
-proper player rendering
 projectile <-> player collision
 server multiplayer test
 basic materials

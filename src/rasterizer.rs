@@ -26,9 +26,12 @@ use crate::rollback_manager::WorldState;
 
 pub struct RasterizerSystem {
     gfx_queue: Arc<Queue>,
-    vertex_buffer: Subbuffer<[TrianglePos]>,
-    normal_buffer: Subbuffer<[TriangleNormal]>,
-    instance_data: Subbuffer<[ProjectileInstanceData; 1024]>,
+    proj_vertex_buffer: Subbuffer<[TrianglePos]>,
+    proj_normal_buffer: Subbuffer<[TriangleNormal]>,
+    proj_instance_data: Subbuffer<[ProjectileInstanceData; 1024]>,
+    player_vertex_buffer: Subbuffer<[TrianglePos]>,
+    player_normal_buffer: Subbuffer<[TriangleNormal]>,
+    player_instance_data: Subbuffer<[ProjectileInstanceData; 1024]>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
@@ -57,8 +60,8 @@ impl RasterizerSystem {
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> RasterizerSystem {
-        let (vertices, normals) = cube_vecs();
-        let vertex_buffer = Buffer::from_iter(
+        let (proj_vertices, proj_normals) = cube_vecs();
+        let proj_vertex_buffer = Buffer::from_iter(
             &memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
@@ -68,11 +71,11 @@ impl RasterizerSystem {
                 usage: MemoryUsage::Upload,
                 ..Default::default()
             },
-            vertices,
+            proj_vertices,
         )
         .expect("failed to create buffer");
 
-        let normal_buffer = Buffer::from_iter(
+        let proj_normal_buffer = Buffer::from_iter(
             &memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
@@ -82,11 +85,53 @@ impl RasterizerSystem {
                 usage: MemoryUsage::Upload,
                 ..Default::default()
             },
-            normals,
+            proj_normals,
         )
         .expect("failed to create buffer");
 
-        let instance_data = Buffer::new_sized(
+        let proj_instance_data = Buffer::new_sized(
+            &memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+        )
+        .expect("failed to create buffer");
+
+        let (player_vertices, player_normals) = load_obj_to_vecs("assets/player.obj");
+        let player_vertex_buffer = Buffer::from_iter(
+            &memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+            player_vertices,
+        )
+        .expect("failed to create buffer");
+
+        let player_normal_buffer = Buffer::from_iter(
+            &memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+            player_normals,
+        )
+        .expect("failed to create buffer");
+
+        let player_instance_data = Buffer::new_sized(
             &memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
@@ -125,14 +170,17 @@ impl RasterizerSystem {
 
         RasterizerSystem {
             gfx_queue,
-            vertex_buffer,
-            normal_buffer,
-            instance_data,
+            proj_vertex_buffer,
+            proj_normal_buffer,
+            proj_instance_data,
             subpass,
             pipeline,
             command_buffer_allocator,
             descriptor_set_allocator,
-            uniform_buffer
+            uniform_buffer,
+            player_vertex_buffer,
+            player_normal_buffer,
+            player_instance_data,
         }
     }
 
@@ -142,8 +190,6 @@ impl RasterizerSystem {
         let uniform_buffer_subbuffer = {
             let model_matrix = Matrix4::identity();
 
-            // note: this teapot was meant for OpenGL where the origin is at the lower left
-            //       instead the origin is at the upper left in Vulkan, so we reverse the Y axis
             let aspect_ratio =
                 viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32;
             let proj = cgmath::perspective(
@@ -165,11 +211,18 @@ impl RasterizerSystem {
             subbuffer
         };
 
-        let mut projectile_writer = self.instance_data.write().unwrap();
+        let mut projectile_writer = self.proj_instance_data.write().unwrap();
         for (i, projectile) in world_state.projectiles.iter().enumerate() {
             projectile_writer[i].instance_position = [-projectile.pos[0], -projectile.pos[1], -projectile.pos[2]];
             projectile_writer[i].instance_rotation = projectile.dir;
             projectile_writer[i].instance_scale = [projectile.size[0], projectile.size[1], projectile.size[2]];
+        }
+
+        let mut player_writer = self.player_instance_data.write().unwrap();
+        for (i, player) in world_state.players.iter().enumerate().skip(1) {
+            player_writer[i].instance_position = [-player.pos[0], -player.pos[1], -player.pos[2]];
+            player_writer[i].instance_rotation = [player.rot.v[0], player.rot.v[1], player.rot.v[2], player.rot.s];
+            player_writer[i].instance_scale = [player.size[0], player.size[1], player.size[2]];
         }
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
@@ -206,8 +259,11 @@ impl RasterizerSystem {
                 0,
                 descriptor_set,
             )
-            .bind_vertex_buffers(0, (self.vertex_buffer.clone(), self.normal_buffer.clone(), self.instance_data.clone()))
-            .draw(self.vertex_buffer.len() as u32, world_state.projectiles.len() as u32, 0, 0)
+            .bind_vertex_buffers(0, (self.proj_vertex_buffer.clone(), self.proj_normal_buffer.clone(), self.proj_instance_data.clone()))
+            .draw(self.proj_vertex_buffer.len() as u32, world_state.projectiles.len() as u32, 0, 0)
+            .unwrap()
+            .bind_vertex_buffers(0, (self.player_vertex_buffer.clone(), self.player_normal_buffer.clone(), self.player_instance_data.clone()))
+            .draw(self.player_vertex_buffer.len() as u32, world_state.players.len() as u32, 0, 0)
             .unwrap();
         builder.build().unwrap()
     }

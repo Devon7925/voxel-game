@@ -133,7 +133,7 @@ impl RollbackData {
             rollback_time,
             rollback_state: WorldState::new(),
             cached_current_state: WorldState::new(),
-            actions: VecDeque::from(vec![Vec::new(); (current_time - rollback_time + 3) as usize]),
+            actions: VecDeque::from(vec![Vec::new(); (current_time - rollback_time + 10) as usize]),
             player_buffer,
             projectile_buffer,
         }
