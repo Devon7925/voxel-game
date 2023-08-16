@@ -4,7 +4,8 @@ struct Projectile {
     vec4 pos;
     vec4 dir;
     vec4 size;
-    vec4 vel;
+    float vel;
+    float health;
 };
 
 struct Player {

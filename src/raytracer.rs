@@ -40,7 +40,7 @@ use vulkano::{
 
 use crate::{
     multipass_system::LightingVertex,
-    rollback_manager::{Projectile, UploadPlayer},
+    rollback_manager::RollbackData,
     SimData,
 };
 
@@ -138,14 +138,13 @@ impl PointLightingSystem {
         &self,
         voxels: Subbuffer<[[u32; 2]]>,
         sim_data: &mut SimData,
-        projectiles: Subbuffer<[Projectile; 128]>,
-        players: Subbuffer<[UploadPlayer; 128]>,
+        rollback_manager: &RollbackData,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(1).unwrap();
-
         let sim_uniform_buffer_subbuffer = {
             let uniform_data = fs::SimData {
                 render_size: sim_data.render_size.into(),
+                projectile_count: (rollback_manager.cached_current_state.projectiles.len() as u32).into(),
                 max_dist: sim_data.max_dist.into(),
                 start_pos: sim_data.start_pos.into(),
             };
@@ -162,8 +161,8 @@ impl PointLightingSystem {
             [
                 WriteDescriptorSet::buffer(0, voxels.clone()),
                 WriteDescriptorSet::buffer(1, sim_uniform_buffer_subbuffer),
-                WriteDescriptorSet::buffer(2, players.clone()),
-                WriteDescriptorSet::buffer(3, projectiles.clone()),
+                WriteDescriptorSet::buffer(2, rollback_manager.players()),
+                WriteDescriptorSet::buffer(3, rollback_manager.projectiles()),
             ],
         )
         .unwrap()
@@ -207,8 +206,7 @@ impl PointLightingSystem {
         position: Vector3<f32>,
         color: [f32; 3],
         voxels: Subbuffer<[[u32; 2]]>,
-        projectiles: Subbuffer<[Projectile; 128]>,
-        players: Subbuffer<[UploadPlayer; 128]>,
+        rollback_manager: &RollbackData,
         sim_data: &mut SimData,
     ) -> SecondaryAutoCommandBuffer {
         let push_constants = fs::PushConstants {
@@ -229,7 +227,7 @@ impl PointLightingSystem {
         )
         .unwrap();
 
-        let data_descriptor_set = self.create_desc_set(voxels, sim_data, projectiles, players);
+        let data_descriptor_set = self.create_desc_set(voxels, sim_data, rollback_manager);
 
         let viewport = Viewport {
             origin: [0.0, 0.0],

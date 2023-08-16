@@ -32,14 +32,12 @@ use vulkano::{
 /// color image is used to show the output. Because on each step we determine state in parallel, we
 /// need to write the output to another grid. Otherwise the state would not be correctly determined
 /// as one shader invocation might read data that was just written by another shader invocation.
-pub struct DistanceComputePipeline {
+pub struct VoxelComputePipeline {
     compute_queue: Arc<Queue>,
     compute_life_pipeline: Arc<ComputePipeline>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    life_a: Subbuffer<[[u32; 2]]>,
-    life_b: Subbuffer<[[u32; 2]]>,
-    is_a_in_buffer: bool,
+    voxel_buffer: Subbuffer<[[u32; 2]]>,
     chunk_update_queue: VecDeque<[i32; 3]>,
     chunk_updates: Subbuffer<[[i32; 4]; 128]>,
     uniform_buffer: SubbufferAllocator,
@@ -70,8 +68,8 @@ fn empty_grid(memory_allocator: &impl MemoryAllocator) -> Subbuffer<[[u32; 2]]> 
     .unwrap()
 }
 
-impl DistanceComputePipeline {
-    pub fn new(app: &VulkanoInterface, compute_queue: Arc<Queue>) -> DistanceComputePipeline {
+impl VoxelComputePipeline {
+    pub fn new(app: &VulkanoInterface, compute_queue: Arc<Queue>) -> VoxelComputePipeline {
         let memory_allocator = &app.memory_allocator;
 
         // generate based on simplex noise
@@ -90,8 +88,7 @@ impl DistanceComputePipeline {
         ));
         let world_gen = WorldGen::new(noise);
 
-        let life_a = empty_grid(memory_allocator);
-        let life_b = empty_grid(memory_allocator);
+        let voxel_buffer = empty_grid(memory_allocator);
 
         let compute_life_pipeline = {
             let shader = compute_dists_cs::load(compute_queue.device().clone()).unwrap();
@@ -126,27 +123,21 @@ impl DistanceComputePipeline {
         )
         .unwrap();
 
-        DistanceComputePipeline {
+        VoxelComputePipeline {
             compute_queue,
             compute_life_pipeline,
             command_buffer_allocator: app.command_buffer_allocator.clone(),
             descriptor_set_allocator: app.descriptor_set_allocator.clone(),
-            life_a,
-            life_b,
+            voxel_buffer,
             chunk_update_queue: VecDeque::new(),
             chunk_updates,
             uniform_buffer,
             world_gen,
-            is_a_in_buffer: true,
         }
     }
 
     pub fn voxels(&self) -> Subbuffer<[[u32; 2]]> {
-        if self.is_a_in_buffer {
-            self.life_b.clone()
-        } else {
-            self.life_a.clone()
-        }
+        self.voxel_buffer.clone()
     }
 
     pub fn queue_updates(&mut self, queued: &[[i32; 3]]) {
@@ -161,8 +152,7 @@ impl DistanceComputePipeline {
     }
 
     fn write_chunk(&mut self, chunk_location: [i32; 3]) {
-        let mut a_chunk_buffer = self.life_a.write().unwrap();
-        let mut b_chunk_buffer = self.life_b.write().unwrap();
+        let mut chunk_buffer = self.voxel_buffer.write().unwrap();
         let chunk_idx = self.get_chunk_idx(chunk_location);
         for (i, vox) in self
             .world_gen
@@ -170,12 +160,7 @@ impl DistanceComputePipeline {
             .into_iter()
             .enumerate()
         {
-            a_chunk_buffer[chunk_idx
-                * (CHUNK_SIZE as usize)
-                * (CHUNK_SIZE as usize)
-                * (CHUNK_SIZE as usize)
-                + i] = vox;
-            b_chunk_buffer[chunk_idx
+            chunk_buffer[chunk_idx
                 * (CHUNK_SIZE as usize)
                 * (CHUNK_SIZE as usize)
                 * (CHUNK_SIZE as usize)
@@ -294,8 +279,6 @@ impl DistanceComputePipeline {
             .unwrap();
         let after_pipeline = finished.then_signal_fence_and_flush().unwrap().boxed();
 
-        self.is_a_in_buffer = !self.is_a_in_buffer;
-
         after_pipeline
     }
 
@@ -339,24 +322,9 @@ impl DistanceComputePipeline {
             &self.descriptor_set_allocator,
             desc_layout.clone(),
             [
-                WriteDescriptorSet::buffer(
-                    0,
-                    if self.is_a_in_buffer {
-                        self.life_a.clone()
-                    } else {
-                        self.life_b.clone()
-                    },
-                ),
-                WriteDescriptorSet::buffer(
-                    1,
-                    if self.is_a_in_buffer {
-                        self.life_b.clone()
-                    } else {
-                        self.life_a.clone()
-                    },
-                ),
-                WriteDescriptorSet::buffer(2, self.chunk_updates.clone()),
-                WriteDescriptorSet::buffer(3, uniform_buffer_subbuffer),
+                WriteDescriptorSet::buffer(0, self.voxel_buffer.clone()),
+                WriteDescriptorSet::buffer(1, self.chunk_updates.clone()),
+                WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
             ],
         )
         .unwrap();
@@ -371,7 +339,7 @@ impl DistanceComputePipeline {
 mod compute_dists_cs {
     vulkano_shaders::shader! {
         ty: "compute",
-        path: "assets/shaders/comp.glsl",
+        path: "assets/shaders/compute_voxel.glsl",
         include: ["assets/shaders"],
     }
 }

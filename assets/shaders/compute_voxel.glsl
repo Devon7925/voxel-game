@@ -3,21 +3,20 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-layout(set = 0, binding = 0) buffer VoxelBufferIn { uvec2 voxel_in[]; };
-layout(set = 0, binding = 1) buffer VoxelBufferout { uvec2 voxel_out[]; };
-layout(set = 0, binding = 2) buffer ChunkUpdates { ivec4 chunk_updates[]; };
+layout(set = 0, binding = 0) buffer VoxelBuffer { uvec2 voxels[]; };
+layout(set = 0, binding = 1) buffer ChunkUpdates { ivec4 chunk_updates[]; };
 
-layout(set = 0, binding = 3) uniform SimData {
+layout(set = 0, binding = 2) uniform SimData {
     uint max_dist;
     uvec3 render_size;
     ivec3 start_pos;
 } sim_data;
 
-layout(set = 0, binding = 4) buffer Projectiles { Projectile projectiles[]; };
+layout(set = 0, binding = 3) buffer Projectiles { Projectile projectiles[]; };
 
 uvec2 get_data_unchecked(ivec3 global_pos) {
     uint index = get_index(global_pos, sim_data.render_size);
-    return voxel_in[index];
+    return voxels[index];
 }
 
 uvec2 get_data(ivec3 global_pos) {
@@ -32,7 +31,7 @@ uvec2 get_data(ivec3 global_pos) {
 
 void set_data(ivec3 global_pos, uvec2 data) {
     uint index = get_index(global_pos, sim_data.render_size);
-    voxel_out[index] = data;
+    voxels[index] = data;
 }
 
 void main() {
@@ -40,6 +39,10 @@ void main() {
     uvec2 pos_data = get_data(pos);
 
     if (pos_data.x != 0) {
+        if (pos_data.y == 0) {
+            set_data(pos, uvec2(0, 0x11111111));
+            return;
+        }
         set_data(pos, pos_data);
         return;
     }

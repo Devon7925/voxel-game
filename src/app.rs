@@ -8,18 +8,31 @@
 // according to those terms.
 
 use crate::{
-    sim_manager::DistanceComputePipeline,
-    WINDOW_HEIGHT, WINDOW_WIDTH, rollback_manager::RollbackData, multipass_system::FrameSystem, rasterizer::RasterizerSystem,
+    multipass_system::FrameSystem, rasterizer::RasterizerSystem, rollback_manager::RollbackData,
+    voxel_sim_manager::VoxelComputePipeline, WINDOW_HEIGHT, WINDOW_WIDTH, projectile_sim_manager::ProjectileComputePipeline,
 };
 use std::sync::Arc;
 use vulkano::{
     command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator, device::{Queue, DeviceExtensions, QueueFlags, physical::PhysicalDeviceType, Device, DeviceCreateInfo, QueueCreateInfo}, VulkanLibrary, instance::{Instance, InstanceCreateInfo}, swapchain::{Swapchain, SwapchainCreateInfo, Surface}, image::{ImageUsage, view::ImageView}, memory::allocator::StandardMemoryAllocator,
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
+    device::{
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
+        QueueCreateInfo, QueueFlags,
+    },
     image::swapchain::SwapchainImage,
+    image::{view::ImageView, ImageUsage},
+    instance::{Instance, InstanceCreateInfo},
+    memory::allocator::StandardMemoryAllocator,
+    swapchain::{Surface, Swapchain, SwapchainCreateInfo},
+    VulkanLibrary,
 };
 
 use vulkano_win::VkSurfaceBuild;
-use winit::{event_loop::EventLoop, window::{WindowBuilder, Window}, dpi::LogicalSize};
+use winit::{
+    dpi::LogicalSize,
+    event_loop::EventLoop,
+    window::{Window, WindowBuilder},
+};
 
 pub struct VulkanoInterface {
     pub memory_allocator: Arc<StandardMemoryAllocator>,
@@ -36,14 +49,15 @@ pub struct VulkanoInterface {
 
 pub struct RenderPipeline {
     pub vulkano_interface: VulkanoInterface,
-    pub compute: DistanceComputePipeline,
+    pub voxel_compute: VoxelComputePipeline,
+    pub projectile_compute: ProjectileComputePipeline,
     pub rollback_data: RollbackData,
 }
 
 impl RenderPipeline {
     pub fn new(event_loop: &EventLoop<()>) -> RenderPipeline {
         // Basic initialization. See the triangle example if you want more details about this.
-    
+
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = vulkano_win::required_extensions(&library);
         let instance = Instance::new(
@@ -55,13 +69,13 @@ impl RenderPipeline {
             },
         )
         .unwrap();
-    
+
         let surface = WindowBuilder::new()
             .with_inner_size(LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
             .with_title("Voxel game")
             .build_vk_surface(&event_loop, instance.clone())
             .unwrap();
-    
+
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
@@ -89,7 +103,7 @@ impl RenderPipeline {
                 _ => 5,
             })
             .unwrap();
-    
+
         println!(
             "Using device: {} (type: {:?})",
             physical_device.properties().device_name,
@@ -123,7 +137,7 @@ impl RenderPipeline {
                     .0,
             );
             let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
-    
+
             let (swapchain, images) = Swapchain::new(
                 device.clone(),
                 surface.clone(),
@@ -147,16 +161,14 @@ impl RenderPipeline {
                 .collect::<Vec<_>>();
             (swapchain, images)
         };
-        
+
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             device.clone(),
             Default::default(),
         ));
-        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
-            device.clone(),
-        ));
-        
+        let descriptor_set_allocator =
+            Arc::new(StandardDescriptorSetAllocator::new(device.clone()));
 
         // Here is the basic initialization for the deferred system.
         let frame_system = FrameSystem::new(
@@ -176,7 +188,7 @@ impl RenderPipeline {
         let compute_queue: Arc<Queue> = queue.clone();
 
         let rollback_data = RollbackData::new(&memory_allocator);
-        
+
         let vulkano_interface = VulkanoInterface {
             memory_allocator,
             command_buffer_allocator,
@@ -191,7 +203,8 @@ impl RenderPipeline {
         };
 
         RenderPipeline {
-            compute: DistanceComputePipeline::new(&vulkano_interface, compute_queue),
+            voxel_compute: VoxelComputePipeline::new(&vulkano_interface, compute_queue.clone()),
+            projectile_compute: ProjectileComputePipeline::new(&vulkano_interface, compute_queue.clone()),
             rollback_data,
             vulkano_interface,
         }

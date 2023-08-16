@@ -1,6 +1,6 @@
 use std::{sync::Arc, fs::File, io::BufReader};
 use bytemuck::{Zeroable, Pod};
-use cgmath::{Rad, Matrix4, Vector3, SquareMatrix};
+use cgmath::{Rad, Matrix4, SquareMatrix};
 use obj::{Obj, load_obj};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer, allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}},

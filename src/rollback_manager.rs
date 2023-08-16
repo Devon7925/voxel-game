@@ -9,6 +9,8 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
 };
 
+use crate::projectile_sim_manager::{Projectile, ProjectileComputePipeline};
+
 const ACTIVE_BUTTON: u8 = 1;
 
 #[derive(Clone, Debug)]
@@ -24,7 +26,7 @@ pub struct RollbackData {
     pub rollback_state: WorldState,
     pub cached_current_state: WorldState,
     pub actions: VecDeque<Vec<Option<PlayerAction>>>,
-    pub projectile_buffer: Subbuffer<[Projectile; 128]>,
+    pub projectile_buffer: Subbuffer<[Projectile; 1024]>,
     pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
 }
 
@@ -63,15 +65,6 @@ pub struct UploadPlayer {
     pub dir: [f32; 4],
     pub up: [f32; 4],
     pub right: [f32; 4],
-}
-
-#[derive(Clone, Copy, Zeroable, Debug, Pod)]
-#[repr(C)]
-pub struct Projectile {
-    pub pos: [f32; 4],
-    pub dir: [f32; 4],
-    pub size: [f32; 4],
-    pub vel: [f32; 4],
 }
 
 impl Default for PlayerAction {
@@ -141,12 +134,12 @@ impl RollbackData {
             rollback_state: WorldState::new(),
             cached_current_state: WorldState::new(),
             actions: VecDeque::from(vec![Vec::new(); (current_time - rollback_time + 3) as usize]),
-            projectile_buffer,
             player_buffer,
+            projectile_buffer,
         }
     }
 
-    pub fn projectiles(&self) -> Subbuffer<[Projectile; 128]> {
+    pub fn projectiles(&self) -> Subbuffer<[Projectile; 1024]> {
         self.projectile_buffer.clone()
     }
 
@@ -188,7 +181,6 @@ impl RollbackData {
         state
     }
 
-    /// Uploads projectiles
     pub fn step(
         &mut self,
     ) {
@@ -248,6 +240,10 @@ impl RollbackData {
             }
         }
     }
+
+    pub fn download_projectiles(&mut self, projectile_compute: &ProjectileComputePipeline) {
+        self.rollback_state.projectiles = projectile_compute.download_projectiles();
+    }
 }
 
 impl WorldState {
@@ -260,9 +256,10 @@ impl WorldState {
 
     pub fn step_sim(&mut self, player_actions: &Vec<Option<PlayerAction>>) {
         for proj in self.projectiles.iter_mut() {
-            proj.pos[0] += proj.vel[0];
-            proj.pos[1] += proj.vel[1];
-            proj.pos[2] += proj.vel[2];
+            let projectile_dir = quaternion::rotate_vector(quaternion::conj((proj.dir[3], [proj.dir[0], proj.dir[1], proj.dir[2]])), [0.0, 0.0, 1.0]);
+            for i in 0..3 {
+                proj.pos[i] += projectile_dir[i] * proj.vel;
+            }
         }
         for (player, action) in self.players.iter_mut().zip(player_actions.iter()) {
             if let Some(action) = action {
@@ -308,12 +305,10 @@ impl WorldState {
                             1.0,
                             1.0,
                         ],
-                        vel: [
-                            player.dir.x * 0.1,
-                            player.dir.y * 0.1,
-                            player.dir.z * 0.1,
-                            0.0,
-                        ]
+                        vel: 0.1,
+                        health: 10.0,
+                        pad1: 0.1,
+                        pad2: 0.1,
                     })
                 }
             }

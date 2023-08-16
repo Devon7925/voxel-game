@@ -1,10 +1,11 @@
 mod app;
 mod multipass_system;
 mod networking;
+mod projectile_sim_manager;
 mod rasterizer;
 mod raytracer;
 mod rollback_manager;
-mod sim_manager;
+mod voxel_sim_manager;
 mod world_gen;
 
 use crate::app::RenderPipeline;
@@ -109,7 +110,7 @@ fn main() {
         mouse_move: [0.0, 0.0],
     };
 
-    app.compute.load_chunks(&mut sim_data);
+    app.voxel_compute.load_chunks(&mut sim_data);
 
     let mut network_connection = NetworkConnection::new();
     let mut time = Instant::now();
@@ -149,15 +150,13 @@ fn main() {
             controls.mouse_move = [0.0, 0.0];
             time += std::time::Duration::from_secs_f64(1.0 / 30.0);
             if app.rollback_data.rollback_state.players.len() >= MIN_PLAYERS {
-                app.rollback_data
-                    .send_action(action, 0, app.rollback_data.current_time);
-                app.rollback_data.step();
                 compute_then_render(
                     &mut app,
                     &sim_settings,
                     &mut sim_data,
                     &mut recreate_swapchain,
                     &mut previous_frame_end,
+                    action,
                 );
             }
         }
@@ -172,7 +171,7 @@ fn main() {
                     * (CHUNK_SIZE as i32))
                 / (CHUNK_SIZE as i32);
             if diff_from_mid != Point3::new(0, 0, 0) {
-                app.compute
+                app.voxel_compute
                     .move_start_pos(&mut sim_data, diff_from_mid.into());
             }
             chunk_time = Instant::now();
@@ -300,6 +299,7 @@ fn compute_then_render(
     sim_data: &mut SimData,
     recreate_swapchain: &mut bool,
     previous_frame_end: &mut Option<Box<dyn GpuFuture>>,
+    action: PlayerAction,
 ) {
     let window = pipeline
         .vulkano_interface
@@ -369,9 +369,15 @@ fn compute_then_render(
                 + sim_data.start_pos[2] * (UPDATES_PER_CHUNK as i32);
             chunk_updates.push([x, y, z]);
         }
-        pipeline.compute.queue_updates(&chunk_updates);
+        pipeline.voxel_compute.queue_updates(&chunk_updates);
         // Compute.
-        let after_compute = pipeline.compute.compute(future, sim_data);
+        pipeline.rollback_data.download_projectiles(&pipeline.projectile_compute);
+        pipeline.rollback_data
+        .send_action(action, 0, pipeline.rollback_data.current_time);
+        pipeline.rollback_data.step();
+        pipeline.projectile_compute.upload(&pipeline.rollback_data.rollback_state.projectiles);
+        let after_proj_compute = pipeline.projectile_compute.compute(future, &pipeline.voxel_compute, sim_data);
+        let after_compute = pipeline.voxel_compute.compute(after_proj_compute, sim_data);
         pipeline.vulkano_interface.frame_system.frame(
             after_compute,
             pipeline.vulkano_interface.images[image_index as usize].clone(),
@@ -394,22 +400,20 @@ fn compute_then_render(
                 // let view_matrix = Matrix4::from_translation(-cam_player.pos.to_homogeneous().truncate());
                 let view_matrix = Matrix4::from(cam_player.rot)
                     * Matrix4::from_translation(cam_player.pos.to_homogeneous().truncate());
-                let cb = pipeline
-                    .vulkano_interface
-                    .rasterizer_system
-                    .draw(draw_pass.viewport_dimensions(), view_matrix, &pipeline.rollback_data.cached_current_state);
+                let cb = pipeline.vulkano_interface.rasterizer_system.draw(
+                    draw_pass.viewport_dimensions(),
+                    view_matrix,
+                    &pipeline.rollback_data.cached_current_state,
+                );
                 draw_pass.execute(cb);
             }
             Pass::Lighting(mut lighting) => {
-                let voxels = pipeline.compute.voxels();
-                let projectiles = pipeline.rollback_data.projectiles();
-                let players = pipeline.rollback_data.players();
-                lighting.point_light(
+                let voxels = pipeline.voxel_compute.voxels();
+                lighting.raytrace(
                     Vector3::new(0.5, -0.5, -0.1),
                     [1.0, 0.0, 0.0],
                     voxels,
-                    projectiles,
-                    players,
+                    &pipeline.rollback_data,
                     sim_data,
                 );
             }

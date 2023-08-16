@@ -27,7 +27,7 @@ use vulkano::{
 
 use crate::{
     raytracer::PointLightingSystem,
-    rollback_manager::{Projectile, UploadPlayer},
+    rollback_manager::RollbackData,
     SimData,
 };
 
@@ -477,13 +477,12 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// All the objects will be colored with an intensity varying between `[0, 0, 0]` and `color`,
     /// depending on their distance with `position`. Objects that aren't facing `position` won't
     /// receive any light.
-    pub fn point_light(
+    pub fn raytrace(
         &mut self,
         position: Vector3<f32>,
         color: [f32; 3],
         voxels: Subbuffer<[[u32; 2]]>,
-        projectiles: Subbuffer<[Projectile; 128]>,
-        players: Subbuffer<[UploadPlayer; 128]>,
+        rollback_manager: &RollbackData,
         sim_data: &mut SimData,
     ) {
         let command_buffer = {
@@ -496,8 +495,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                 position,
                 color,
                 voxels,
-                projectiles,
-                players,
+                rollback_manager,
                 sim_data,
             )
         };

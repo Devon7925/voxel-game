@@ -12,6 +12,7 @@ layout(set = 1, binding = 0) buffer VoxelBuffer { uvec2 voxels[]; };
 
 layout(set = 1, binding = 1) uniform SimData {
     uint max_dist;
+    uint projectile_count;
     uvec3 render_size;
     ivec3 start_pos;
 } sim_data;
@@ -114,7 +115,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         //check if primary ray hit projectile
         float min_dist = 1000000.0;
         vec3 min_normal = vec3(0);
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < sim_data.projectile_count; i++) {
             vec3 proj_pos = projectiles[i].pos.xyz;
             vec4 proj_rot_quaternion = quat_inverse(projectiles[i].dir);
             vec3 proj_size = projectiles[i].size.xyz;
