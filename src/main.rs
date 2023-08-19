@@ -106,7 +106,7 @@ fn main() {
         sprint: false,
         mouse_left: false,
         mouse_right: false,
-        do_chunk_load: true,
+        do_chunk_load: false,
         mouse_move: [0.0, 0.0],
     };
 
@@ -118,6 +118,8 @@ fn main() {
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(app.vulkano_interface.device.clone()).boxed());
+
+    const TIME_STEP: f32 = 1.0 / 30.0;
 
     loop {
         let should_continue = handle_events(
@@ -133,7 +135,7 @@ fn main() {
         }
 
         // Compute voxels & render 60fps.
-        if (Instant::now() - time).as_secs_f64() > 1.0 / 30.0 {
+        if (Instant::now() - time).as_secs_f32() > TIME_STEP {
             previous_frame_end.as_mut().unwrap().cleanup_finished();
             let action = PlayerAction {
                 aim: controls.mouse_move,
@@ -157,6 +159,7 @@ fn main() {
                     &mut recreate_swapchain,
                     &mut previous_frame_end,
                     action,
+                    TIME_STEP,
                 );
             }
         }
@@ -300,6 +303,7 @@ fn compute_then_render(
     recreate_swapchain: &mut bool,
     previous_frame_end: &mut Option<Box<dyn GpuFuture>>,
     action: PlayerAction,
+    time_step: f32,
 ) {
     let window = pipeline
         .vulkano_interface
@@ -374,7 +378,7 @@ fn compute_then_render(
         pipeline.rollback_data.download_projectiles(&pipeline.projectile_compute);
         pipeline.rollback_data
         .send_action(action, 0, pipeline.rollback_data.current_time);
-        pipeline.rollback_data.step();
+        pipeline.rollback_data.step(time_step);
         pipeline.projectile_compute.upload(&pipeline.rollback_data.rollback_state.projectiles);
         let after_proj_compute = pipeline.projectile_compute.compute(future, &pipeline.voxel_compute, sim_data);
         let after_compute = pipeline.voxel_compute.compute(after_proj_compute, sim_data);

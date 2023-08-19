@@ -53,6 +53,7 @@ pub struct Player {
     pub dir: Vector3<f32>,
     pub up: Vector3<f32>,
     pub right: Vector3<f32>,
+    pub health: f32,
 }
 
 #[derive(Clone, Copy, Zeroable, Debug, Pod)]
@@ -93,6 +94,7 @@ impl Default for Player {
             rot: Quaternion::one(),
             size: Vector3::new(1.0, 1.0, 1.0),
             vel: Vector3::new(0.0, 0.0, 0.0),
+            health: 100.0,
         }
     }
 }
@@ -165,29 +167,30 @@ impl RollbackData {
         })));
     }
 
-    fn update_rollback_state(&mut self) {
+    fn update_rollback_state(&mut self, time_step: f32) {
         self.rollback_time += 1;
         let player_actions = self.actions.pop_front().unwrap();
         assert!(self.rollback_time < 100 || player_actions.iter().all(|x| x.is_some()));
-        self.rollback_state.step_sim(&player_actions);
+        self.rollback_state.step_sim(&player_actions, time_step);
     }
 
-    fn get_current_state(&self) -> WorldState {
+    fn get_current_state(&self, time_step: f32) -> WorldState {
         let mut state = self.rollback_state.clone();
         for i in self.rollback_time..self.current_time {
             let actions = self.actions.get((i-self.rollback_time) as usize).unwrap_or_else(|| panic!("cannot access index {} in action deque of length {}", i-self.rollback_time, self.actions.len()));
-            state.step_sim(actions);
+            state.step_sim(actions, time_step);
         }
         state
     }
 
     pub fn step(
         &mut self,
+        time_step: f32,
     ) {
-        self.update_rollback_state();
+        self.update_rollback_state(time_step);
         self.current_time += 1;
         self.actions.push_back(vec![None; self.rollback_state.players.len()]);
-        self.cached_current_state = self.get_current_state();
+        self.cached_current_state = self.get_current_state(time_step);
         //send projectiles
         let projectile_count = 128.min(self.cached_current_state.projectiles.len());
         {
@@ -254,14 +257,16 @@ impl WorldState {
         }
     }
 
-    pub fn step_sim(&mut self, player_actions: &Vec<Option<PlayerAction>>) {
+    pub fn step_sim(&mut self, player_actions: &Vec<Option<PlayerAction>>, time_step: f32) {
         for proj in self.projectiles.iter_mut() {
-            let projectile_dir = quaternion::rotate_vector(quaternion::conj((proj.dir[3], [proj.dir[0], proj.dir[1], proj.dir[2]])), [0.0, 0.0, 1.0]);
+            let projectile_rot = Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]).conjugate();
+            let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
             for i in 0..3 {
-                proj.pos[i] += projectile_dir[i] * proj.vel;
+                proj.pos[i] += projectile_dir[i] * proj.vel * time_step;
             }
+            proj.lifetime += time_step;
         }
-        for (player, action) in self.players.iter_mut().zip(player_actions.iter()) {
+        for (player_idx, (player, action)) in self.players.iter_mut().zip(player_actions.iter()).enumerate() {
             if let Some(action) = action {
                 let sensitivity = 0.001;
                 player.dir += action.aim[0] * player.right * sensitivity;
@@ -292,8 +297,8 @@ impl WorldState {
                 if move_vec.magnitude() > 0.0 {
                     move_vec = move_vec.normalize();
                 }
-                let accel_speed = if action.sprint == ACTIVE_BUTTON { 0.02 } else { 0.01 };
-                player.vel += accel_speed * move_vec;
+                let accel_speed = if action.sprint == ACTIVE_BUTTON { 1.2 } else { 0.6 };
+                player.vel += accel_speed * move_vec * time_step;
 
                 if action.shoot == ACTIVE_BUTTON {
                     self.projectiles.push(Projectile {
@@ -305,15 +310,49 @@ impl WorldState {
                             1.0,
                             1.0,
                         ],
-                        vel: 0.1,
+                        vel: 6.0,
                         health: 10.0,
-                        pad1: 0.1,
-                        pad2: 0.1,
+                        lifetime: 0.0,
+                        owner: player_idx as u32,
                     })
                 }
             }
-            player.vel *= 0.9;
-            player.pos += player.vel;
+            if player.vel.magnitude() > 0.0 {
+                player.vel -= 0.1 * player.vel * player.vel.magnitude() * time_step + 0.1 * player.vel.normalize() * time_step;
+            }
+            player.pos += player.vel * time_step;
+            // check for collision with projectiles
+            for proj in self.projectiles.iter_mut() {
+                if player_idx as u32 == proj.owner && proj.lifetime < 1.0 {
+                    continue;
+                }
+                let projectile_rot = Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]).conjugate();
+                let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+                let projectile_right = projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
+                let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
+                let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
+                let projectile_size = Vector3::new(proj.size[0], proj.size[1], proj.size[2]);
+                
+                let grid_iteration_count = (2.0*projectile_size * 2.0_f32.sqrt()).map(|c| c.ceil());
+                let grid_dist = 2.0 * projectile_size.zip(grid_iteration_count, |size, count| size/count);
+
+                let start_pos = projectile_pos - projectile_size.x * projectile_right - projectile_size.y * projectile_up - projectile_size.z * projectile_dir;
+                'outer: for i in 0..=(grid_iteration_count.x as i32) {
+                    for j in 0..=(grid_iteration_count.y as i32) {
+                        for k in 0..=(grid_iteration_count.z as i32) {
+                            let pos = start_pos + grid_dist.x * i as f32 * projectile_right + grid_dist.y * j as f32 * projectile_up + grid_dist.z * k as f32 * projectile_dir;
+                            let dist = (player.pos - pos).magnitude();
+                            if dist < player.size.magnitude() {
+                                player.health -= 1.0;
+                                proj.health = 0.0;
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
+            }
         }
+        // remove dead projectiles
+        self.projectiles.retain(|proj| proj.health > 0.0);
     }
 }

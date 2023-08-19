@@ -219,10 +219,15 @@ impl RasterizerSystem {
         }
 
         let mut player_writer = self.player_instance_data.write().unwrap();
-        for (i, player) in world_state.players.iter().enumerate().skip(1) {
-            player_writer[i].instance_position = [-player.pos[0], -player.pos[1], -player.pos[2]];
-            player_writer[i].instance_rotation = [player.rot.v[0], player.rot.v[1], player.rot.v[2], player.rot.s];
-            player_writer[i].instance_scale = [player.size[0], player.size[1], player.size[2]];
+        let mut player_buffer_idx = 0;
+        for player in world_state.players.iter().skip(1) {
+            if player.health <= 0.0 {
+                continue;
+            }
+            player_writer[player_buffer_idx].instance_position = [-player.pos[0], -player.pos[1], -player.pos[2]];
+            player_writer[player_buffer_idx].instance_rotation = [player.rot.v[0], player.rot.v[1], player.rot.v[2], player.rot.s];
+            player_writer[player_buffer_idx].instance_scale = [player.size[0], player.size[1], player.size[2]];
+            player_buffer_idx += 1;
         }
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
@@ -263,7 +268,7 @@ impl RasterizerSystem {
             .draw(self.proj_vertex_buffer.len() as u32, world_state.projectiles.len() as u32, 0, 0)
             .unwrap()
             .bind_vertex_buffers(0, (self.player_vertex_buffer.clone(), self.player_normal_buffer.clone(), self.player_instance_data.clone()))
-            .draw(self.player_vertex_buffer.len() as u32, world_state.players.len() as u32, 0, 0)
+            .draw(self.player_vertex_buffer.len() as u32, player_buffer_idx as u32, 0, 0)
             .unwrap();
         builder.build().unwrap()
     }
