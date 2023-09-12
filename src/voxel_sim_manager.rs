@@ -7,9 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{app::VulkanoInterface, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE};
+use crate::{
+    app::VulkanoInterface, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE, SUB_CHUNK_COUNT, utils::QueueSet,
+};
 use noise::{Add, Constant, Multiply, NoiseFn, OpenSimplex, ScalePoint};
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
@@ -38,10 +40,11 @@ pub struct VoxelComputePipeline {
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     voxel_buffer: Subbuffer<[[u32; 2]]>,
-    chunk_update_queue: VecDeque<[i32; 3]>,
+    chunk_update_queue: QueueSet<[i32; 3]>,
     chunk_updates: Subbuffer<[[i32; 4]; 128]>,
     uniform_buffer: SubbufferAllocator,
     world_gen: WorldGen,
+    last_update_count: usize,
 }
 
 fn empty_grid(memory_allocator: &impl MemoryAllocator) -> Subbuffer<[[u32; 2]]> {
@@ -64,6 +67,22 @@ fn empty_grid(memory_allocator: &impl MemoryAllocator) -> Subbuffer<[[u32; 2]]> 
                 * RENDER_SIZE[1]
                 * RENDER_SIZE[2]) as usize
         ],
+    )
+    .unwrap()
+}
+
+fn empty_chunk_grid(memory_allocator: &impl MemoryAllocator) -> Subbuffer<[u32]> {
+    Buffer::from_iter(
+        memory_allocator,
+        BufferCreateInfo {
+            usage: BufferUsage::STORAGE_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            usage: MemoryUsage::Upload,
+            ..Default::default()
+        },
+        vec![0; (RENDER_SIZE[0] * RENDER_SIZE[1] * RENDER_SIZE[2]) as usize],
     )
     .unwrap()
 }
@@ -129,10 +148,11 @@ impl VoxelComputePipeline {
             command_buffer_allocator: app.command_buffer_allocator.clone(),
             descriptor_set_allocator: app.descriptor_set_allocator.clone(),
             voxel_buffer,
-            chunk_update_queue: VecDeque::new(),
+            chunk_update_queue: QueueSet::with_capacity(256),
             chunk_updates,
             uniform_buffer,
             world_gen,
+            last_update_count: 0,
         }
     }
 
@@ -141,7 +161,26 @@ impl VoxelComputePipeline {
     }
 
     pub fn queue_updates(&mut self, queued: &[[i32; 3]]) {
-        self.chunk_update_queue.extend(queued);
+        for item in queued {
+            self.chunk_update_queue.push(*item);
+        }
+    }
+
+    pub fn queue_update_from_world_pos(&mut self, queued: &[f32; 3]) {
+        let chunk_location = [
+            queued[0].floor() as i32 * (SUB_CHUNK_COUNT as i32) / (CHUNK_SIZE as i32),
+            queued[1].floor() as i32 * (SUB_CHUNK_COUNT as i32) / (CHUNK_SIZE as i32),
+            queued[2].floor() as i32 * (SUB_CHUNK_COUNT as i32) / (CHUNK_SIZE as i32),
+        ];
+        self.chunk_update_queue.push(chunk_location);
+    }
+    pub fn queue_update_from_voxel_pos(&mut self, queued: &[i32; 3]) {
+        let chunk_location = [
+            queued[0] * (SUB_CHUNK_COUNT as i32) / (CHUNK_SIZE as i32),
+            queued[1] * (SUB_CHUNK_COUNT as i32) / (CHUNK_SIZE as i32),
+            queued[2] * (SUB_CHUNK_COUNT as i32) / (CHUNK_SIZE as i32),
+        ];
+        self.chunk_update_queue.push(chunk_location);
     }
 
     fn get_chunk_idx(&self, pos: [i32; 3]) -> usize {
@@ -166,13 +205,13 @@ impl VoxelComputePipeline {
                 * (CHUNK_SIZE as usize)
                 + i] = vox;
         }
-        for i in 0..CHUNK_SIZE / 8 {
-            for j in 0..CHUNK_SIZE / 8 {
-                for k in 0..CHUNK_SIZE / 8 {
-                    self.chunk_update_queue.push_back([
-                        chunk_location[0] * (CHUNK_SIZE / 8) as i32 + i as i32,
-                        chunk_location[1] * (CHUNK_SIZE / 8) as i32 + j as i32,
-                        chunk_location[2] * (CHUNK_SIZE / 8) as i32 + k as i32,
+        for i in 0..SUB_CHUNK_COUNT {
+            for j in 0..SUB_CHUNK_COUNT {
+                for k in 0..SUB_CHUNK_COUNT {
+                    self.chunk_update_queue.push([
+                        chunk_location[0] * SUB_CHUNK_COUNT as i32 + i as i32,
+                        chunk_location[1] * SUB_CHUNK_COUNT as i32 + j as i32,
+                        chunk_location[2] * SUB_CHUNK_COUNT as i32 + k as i32,
                     ]);
                 }
             }
@@ -254,6 +293,41 @@ impl VoxelComputePipeline {
         }
     }
 
+    // chunks are represented as u32 with a 1 representing a changed chunk
+    // this function will get the locations of those and push updates and then clear the buffer
+    pub fn push_updates_from_changed(&mut self, start_pos: [i32; 3]) {
+        let reader = self.chunk_updates.read().unwrap();
+        // last component of 1 means the chunk was changed and therefore means it and surrounding chunks need to be updated
+        for i in 0..self.last_update_count {
+            if reader[i][3] == 1 {
+                for x_offset in -1..=1 {
+                    for y_offset in -1..=1 {
+                        for z_offset in -1..=1 {
+                            self.chunk_update_queue.push([
+                                reader[i][0] + x_offset,
+                                reader[i][1] + y_offset,
+                                reader[i][2] + z_offset,
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn queue_chunk_update(&mut self, chunk_location: [i32; 3]) {
+        for chunk_i in 0..SUB_CHUNK_COUNT {
+            for chunk_j in 0..SUB_CHUNK_COUNT {
+                for chunk_k in 0..SUB_CHUNK_COUNT {
+                    let i = chunk_location[0] * (SUB_CHUNK_COUNT as i32) + (chunk_i as i32);
+                    let j = chunk_location[1] * (SUB_CHUNK_COUNT as i32) + (chunk_j as i32);
+                    let k = chunk_location[2] * (SUB_CHUNK_COUNT as i32) + (chunk_k as i32);
+                    self.chunk_update_queue.push([i, j, k]);
+                }
+            }
+        }
+    }
+
     pub fn compute<F>(&mut self, before_future: F, sim_data: &mut SimData) -> Box<dyn GpuFuture>
     where
         F: GpuFuture + 'static,
@@ -309,14 +383,28 @@ impl VoxelComputePipeline {
         };
 
         //send chunk updates
-        let chunk_update_count = 128.min(self.chunk_update_queue.len());
+        let mut chunk_update_count = 0;
         {
             let mut chunk_updates_buffer = self.chunk_updates.write().unwrap();
-            for i in 0..chunk_update_count {
-                let new_update = self.chunk_update_queue.pop_front().unwrap();
-                chunk_updates_buffer[i] = [new_update[0], new_update[1], new_update[2], 0];
+            while let Some(loc) = self.chunk_update_queue.pop() {
+                if loc[0] >= (SUB_CHUNK_COUNT as i32) * sim_data.start_pos[0]
+                    && loc[0]
+                        < (SUB_CHUNK_COUNT as i32) * (sim_data.start_pos[0] + RENDER_SIZE[0] as i32)
+                    && loc[1] >= (SUB_CHUNK_COUNT as i32) * sim_data.start_pos[1]
+                    && loc[1]
+                        < (SUB_CHUNK_COUNT as i32) * (sim_data.start_pos[1] + RENDER_SIZE[1] as i32)
+                    && loc[2] >= (SUB_CHUNK_COUNT as i32) * sim_data.start_pos[2]
+                    && loc[2]
+                        < (SUB_CHUNK_COUNT as i32) * (sim_data.start_pos[2] + RENDER_SIZE[2] as i32) {
+                    chunk_updates_buffer[chunk_update_count] = [loc[0], loc[1], loc[2], 0];
+                    chunk_update_count += 1;
+                    if chunk_update_count >= 128 {
+                        break;
+                    }
+                }
             }
         }
+        self.last_update_count = chunk_update_count;
 
         let set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,

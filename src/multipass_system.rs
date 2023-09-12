@@ -135,7 +135,7 @@ impl FrameSystem {
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::D16_UNORM,
+                    format: Format::D32_SFLOAT,
                     samples: 1,
                 },
             },
@@ -182,7 +182,7 @@ impl FrameSystem {
             AttachmentImage::with_usage(
                 &memory_allocator,
                 [1, 1],
-                Format::D16_UNORM,
+                Format::D32_SFLOAT,
                 ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
             )
             .unwrap(),
@@ -275,7 +275,7 @@ impl FrameSystem {
                 AttachmentImage::with_usage(
                     &self.memory_allocator,
                     img_dims,
-                    Format::D16_UNORM,
+                    Format::D32_SFLOAT,
                     ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
                 )
                 .unwrap(),

@@ -31,6 +31,9 @@ uvec2 get_data(ivec3 global_pos) {
 
 void set_data(ivec3 global_pos, uvec2 data) {
     uint index = get_index(global_pos, sim_data.render_size);
+    if(voxels[index] != data) {
+        chunk_updates[gl_WorkGroupID.x].w = 1;
+    }
     voxels[index] = data;
 }
 
@@ -39,7 +42,7 @@ void main() {
     uvec2 pos_data = get_data(pos);
 
     if (pos_data.x != 0) {
-        if (pos_data.y == 0) {
+        if (pos_data.y >= 10) {
             set_data(pos, uvec2(0, 0x11111111));
             return;
         }

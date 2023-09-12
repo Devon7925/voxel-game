@@ -27,7 +27,7 @@ impl WorldGen {
                                 if self.noise.get(true_pos) * 20.0
                                     > 0.0
                                 {
-                                    [1, 0x0000000A]
+                                    [1, 0x00000000]
                                 } else {
                                     [0, 0x11111111]
                                 }

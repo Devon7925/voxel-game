@@ -7,12 +7,12 @@ mod raytracer;
 mod rollback_manager;
 mod voxel_sim_manager;
 mod world_gen;
+mod utils;
 
 use crate::app::RenderPipeline;
 use cgmath::{Matrix4, Point3, SquareMatrix, Vector2, Vector3};
 use multipass_system::Pass;
 use networking::NetworkConnection;
-use rand::Rng;
 use rollback_manager::{Player, PlayerAction};
 use std::time::Instant;
 use vulkano::{
@@ -34,6 +34,7 @@ pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
 pub const RENDER_SIZE: [u32; 3] = [8, 8, 8];
 pub const CHUNK_SIZE: u32 = 16;
+const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
 pub const TOTAL_VOXEL_COUNT: usize =
     (RENDER_SIZE[0] * RENDER_SIZE[1] * RENDER_SIZE[2] * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE)
         as usize;
@@ -148,7 +149,9 @@ fn main() {
                 shoot: controls.mouse_right as u8,
                 sprint: controls.sprint as u8,
             };
-            network_connection.network_update(&action, &mut app.rollback_data);
+            if MIN_PLAYERS > 1 {
+                network_connection.network_update(&action, &mut app.rollback_data);
+            }
             controls.mouse_move = [0.0, 0.0];
             time += std::time::Duration::from_secs_f64(1.0 / 30.0);
             if app.rollback_data.rollback_state.players.len() >= MIN_PLAYERS {
@@ -358,29 +361,23 @@ fn compute_then_render(
     // Start the frame.
     let mut frame = if sim_settings.do_compute {
         sim_data.max_dist = sim_settings.max_dist;
-        // create a set of random chunk coordinates to compute
-        let mut chunk_updates: Vec<[i32; 3]> = Vec::new();
-        const UPDATES_PER_CHUNK: u32 = CHUNK_SIZE / 8;
-        for _ in 0..50 {
-            let x = rand::thread_rng().gen_range(0..sim_data.render_size[0] * UPDATES_PER_CHUNK)
-                as i32
-                + sim_data.start_pos[0] * (UPDATES_PER_CHUNK as i32);
-            let y = rand::thread_rng().gen_range(0..sim_data.render_size[1] * UPDATES_PER_CHUNK)
-                as i32
-                + sim_data.start_pos[1] * (UPDATES_PER_CHUNK as i32);
-            let z = rand::thread_rng().gen_range(0..sim_data.render_size[2] * UPDATES_PER_CHUNK)
-                as i32
-                + sim_data.start_pos[2] * (UPDATES_PER_CHUNK as i32);
-            chunk_updates.push([x, y, z]);
+        pipeline.voxel_compute.push_updates_from_changed(sim_data.start_pos);
+        
+        for player in pipeline.rollback_data.cached_current_state.players.iter() {
+            pipeline.voxel_compute.queue_update_from_world_pos(&[
+                player.pos.x,
+                player.pos.y,
+                player.pos.z,
+            ]);
         }
-        pipeline.voxel_compute.queue_updates(&chunk_updates);
+        
         // Compute.
-        pipeline.rollback_data.download_projectiles(&pipeline.projectile_compute);
+        pipeline.rollback_data.download_projectiles(&pipeline.projectile_compute, &mut pipeline.voxel_compute);
         pipeline.rollback_data
         .send_action(action, 0, pipeline.rollback_data.current_time);
         pipeline.rollback_data.step(time_step);
         pipeline.projectile_compute.upload(&pipeline.rollback_data.rollback_state.projectiles);
-        let after_proj_compute = pipeline.projectile_compute.compute(future, &pipeline.voxel_compute, sim_data);
+        let after_proj_compute = pipeline.projectile_compute.compute(future, &pipeline.voxel_compute, sim_data, time_step);
         let after_compute = pipeline.voxel_compute.compute(after_proj_compute, sim_data);
         pipeline.vulkano_interface.frame_system.frame(
             after_compute,

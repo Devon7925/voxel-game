@@ -120,7 +120,6 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             vec4 proj_rot_quaternion = quat_inverse(projectiles[i].dir);
             vec3 proj_size = projectiles[i].size.xyz;
             float does_exist = projectiles[i].pos.w;
-            if (does_exist == 0.0) continue;
             vec3 transformed_pos = quat_transform(projectiles[i].dir, (pos - proj_pos) / proj_size);
             vec3 ray = quat_transform(projectiles[i].dir, ray / proj_size);
             vec2 t_x = vec2((-1 - transformed_pos.x) / ray.x, (1 - transformed_pos.x) / ray.x);
@@ -209,8 +208,9 @@ void main() {
     RaycastResult shade_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, -light_dir, 100, true, 0.0);
     vec3 color = vec3(0.1, 0.1, 0.1);
     if (!shade_check.hit || shade_check.voxel_data.x == 2) {
+        vec3 mat_color = vec3(1.0, 1.0, primary_ray.voxel_data.y / 10.0);
         float diffuse = 0.7*max(dot(primary_ray.normal, -light_dir), 0.0);
-        color += diffuse*vec3(1.0);
+        color += diffuse*mat_color;
     }
 
     f_color = vec4(color, 1.0);

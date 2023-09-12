@@ -20,9 +20,15 @@ pub struct NetworkPacket {
     pub action: PlayerAction,
 }
 
+const IS_REMOTE_SERVER: bool = false;
+
 impl NetworkConnection {
     pub fn new() -> Self {
-        let room_url = "ws://127.0.0.1:3536/extreme_bevy?next=2";
+        let room_url = if IS_REMOTE_SERVER {
+            "ws://primd.net:3536/extreme_bevy?next=2"
+        } else {
+            "ws://127.0.0.1:3536/extreme_bevy?next=2"
+        };
         println!("connecting to matchbox server: {:?}", room_url);
         let (socket, loop_fut) = WebRtcSocket::new_reliable(room_url);
 

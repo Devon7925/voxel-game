@@ -9,7 +9,7 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
 };
 
-use crate::projectile_sim_manager::{Projectile, ProjectileComputePipeline};
+use crate::{projectile_sim_manager::{Projectile, ProjectileComputePipeline}, voxel_sim_manager::VoxelComputePipeline};
 
 const ACTIVE_BUTTON: u8 = 1;
 
@@ -127,7 +127,7 @@ impl RollbackData {
         )
         .unwrap();
 
-        let current_time:u64 = 10;
+        let current_time:u64 = 5;
         let rollback_time:u64 = 0;
 
         RollbackData {
@@ -169,8 +169,11 @@ impl RollbackData {
 
     fn update_rollback_state(&mut self, time_step: f32) {
         self.rollback_time += 1;
+        if self.rollback_time < 100 {
+            return;
+        }
         let player_actions = self.actions.pop_front().unwrap();
-        assert!(self.rollback_time < 100 || player_actions.iter().all(|x| x.is_some()));
+        assert!(player_actions.iter().all(|x| x.is_some()));
         self.rollback_state.step_sim(&player_actions, time_step);
     }
 
@@ -244,8 +247,8 @@ impl RollbackData {
         }
     }
 
-    pub fn download_projectiles(&mut self, projectile_compute: &ProjectileComputePipeline) {
-        self.rollback_state.projectiles = projectile_compute.download_projectiles();
+    pub fn download_projectiles(&mut self, projectile_compute: &ProjectileComputePipeline, vox_compute: &mut VoxelComputePipeline) {
+        self.rollback_state.projectiles = projectile_compute.download_projectiles(vox_compute);
     }
 }
 
@@ -303,6 +306,7 @@ impl WorldState {
                 if action.shoot == ACTIVE_BUTTON {
                     self.projectiles.push(Projectile {
                         pos: [player.pos.x, player.pos.y, player.pos.z, 1.0],
+                        chunk_update_pos: [0, 0, 0, 0],
                         dir: [player.rot.v[0], player.rot.v[1], player.rot.v[2], player.rot.s],
                         size: [
                             1.0,
@@ -318,7 +322,7 @@ impl WorldState {
                 }
             }
             if player.vel.magnitude() > 0.0 {
-                player.vel -= 0.1 * player.vel * player.vel.magnitude() * time_step + 0.1 * player.vel.normalize() * time_step;
+                player.vel -= 0.1 * player.vel * player.vel.magnitude() * time_step + 0.2 * player.vel.normalize() * time_step;
             }
             player.pos += player.vel * time_step;
             // check for collision with projectiles
@@ -337,10 +341,10 @@ impl WorldState {
                 let grid_dist = 2.0 * projectile_size.zip(grid_iteration_count, |size, count| size/count);
 
                 let start_pos = projectile_pos - projectile_size.x * projectile_right - projectile_size.y * projectile_up - projectile_size.z * projectile_dir;
-                'outer: for i in 0..=(grid_iteration_count.x as i32) {
-                    for j in 0..=(grid_iteration_count.y as i32) {
-                        for k in 0..=(grid_iteration_count.z as i32) {
-                            let pos = start_pos + grid_dist.x * i as f32 * projectile_right + grid_dist.y * j as f32 * projectile_up + grid_dist.z * k as f32 * projectile_dir;
+                'outer: for grid_iter_x in 0..=(grid_iteration_count.x as i32) {
+                    for grid_iter_y in 0..=(grid_iteration_count.y as i32) {
+                        for grid_iter_z in 0..=(grid_iteration_count.z as i32) {
+                            let pos = start_pos + grid_dist.x * grid_iter_x as f32 * projectile_right + grid_dist.y * grid_iter_y as f32 * projectile_up + grid_dist.z * grid_iter_z as f32 * projectile_dir;
                             let dist = (player.pos - pos).magnitude();
                             if dist < player.size.magnitude() {
                                 player.health -= 1.0;

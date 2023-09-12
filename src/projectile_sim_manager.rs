@@ -48,6 +48,7 @@ pub struct ProjectileComputePipeline {
 #[repr(C)]
 pub struct Projectile {
     pub pos: [f32; 4],
+    pub chunk_update_pos: [i32; 4],
     pub dir: [f32; 4],
     pub size: [f32; 4],
     pub vel: f32,
@@ -119,6 +120,7 @@ impl ProjectileComputePipeline {
         before_future: F,
         voxel_data: &VoxelComputePipeline,
         sim_data: &mut SimData,
+        time_step: f32,
     ) -> Box<dyn GpuFuture>
     where
         F: GpuFuture + 'static,
@@ -136,7 +138,7 @@ impl ProjectileComputePipeline {
         // wanted to simulate 10 steps at a time...
 
         // First compute the next state.
-        self.dispatch(&mut builder, voxel_data, sim_data);
+        self.dispatch(&mut builder, voxel_data, sim_data, time_step);
 
         let command_buffer = builder.build().unwrap();
         let finished = before_future
@@ -156,6 +158,7 @@ impl ProjectileComputePipeline {
         >,
         voxel_data: &VoxelComputePipeline,
         sim_data: &mut SimData,
+        time_step: f32,
     ) {
         // Resize image if needed.
         let pipeline_layout = self.compute_proj_pipeline.layout();
@@ -166,6 +169,7 @@ impl ProjectileComputePipeline {
                 max_dist: sim_data.max_dist.into(),
                 render_size: sim_data.render_size.into(),
                 start_pos: sim_data.start_pos.into(),
+                dt: time_step,
             };
 
             let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
@@ -194,12 +198,13 @@ impl ProjectileComputePipeline {
         self.projectile_buffer.clone()
     }
 
-    pub fn download_projectiles(&self) -> Vec<Projectile> {
+    pub fn download_projectiles(&self, vox_compute: &mut VoxelComputePipeline) -> Vec<Projectile> {
         let mut projectiles = Vec::new();
         let projectiles_buffer = self.projectile_buffer.read().unwrap();
         for i in 0..self.upload_projectile_count {
             let projectile = projectiles_buffer[i];
             if projectile.health == 0.0 {
+                vox_compute.queue_update_from_voxel_pos(&[projectile.chunk_update_pos[0], projectile.chunk_update_pos[1], projectile.chunk_update_pos[2]]);
                 continue;
             }
             projectiles.push(projectile);
