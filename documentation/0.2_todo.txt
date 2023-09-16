@@ -1,0 +1,3 @@
+better character control
+normal variation for materials and better visuals
+basic ui

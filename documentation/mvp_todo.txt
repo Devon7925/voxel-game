@@ -1,4 +1,3 @@
-basic materials
 player <-> world collision
 basic card system
 projectile <-> projectile collision

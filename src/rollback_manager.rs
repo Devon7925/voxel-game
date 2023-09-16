@@ -169,7 +169,7 @@ impl RollbackData {
 
     fn update_rollback_state(&mut self, time_step: f32) {
         self.rollback_time += 1;
-        if self.rollback_time < 100 {
+        if self.rollback_time < 50 {
             return;
         }
         let player_actions = self.actions.pop_front().unwrap();

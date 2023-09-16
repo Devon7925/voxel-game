@@ -38,7 +38,7 @@ const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
 pub const TOTAL_VOXEL_COUNT: usize =
     (RENDER_SIZE[0] * RENDER_SIZE[1] * RENDER_SIZE[2] * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE)
         as usize;
-pub const MIN_PLAYERS: usize = 2;
+pub const MIN_PLAYERS: usize = 1;
 
 struct SimSettings {
     pub max_dist: u32,
