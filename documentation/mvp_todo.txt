@@ -1,4 +1,4 @@
-player <-> world collision
 basic card system
 projectile <-> projectile collision
 improve worldgen
+respawn

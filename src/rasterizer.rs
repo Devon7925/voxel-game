@@ -226,7 +226,7 @@ impl RasterizerSystem {
             }
             player_writer[player_buffer_idx].instance_position = [-player.pos[0], -player.pos[1], -player.pos[2]];
             player_writer[player_buffer_idx].instance_rotation = [player.rot.v[0], player.rot.v[1], player.rot.v[2], player.rot.s];
-            player_writer[player_buffer_idx].instance_scale = [player.size[0], player.size[1], player.size[2]];
+            player_writer[player_buffer_idx].instance_scale = [player.size, player.size, player.size];
             player_buffer_idx += 1;
         }
 

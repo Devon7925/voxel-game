@@ -1,3 +1,13 @@
 better character control
+    roll free camera & mouse lock
+    jumping
+    ground friction
+    step up
+    tuning
 normal variation for materials and better visuals
 basic ui
+more materials
+    ice
+more cards
+    on hit
+multiple card abilities

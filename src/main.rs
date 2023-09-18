@@ -65,12 +65,15 @@ pub struct Controls {
     mouse_move: [f32; 2],
 }
 
-pub const FIRST_START_POS: [i32; 3] = [100, 100, 100];
+pub const FIRST_START_POS: [i32; 3] = [100, 110, 100];
 pub const SPAWN_LOCATION: Point3<f32> = Point3::new(
     ((FIRST_START_POS[0] + (RENDER_SIZE[0] as i32) / 2) * CHUNK_SIZE as i32) as f32,
     ((FIRST_START_POS[1] + (RENDER_SIZE[1] as i32) / 2) * CHUNK_SIZE as i32) as f32,
     ((FIRST_START_POS[2] + (RENDER_SIZE[2] as i32) / 2) * CHUNK_SIZE as i32) as f32,
 );
+
+pub const PLAYER_HITBOX_OFFSET: Vector3<f32> = Vector3::new(0.0, -2.0, 0.0);
+pub const PLAYER_HITBOX_SIZE: Vector3<f32> = Vector3::new(1.8, 4.8, 1.8);
 
 fn main() {
     // Create event loop.
@@ -375,7 +378,7 @@ fn compute_then_render(
         pipeline.rollback_data.download_projectiles(&pipeline.projectile_compute, &mut pipeline.voxel_compute);
         pipeline.rollback_data
         .send_action(action, 0, pipeline.rollback_data.current_time);
-        pipeline.rollback_data.step(time_step);
+        pipeline.rollback_data.step(time_step, pipeline.voxel_compute.voxels());
         pipeline.projectile_compute.upload(&pipeline.rollback_data.rollback_state.projectiles);
         let after_proj_compute = pipeline.projectile_compute.compute(future, &pipeline.voxel_compute, sim_data, time_step);
         let after_compute = pipeline.voxel_compute.compute(after_proj_compute, sim_data);

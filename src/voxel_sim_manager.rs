@@ -92,7 +92,7 @@ impl VoxelComputePipeline {
         let memory_allocator = &app.memory_allocator;
 
         // generate based on simplex noise
-        const SCALE: f64 = 0.2;
+        const SCALE: f64 = 0.04;
         let noise: Box<dyn NoiseFn<f64, 3>> = Box::new(Add::new(
             Add::new(
                 ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE),
