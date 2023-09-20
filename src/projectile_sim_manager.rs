@@ -55,6 +55,10 @@ pub struct Projectile {
     pub health: f32,
     pub lifetime: f32,
     pub owner: u32,
+    pub damage: f32,
+    pub _filler1: f32,
+    pub _filler2: f32,
+    pub _filler3: f32,
 }
 
 impl ProjectileComputePipeline {

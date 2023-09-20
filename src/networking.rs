@@ -1,11 +1,12 @@
-use bytemuck::{Pod, Zeroable};
 use futures::{select, FutureExt};
 use futures_timer::Delay;
 use matchbox_socket::{PeerState, WebRtcSocket, PeerId};
+use serde::{Deserialize, Serialize};
 use std::{time::Duration, collections::HashMap};
 use tokio::runtime::Runtime;
+use std::str;
 
-use crate::{rollback_manager::{PlayerAction, RollbackData, Player}, SPAWN_LOCATION};
+use crate::{rollback_manager::{PlayerAction, RollbackData, Player}, SPAWN_LOCATION, card_system::BaseCard};
 
 pub struct NetworkConnection {
     socket: WebRtcSocket,
@@ -13,11 +14,10 @@ pub struct NetworkConnection {
     player_idx_map: HashMap<PeerId, usize>,
 }
 
-#[derive(Clone, Copy, Debug, Zeroable, Pod)]
-#[repr(C)]
-pub struct NetworkPacket {
-    pub time: u64,
-    pub action: PlayerAction,
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum NetworkPacket {
+    Action(u64, PlayerAction),
+    DeckUpdate(BaseCard),
 }
 
 const IS_REMOTE_SERVER: bool = false;
@@ -60,11 +60,8 @@ impl NetworkConnection {
 
     pub fn network_update(&mut self, player_action: &PlayerAction, rollback_manager: &mut RollbackData) {
         // Build message to send to peers
-        let packet_data = NetworkPacket {
-            time: rollback_manager.current_time,
-            action: player_action.clone(),
-        };
-        let packet = bytemuck::bytes_of(&packet_data).to_vec().into_boxed_slice();
+        let packet_data = NetworkPacket::Action(rollback_manager.current_time, player_action.clone());
+        let packet = ron::to_string(&packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
 
         // Handle any new peers
         for (peer, state) in self.socket.update_peers() {
@@ -78,6 +75,10 @@ impl NetworkConnection {
                         pos: SPAWN_LOCATION,
                         ..Default::default()
                     });
+
+                    let deck_packet_data = NetworkPacket::DeckUpdate(rollback_manager.rollback_state.players.first().unwrap().cards.clone());
+                    let deck_packet = ron::to_string(&deck_packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
+                    self.socket.send(deck_packet.clone(), peer);
                 }
                 PeerState::Disconnected => {
                     println!("Peer left: {:?}", peer);
@@ -96,10 +97,18 @@ impl NetworkConnection {
 
         // Accept any messages incoming
         for (peer, packet) in self.socket.receive() {
-            let foreign_player_action = bytemuck::from_bytes::<NetworkPacket>(&packet);
-            let player_idx = self.player_idx_map.get(&peer).unwrap().clone();
+            let message = str::from_utf8(packet.as_ref()).unwrap();
+            let foreign_player_action:NetworkPacket = ron::from_str(message).unwrap();
 
-            rollback_manager.send_action(foreign_player_action.action, player_idx, foreign_player_action.time);
+            let player_idx = self.player_idx_map.get(&peer).unwrap().clone();
+            match foreign_player_action {
+                NetworkPacket::Action(time, action) => {
+                    rollback_manager.send_action(action, player_idx, time);
+                }
+                NetworkPacket::DeckUpdate(card) => {
+                    rollback_manager.rollback_state.players[player_idx].cards = card;
+                }
+            }
         }
     }
 }

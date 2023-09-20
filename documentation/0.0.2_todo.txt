@@ -10,4 +10,7 @@ more materials
     ice
 more cards
     on hit
+    lifetime
+    piercing
+    gravity
 multiple card abilities

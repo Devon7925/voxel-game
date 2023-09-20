@@ -62,8 +62,10 @@ void main() {
                 if (data.x == 0 || data.x == 2) {
                     continue;
                 }
-                uint vox_index = get_index(voxel_pos, sim_data.render_size);
-                atomicAdd(voxels[vox_index].y, 1);
+                if (projectile.damage > 0) {
+                    uint vox_index = get_index(voxel_pos, sim_data.render_size);
+                    atomicAdd(voxels[vox_index].y, int(projectile.damage));
+                }
 
                 projectile.chunk_update_pos = ivec4(voxel_pos, 0);
 

@@ -1,6 +1,6 @@
 [package]
 name = "voxel-game"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -21,3 +21,5 @@ futures = "0.3"
 tokio = "1.29"
 futures-timer = { version = "3" }
 obj-rs = "0.7.1"
+ron = "0.8"
+serde = { version = "1", features = ["derive"] }

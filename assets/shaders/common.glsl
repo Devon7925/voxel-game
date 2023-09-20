@@ -7,6 +7,12 @@ struct Projectile {
     vec4 size;
     float vel;
     float health;
+    float lifetime;
+    uint owner;
+    float damage;
+    float _filler1;
+    float _filler2;
+    float _filler3;
 };
 
 struct Player {

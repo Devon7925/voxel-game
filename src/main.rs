@@ -7,14 +7,15 @@ mod raytracer;
 mod rollback_manager;
 mod voxel_sim_manager;
 mod world_gen;
+mod card_system;
 mod utils;
 
-use crate::app::RenderPipeline;
+use crate::{app::RenderPipeline, card_system::BaseCard};
 use cgmath::{Matrix4, Point3, SquareMatrix, Vector2, Vector3};
 use multipass_system::Pass;
 use networking::NetworkConnection;
 use rollback_manager::{Player, PlayerAction};
-use std::time::Instant;
+use std::{time::Instant, fs};
 use vulkano::{
     image::view::ImageView,
     swapchain::{
@@ -97,6 +98,7 @@ fn main() {
 
     app.rollback_data.player_join(Player {
         pos: SPAWN_LOCATION,
+        cards: BaseCard::from_string(fs::read_to_string("player_cards.txt").unwrap().as_str()),
         ..Default::default()
     });
 

@@ -1,7 +1,8 @@
-use std::{collections::VecDeque, path::Component, sync::Arc};
+use std::{collections::VecDeque, sync::Arc};
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{InnerSpace, One, Point3, Quaternion, Rotation, Vector3};
+use serde::{Deserialize, Serialize};
 use vulkano::{
     buffer::{subbuffer::BufferReadGuard, Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -10,7 +11,7 @@ use vulkano::{
 use crate::{
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     voxel_sim_manager::VoxelComputePipeline,
-    CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE,
+    CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, card_system::BaseCard,
 };
 
 const ACTIVE_BUTTON: u8 = 1;
@@ -32,7 +33,7 @@ pub struct RollbackData {
     pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
 }
 
-#[derive(Clone, Copy, Debug, Zeroable, Pod)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Zeroable, Pod)]
 #[repr(C)]
 pub struct PlayerAction {
     pub aim: [f32; 2],
@@ -56,6 +57,8 @@ pub struct Player {
     pub up: Vector3<f32>,
     pub right: Vector3<f32>,
     pub health: f32,
+    pub cards: BaseCard,
+    pub cooldown: f32,
 }
 
 #[derive(Clone, Copy, Zeroable, Debug, Pod)]
@@ -97,6 +100,8 @@ impl Default for Player {
             size: 1.0,
             vel: Vector3::new(0.0, 0.0, 0.0),
             health: 100.0,
+            cards: BaseCard::default(),
+            cooldown: 0.0,
         }
     }
 }
@@ -326,24 +331,36 @@ impl WorldState {
                 };
                 player.vel += accel_speed * move_vec * time_step;
 
-                if action.shoot == ACTIVE_BUTTON {
-                    self.projectiles.push(Projectile {
-                        pos: [player.pos.x, player.pos.y, player.pos.z, 1.0],
-                        chunk_update_pos: [0, 0, 0, 0],
-                        dir: [
-                            player.rot.v[0],
-                            player.rot.v[1],
-                            player.rot.v[2],
-                            player.rot.s,
-                        ],
-                        size: [1.0, 1.0, 1.0, 1.0],
-                        vel: 6.0,
-                        health: 10.0,
-                        lifetime: 0.0,
-                        owner: player_idx as u32,
-                    })
+                if action.shoot == ACTIVE_BUTTON && player.cooldown <= 0.0 {
+                    player.cooldown = player.cards.evaluate_value();
+                    for proj_stats in player.cards.get_proj_stats() {
+                        let proj_size = 1.5f32.powi(proj_stats.size);
+                        let proj_speed = 3.0 * 1.5f32.powi(proj_stats.speed);
+                        let proj_damage = proj_stats.damage as f32;
+                        self.projectiles.push(Projectile {
+                            pos: [player.pos.x, player.pos.y, player.pos.z, 1.0],
+                            chunk_update_pos: [0, 0, 0, 0],
+                            dir: [
+                                player.rot.v[0],
+                                player.rot.v[1],
+                                player.rot.v[2],
+                                player.rot.s,
+                            ],
+                            size: [proj_size, proj_size, proj_size, 1.0],
+                            vel: proj_speed,
+                            health: 10.0,
+                            lifetime: 0.0,
+                            owner: player_idx as u32,
+                            damage: proj_damage,
+                            _filler1: 0.0,
+                            _filler2: 0.0,
+                            _filler3: 0.0,
+                        })
+                    }
                 }
             }
+            player.cooldown -= time_step;
+
             player.vel.y -= 2.5 * time_step;
             if player.vel.magnitude() > 0.0 {
                 player.vel -= 0.1 * player.vel * player.vel.magnitude() * time_step

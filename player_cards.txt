@@ -1,0 +1,1 @@
+Projectile([Damage(10),Speed(5),Size(-5)])
