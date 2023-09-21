@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, sync::Arc, f32::consts::PI};
 
 use bytemuck::{Pod, Zeroable};
-use cgmath::{InnerSpace, One, Point3, Quaternion, Rotation, Vector3};
+use cgmath::{InnerSpace, One, Point3, Quaternion, Rotation, Vector3, Vector2};
 use serde::{Deserialize, Serialize};
 use vulkano::{
     buffer::{subbuffer::BufferReadGuard, Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -348,6 +348,10 @@ impl WorldState {
                     1.5
                 } else {
                     1.0
+                } * if player.collision_vec != Vector3::new(0, 0, 0) {
+                    4.0
+                } else {
+                    1.0
                 };
                 player.vel += accel_speed * move_vec * time_step;
 
@@ -527,6 +531,11 @@ fn collide_player(
                         if voxel[0] != 0 {
                             player.pos[component] -= dist_diff * vel_dir[component];
                             player.vel[component] = 0.0;
+                            // apply friction
+                            let perp_vel = Vector2::new(player.vel[(component + 1) % 3], player.vel[(component + 2) % 3]);
+                            player.vel[(component + 1) % 3] -= (0.5 * perp_vel.normalize().x + 1.5 * perp_vel.x) * time_step;
+                            player.vel[(component + 2) % 3] -= (0.5 * perp_vel.normalize().y + 1.5 * perp_vel.y) * time_step;
+
                             player.collision_vec[component] = -vel_dir[component].signum() as i32;
                             distance_to_move[component] = 0.0;
                             break 'outer;

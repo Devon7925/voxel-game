@@ -1,5 +1,4 @@
 better character control
-    ground friction
     step up
     tuning
 multithread initial chunkloading
