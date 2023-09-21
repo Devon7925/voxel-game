@@ -28,7 +28,7 @@ use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
-    window::Window,
+    window::Window, dpi::{LogicalPosition, PhysicalPosition},
 };
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
@@ -215,13 +215,17 @@ fn handle_events(
                 }
                 // Handle mouse position events.
                 WindowEvent::CursorMoved { position, .. } => {
+                    let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+
+                    window.set_cursor_position(PhysicalPosition::new(
+                        (WINDOW_WIDTH / 2.0) as f64,
+                        (WINDOW_HEIGHT / 2.0) as f64,
+                    )).unwrap_or_else(|_| println!("Failed to set cursor position"));
                     // turn camera
-                    if controls.mouse_left {
-                        let delta =
-                            Vector2::new(position.x as f32, position.y as f32) - *cursor_pos;
-                        controls.mouse_move[0] += delta.x;
-                        controls.mouse_move[1] += delta.y;
-                    }
+                    let delta =
+                        Vector2::new(position.x as f32, position.y as f32) - Vector2::new((WINDOW_WIDTH / 2.0) as f32, (WINDOW_HEIGHT / 2.0) as f32);
+                    controls.mouse_move[0] += delta.x;
+                    controls.mouse_move[1] += delta.y;
                     *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
                 }
                 // Handle mouse button events.
@@ -293,6 +297,11 @@ fn handle_events(
                         }
                         _ => (),
                     });
+                }
+                WindowEvent::Focused(true) => {
+                    let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+
+                    window.set_cursor_visible(false);
                 }
                 _ => (),
             },

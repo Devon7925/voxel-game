@@ -29,7 +29,7 @@ use vulkano::{
 
 use vulkano_win::VkSurfaceBuild;
 use winit::{
-    dpi::LogicalSize,
+    dpi::{LogicalSize, PhysicalSize},
     event_loop::EventLoop,
     window::{Window, WindowBuilder},
 };
@@ -71,7 +71,7 @@ impl RenderPipeline {
         .unwrap();
 
         let surface = WindowBuilder::new()
-            .with_inner_size(LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
+            .with_inner_size(PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
             .with_title("Voxel game")
             .build_vk_surface(&event_loop, instance.clone())
             .unwrap();

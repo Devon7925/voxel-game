@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, f32::consts::PI};
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{InnerSpace, One, Point3, Quaternion, Rotation, Vector3};
@@ -50,6 +50,7 @@ pub struct PlayerAction {
 #[derive(Clone, Debug)]
 pub struct Player {
     pub pos: Point3<f32>,
+    pub facing: [f32; 2],
     pub rot: Quaternion<f32>,
     pub size: f32,
     pub vel: Vector3<f32>,
@@ -94,6 +95,7 @@ impl Default for Player {
     fn default() -> Self {
         Player {
             pos: Point3::new(0.0, 0.0, 0.0),
+            facing: [0.0, 0.0],
             dir: Vector3::new(0.0, 0.0, 1.0),
             up: Vector3::new(0.0, 1.0, 0.0),
             right: Vector3::new(1.0, 0.0, 0.0),
@@ -306,11 +308,15 @@ impl WorldState {
             }
             if let Some(action) = action {
                 let sensitivity = 0.001;
-                player.dir += action.aim[0] * player.right * sensitivity;
-                player.dir += -action.aim[1] * player.up * sensitivity;
-                player.dir = player.dir.normalize();
-                player.rot = Quaternion::look_at(player.dir, player.up);
-                player.right = player.dir.cross(player.up).normalize();
+                player.facing[0] = (player.facing[0] - action.aim[0] * sensitivity + 2.0 * PI) % (2.0 * PI);
+                player.facing[1] = (player.facing[1] - action.aim[1] * sensitivity).min(PI/2.0).max(-PI/2.0);
+                player.dir = Vector3::new(
+                    player.facing[0].sin() * player.facing[1].cos(),
+                    player.facing[1].sin(),
+                    player.facing[0].cos() * player.facing[1].cos(),
+                );
+                player.rot = Quaternion::look_at(player.dir, Vector3::new(0.0, 1.0, 0.0));
+                player.right = player.dir.cross(Vector3::new(0.0, 1.0, 0.0)).normalize();
                 player.up = player.right.cross(player.dir).normalize();
                 let mut move_vec = Vector3::new(0.0, 0.0, 0.0);
                 if action.forward == ACTIVE_BUTTON {
