@@ -529,6 +529,12 @@ fn collide_player(
                         let voxel_pos = pos.map(|c| c.floor() as i32);
                         let voxel = voxel_reader[get_index(voxel_pos) as usize];
                         if voxel[0] != 0 {
+                            if component != 1 && (pos - start_pos).y < 1.0 && can_step_up(player, voxel_reader, component, player_move_pos) {
+                                player.pos[1] += 1.0;
+                                player_move_pos[1] += 1.0;
+                                break 'outer;
+                            }
+
                             player.pos[component] -= dist_diff * vel_dir[component];
                             player.vel[component] = 0.0;
                             // apply friction
@@ -545,6 +551,38 @@ fn collide_player(
             }
         }
     }
+}
+
+fn can_step_up(
+    player: &mut Player,
+    voxel_reader: &BufferReadGuard<'_, [[u32; 2]]>,
+    component: usize,
+    player_move_pos: Point3<f32>,
+) -> bool {
+    let x_iter_count = (0.99 * player.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]).ceil() + 1.0;
+    let z_iter_count = (0.99 * player.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]).ceil() + 1.0;
+    let x_dist = (0.99 * player.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]) / x_iter_count;
+    let z_dist = (0.99 * player.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]) / z_iter_count;
+    let mut start_pos = player.pos + PLAYER_HITBOX_OFFSET - 0.99 * 0.5 * player.size * PLAYER_HITBOX_SIZE + Vector3::new(0.0, 1.0, 0.0);
+    start_pos[component] = player_move_pos[component];
+
+    let mut x_vec = Vector3::new(0.0, 0.0, 0.0);
+    let mut z_vec = Vector3::new(0.0, 0.0, 0.0);
+    x_vec[(component + 1) % 3] = 1.0;
+    z_vec[(component + 2) % 3] = 1.0;
+    for x_iter in 0..=(x_iter_count as i32) {
+        for z_iter in 0..=(z_iter_count as i32) {
+            let pos = start_pos
+                + x_dist * x_iter as f32 * x_vec
+                + z_dist * z_iter as f32 * z_vec;
+            let voxel_pos = pos.map(|c| c.floor() as i32);
+            let voxel = voxel_reader[get_index(voxel_pos) as usize];
+            if voxel[0] != 0 {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn ray_box_dist(pos: Point3<f32>, ray: Vector3<f32>) -> Vector3<f32> {

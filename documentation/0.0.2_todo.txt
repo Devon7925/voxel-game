@@ -1,5 +1,4 @@
 better character control
-    step up
     tuning
 multithread initial chunkloading
 better visuals
