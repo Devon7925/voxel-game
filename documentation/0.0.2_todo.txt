@@ -11,6 +11,7 @@ better visuals
 basic ui
     player health
     player cooldowns
+    death / respawn time
 more materials
     ice
     glass

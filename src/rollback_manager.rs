@@ -11,7 +11,7 @@ use vulkano::{
 use crate::{
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     voxel_sim_manager::VoxelComputePipeline,
-    CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, card_system::BaseCard,
+    CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, card_system::BaseCard, SPAWN_LOCATION,
 };
 
 const ACTIVE_BUTTON: u8 = 1;
@@ -59,6 +59,7 @@ pub struct Player {
     pub health: f32,
     pub cards: BaseCard,
     pub cooldown: f32,
+    pub respawn_timer: f32,
 }
 
 #[derive(Clone, Copy, Zeroable, Debug, Pod)]
@@ -102,6 +103,7 @@ impl Default for Player {
             health: 100.0,
             cards: BaseCard::default(),
             cooldown: 0.0,
+            respawn_timer: 0.0,
         }
     }
 }
@@ -294,6 +296,14 @@ impl WorldState {
             .zip(player_actions.iter())
             .enumerate()
         {
+            if player.respawn_timer > 0.0 {
+                player.respawn_timer -= time_step;
+                if player.respawn_timer <= 0.0 {
+                    player.pos = SPAWN_LOCATION;
+                    player.health = 100.0;
+                }
+                continue;
+            }
             if let Some(action) = action {
                 let sensitivity = 0.001;
                 player.dir += action.aim[0] * player.right * sensitivity;
@@ -399,13 +409,16 @@ impl WorldState {
                                 + grid_dist.z * grid_iter_z as f32 * projectile_dir;
                             let dist = (player.pos - pos).magnitude();
                             if dist < player.size {
-                                player.health -= 1.0;
+                                player.health -= proj.damage;
                                 proj.health = 0.0;
                                 break 'outer;
                             }
                         }
                     }
                 }
+            }
+            if player.health <= 0.0 {
+                player.respawn_timer = 5.0;
             }
         }
         // remove dead projectiles
