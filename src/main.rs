@@ -33,7 +33,7 @@ use winit::{
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
-pub const RENDER_SIZE: [u32; 3] = [8, 8, 8];
+pub const RENDER_SIZE: [u32; 3] = [16, 16, 16];
 pub const CHUNK_SIZE: u32 = 16;
 const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
 pub const TOTAL_VOXEL_COUNT: usize =
@@ -66,7 +66,7 @@ pub struct Controls {
     mouse_move: [f32; 2],
 }
 
-pub const FIRST_START_POS: [i32; 3] = [100, 110, 100];
+pub const FIRST_START_POS: [i32; 3] = [100, 105, 100];
 pub const SPAWN_LOCATION: Point3<f32> = Point3::new(
     ((FIRST_START_POS[0] + (RENDER_SIZE[0] as i32) / 2) * CHUNK_SIZE as i32) as f32,
     ((FIRST_START_POS[1] + (RENDER_SIZE[1] as i32) / 2) * CHUNK_SIZE as i32) as f32,

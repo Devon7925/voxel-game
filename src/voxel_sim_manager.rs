@@ -8,7 +8,8 @@
 // according to those terms.
 
 use crate::{
-    app::VulkanoInterface, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE, SUB_CHUNK_COUNT, utils::QueueSet,
+    app::VulkanoInterface, utils::QueueSet, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE,
+    SUB_CHUNK_COUNT,
 };
 use noise::{Add, Constant, Multiply, NoiseFn, OpenSimplex, ScalePoint};
 use std::sync::Arc;
@@ -98,8 +99,7 @@ impl VoxelComputePipeline {
                 ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE),
                 Multiply::new(
                     ScalePoint::new(OpenSimplex::new(10))
-                        .set_scale(SCALE / 40.0)
-                        .set_y_scale(SCALE / 12.0),
+                        .set_scale(SCALE / 40.0),
                     Constant::new(5.0),
                 ),
             ),
@@ -395,7 +395,8 @@ impl VoxelComputePipeline {
                         < (SUB_CHUNK_COUNT as i32) * (sim_data.start_pos[1] + RENDER_SIZE[1] as i32)
                     && loc[2] >= (SUB_CHUNK_COUNT as i32) * sim_data.start_pos[2]
                     && loc[2]
-                        < (SUB_CHUNK_COUNT as i32) * (sim_data.start_pos[2] + RENDER_SIZE[2] as i32) {
+                        < (SUB_CHUNK_COUNT as i32) * (sim_data.start_pos[2] + RENDER_SIZE[2] as i32)
+                {
                     chunk_updates_buffer[chunk_update_count] = [loc[0], loc[1], loc[2], 0];
                     chunk_update_count += 1;
                     if chunk_update_count >= 128 {

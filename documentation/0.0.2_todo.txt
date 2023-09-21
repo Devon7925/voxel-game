@@ -4,10 +4,16 @@ better character control
     ground friction
     step up
     tuning
-normal variation for materials and better visuals
+better visuals
+    normal variation for materials
+    tuning
+    projectile material
 basic ui
+    player health
+    player cooldowns
 more materials
     ice
+    glass
 more cards
     on hit
     lifetime
