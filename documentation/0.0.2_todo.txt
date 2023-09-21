@@ -1,10 +1,8 @@
-better character control
-    tuning
 multithread initial chunkloading
 better visuals
     normal variation for materials
-    tuning
     projectile material
+    tuning
 basic ui
     player health
     player cooldowns

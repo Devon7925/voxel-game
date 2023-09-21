@@ -356,7 +356,7 @@ impl WorldState {
                 player.vel += accel_speed * move_vec * time_step;
 
                 if action.jump == ACTIVE_BUTTON {
-                    player.vel += player.collision_vec.zip(Vector3::new(0.3, 4.0, 0.3), |c, m| c as f32 * m);
+                    player.vel += player.collision_vec.zip(Vector3::new(0.3, 5.0, 0.3), |c, m| c as f32 * m);
                 }
 
                 if action.shoot == ACTIVE_BUTTON && player.cooldown <= 0.0 {
@@ -395,8 +395,9 @@ impl WorldState {
                     + 0.2 * player.vel.normalize() * time_step;
             }
 
+            let prev_collision_vec = player.collision_vec.clone();
             player.collision_vec = Vector3::new(0, 0, 0);
-            collide_player(player, time_step, &voxel_reader);
+            collide_player(player, time_step, &voxel_reader, prev_collision_vec);
             // check for collision with projectiles
             for proj in self.projectiles.iter_mut() {
                 if player_idx as u32 == proj.owner && proj.lifetime < 1.0 {
@@ -463,6 +464,7 @@ fn collide_player(
     player: &mut Player,
     time_step: f32,
     voxel_reader: &BufferReadGuard<'_, [[u32; 2]]>,
+    prev_collision_vec: Vector3<i32>,
 ) {
     let mut player_move_pos = player.pos
         + PLAYER_HITBOX_OFFSET
@@ -510,11 +512,14 @@ fn collide_player(
             if delta[component] <= delta[(component + 1) % 3]
                 && delta[component] <= delta[(component + 2) % 3]
             {
-                let x_iter_count = (0.99 * player.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]).ceil() + 1.0;
-                let z_iter_count = (0.99 * player.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]).ceil() + 1.0;
-                let x_dist = (0.99 * player.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]) / x_iter_count;
-                let z_dist = (0.99 * player.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]) / z_iter_count;
-                let mut start_pos = player.pos + PLAYER_HITBOX_OFFSET - 0.99 * 0.5 * player.size * PLAYER_HITBOX_SIZE;
+                // neccessary because otherwise side plane could hit on ground to prevent walking
+                // however this allows clipping when corners would collide 
+                const HITBOX_SHRINK_FACTOR: f32 = 0.999;
+                let x_iter_count = (HITBOX_SHRINK_FACTOR * player.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]).ceil() + 1.0;
+                let z_iter_count = (HITBOX_SHRINK_FACTOR * player.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]).ceil() + 1.0;
+                let x_dist = (HITBOX_SHRINK_FACTOR * player.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]) / x_iter_count;
+                let z_dist = (HITBOX_SHRINK_FACTOR * player.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]) / z_iter_count;
+                let mut start_pos = player.pos + PLAYER_HITBOX_OFFSET - HITBOX_SHRINK_FACTOR * 0.5 * player.size * PLAYER_HITBOX_SIZE;
                 start_pos[component] = player_move_pos[component];
 
                 let mut x_vec = Vector3::new(0.0, 0.0, 0.0);
@@ -529,7 +534,7 @@ fn collide_player(
                         let voxel_pos = pos.map(|c| c.floor() as i32);
                         let voxel = voxel_reader[get_index(voxel_pos) as usize];
                         if voxel[0] != 0 {
-                            if component != 1 && (pos - start_pos).y < 1.0 && can_step_up(player, voxel_reader, component, player_move_pos) {
+                            if component != 1 && prev_collision_vec[1] == 1 && (pos - start_pos).y < 1.0 && can_step_up(player, voxel_reader, component, player_move_pos) {
                                 player.pos[1] += 1.0;
                                 player_move_pos[1] += 1.0;
                                 break 'outer;
@@ -539,8 +544,10 @@ fn collide_player(
                             player.vel[component] = 0.0;
                             // apply friction
                             let perp_vel = Vector2::new(player.vel[(component + 1) % 3], player.vel[(component + 2) % 3]);
-                            player.vel[(component + 1) % 3] -= (0.5 * perp_vel.normalize().x + 1.5 * perp_vel.x) * time_step;
-                            player.vel[(component + 2) % 3] -= (0.5 * perp_vel.normalize().y + 1.5 * perp_vel.y) * time_step;
+                            if perp_vel.magnitude() > 0.0 {
+                                player.vel[(component + 1) % 3] -= (0.5 * perp_vel.normalize().x + 1.5 * perp_vel.x) * time_step;
+                                player.vel[(component + 2) % 3] -= (0.5 * perp_vel.normalize().y + 1.5 * perp_vel.y) * time_step;
+                            }
 
                             player.collision_vec[component] = -vel_dir[component].signum() as i32;
                             distance_to_move[component] = 0.0;

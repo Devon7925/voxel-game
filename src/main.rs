@@ -151,7 +151,7 @@ fn main() {
                 right: controls.right as u8,
                 jump: controls.up as u8,
                 crouch: controls.down as u8,
-                shoot: controls.mouse_right as u8,
+                shoot: controls.mouse_left as u8,
                 sprint: controls.sprint as u8,
             };
             if MIN_PLAYERS > 1 {
