@@ -3,3 +3,6 @@ more cards
     health control
     friendly fire
     shape control
+bug fixes
+    fix aspect ratio issue
+    fix camera flip when looking up and down

@@ -61,6 +61,7 @@ pub struct Player {
     pub cards: BaseCard,
     pub cooldown: f32,
     pub respawn_timer: f32,
+    pub collision_vec: Vector3<i32>,
 }
 
 #[derive(Clone, Copy, Zeroable, Debug, Pod)]
@@ -106,6 +107,7 @@ impl Default for Player {
             cards: BaseCard::default(),
             cooldown: 0.0,
             respawn_timer: 0.0,
+            collision_vec: Vector3::new(0, 0, 0),
         }
     }
 }
@@ -319,33 +321,39 @@ impl WorldState {
                 player.right = player.dir.cross(Vector3::new(0.0, 1.0, 0.0)).normalize();
                 player.up = player.right.cross(player.dir).normalize();
                 let mut move_vec = Vector3::new(0.0, 0.0, 0.0);
+                let player_forward = Vector3::new(player.dir.x, 0.0, player.dir.z).normalize();
+                let player_right = Vector3::new(player.right.x, 0.0, player.right.z).normalize();
                 if action.forward == ACTIVE_BUTTON {
-                    move_vec += player.dir;
+                    move_vec += player_forward;
                 }
                 if action.backward == ACTIVE_BUTTON {
-                    move_vec -= player.dir;
+                    move_vec -= player_forward;
                 }
                 if action.left == ACTIVE_BUTTON {
-                    move_vec -= player.right;
+                    move_vec -= player_right;
                 }
                 if action.right == ACTIVE_BUTTON {
-                    move_vec += player.right;
+                    move_vec += player_right;
                 }
                 if action.jump == ACTIVE_BUTTON {
-                    move_vec += player.up;
+                    move_vec += Vector3::new(0.0, 0.5, 0.0);
                 }
                 if action.crouch == ACTIVE_BUTTON {
-                    move_vec -= player.up;
+                    move_vec -= Vector3::new(0.0, 0.5, 0.0);
                 }
                 if move_vec.magnitude() > 0.0 {
                     move_vec = move_vec.normalize();
                 }
                 let accel_speed = if action.sprint == ACTIVE_BUTTON {
-                    1.2
+                    1.5
                 } else {
-                    0.6
+                    1.0
                 };
                 player.vel += accel_speed * move_vec * time_step;
+
+                if action.jump == ACTIVE_BUTTON {
+                    player.vel += player.collision_vec.zip(Vector3::new(0.3, 4.0, 0.3), |c, m| c as f32 * m);
+                }
 
                 if action.shoot == ACTIVE_BUTTON && player.cooldown <= 0.0 {
                     player.cooldown = player.cards.evaluate_value();
@@ -383,6 +391,7 @@ impl WorldState {
                     + 0.2 * player.vel.normalize() * time_step;
             }
 
+            player.collision_vec = Vector3::new(0, 0, 0);
             collide_player(player, time_step, &voxel_reader);
             // check for collision with projectiles
             for proj in self.projectiles.iter_mut() {
@@ -518,6 +527,7 @@ fn collide_player(
                         if voxel[0] != 0 {
                             player.pos[component] -= dist_diff * vel_dir[component];
                             player.vel[component] = 0.0;
+                            player.collision_vec[component] = -vel_dir[component].signum() as i32;
                             distance_to_move[component] = 0.0;
                             break 'outer;
                         }

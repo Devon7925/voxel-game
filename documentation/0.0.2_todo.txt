@@ -1,5 +1,4 @@
 better character control
-    jumping
     ground friction
     step up
     tuning
