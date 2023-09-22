@@ -12,6 +12,7 @@ use crate::{
     SUB_CHUNK_COUNT,
 };
 use noise::{Add, Constant, Multiply, NoiseFn, OpenSimplex, ScalePoint};
+use rayon::prelude::{ParallelIterator, IntoParallelIterator};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -94,7 +95,7 @@ impl VoxelComputePipeline {
 
         // generate based on simplex noise
         const SCALE: f64 = 0.04;
-        let noise: Box<dyn NoiseFn<f64, 3>> = Box::new(Add::new(
+        let noise: Box<dyn NoiseFn<f64, 3> + Sync> = Box::new(Add::new(
             Add::new(
                 ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE),
                 Multiply::new(
@@ -279,15 +280,42 @@ impl VoxelComputePipeline {
     }
 
     pub fn load_chunks(&mut self, sim_data: &mut SimData) {
+        let mut chunk_buffer = self.voxel_buffer.write().unwrap();
         for x_i in 0..RENDER_SIZE[0] {
             for y_i in 0..RENDER_SIZE[1] {
-                for z_i in 0..RENDER_SIZE[2] {
+                let chunks:Vec<Vec<[u32;2]>> = (0..RENDER_SIZE[2]).into_par_iter().map(|z_i| {
                     let chunk_location = [
                         sim_data.start_pos[0] + x_i as i32,
                         sim_data.start_pos[1] + y_i as i32,
                         sim_data.start_pos[2] + z_i as i32,
                     ];
-                    self.write_chunk(chunk_location);
+                    self.world_gen.gen_chunk(chunk_location)
+                }).collect();
+                for (z_i, chunk) in chunks.into_iter().enumerate() {
+                    let chunk_location = [
+                        sim_data.start_pos[0] + x_i as i32,
+                        sim_data.start_pos[1] + y_i as i32,
+                        sim_data.start_pos[2] + z_i as i32,
+                    ];
+                    let chunk_idx = self.get_chunk_idx(chunk_location);
+                    for (i, vox) in chunk.into_iter().enumerate() {
+                        chunk_buffer[chunk_idx
+                            * (CHUNK_SIZE as usize)
+                            * (CHUNK_SIZE as usize)
+                            * (CHUNK_SIZE as usize)
+                            + i] = vox;
+                    }
+                    for i in 0..SUB_CHUNK_COUNT {
+                        for j in 0..SUB_CHUNK_COUNT {
+                            for k in 0..SUB_CHUNK_COUNT {
+                                self.chunk_update_queue.push([
+                                    chunk_location[0] * SUB_CHUNK_COUNT as i32 + i as i32,
+                                    chunk_location[1] * SUB_CHUNK_COUNT as i32 + j as i32,
+                                    chunk_location[2] * SUB_CHUNK_COUNT as i32 + k as i32,
+                                ]);
+                            }
+                        }
+                    }
                 }
             }
         }

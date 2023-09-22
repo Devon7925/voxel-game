@@ -1,4 +1,3 @@
-multithread initial chunkloading
 better visuals
     normal variation for materials
     projectile material

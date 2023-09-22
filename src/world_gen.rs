@@ -3,11 +3,11 @@ use noise::NoiseFn;
 use crate::CHUNK_SIZE;
 
 pub struct WorldGen {
-    world_density: Box<dyn NoiseFn<f64, 3>>,
+    world_density: Box<dyn NoiseFn<f64, 3> + Sync>,
 }
 
 impl WorldGen {
-    pub fn new(noise: Box<dyn NoiseFn<f64, 3>>) -> Self {
+    pub fn new(noise: Box<dyn NoiseFn<f64, 3> + Sync>) -> Self {
         Self {
             world_density: noise,
         }
