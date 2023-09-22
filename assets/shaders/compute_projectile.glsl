@@ -60,6 +60,9 @@ void main() {
                 ivec3 voxel_pos = ivec3(pos);
                 uvec2 data = get_data(voxel_pos);
                 if (data.x == 0 || data.x == 2) {
+                    if (data.x == 2) {
+                        projectile.health = 0.0;
+                    }
                     continue;
                 }
                 if (projectile.damage > 0) {

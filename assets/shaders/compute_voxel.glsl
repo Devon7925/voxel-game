@@ -37,8 +37,6 @@ void set_data(ivec3 global_pos, uvec2 data) {
     voxels[index] = data;
 }
 
-const uint[] material_damage_threshhold = {0, 10, 0, 5, 5};
-
 void main() {
     ivec3 pos = ivec3(gl_WorkGroupSize)*chunk_updates[gl_WorkGroupID.x].xyz + ivec3(gl_LocalInvocationID); 
     uvec2 pos_data = get_data(pos);

@@ -362,7 +362,7 @@ impl WorldState {
                 if action.shoot == ACTIVE_BUTTON && player.cooldown <= 0.0 {
                     player.cooldown = player.cards.evaluate_value();
                     for proj_stats in player.cards.get_proj_stats() {
-                        let proj_size = 1.5f32.powi(proj_stats.size);
+                        let proj_size = 1.25f32.powi(proj_stats.size);
                         let proj_speed = 3.0 * 1.5f32.powi(proj_stats.speed);
                         let proj_damage = proj_stats.damage as f32;
                         self.projectiles.push(Projectile {

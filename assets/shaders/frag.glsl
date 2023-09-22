@@ -168,7 +168,7 @@ vec4 hash4( vec3 p ) // replace this by something better
 	return -1.0 + 2.0*fract(sin(p2)*43758.5453123);
 }
 
-float voronoise( in vec3 p, float u, float v )
+vec4 voronoise( in vec3 p, float u, float v )
 {
 	float k = 1.0+63.0*pow(1.0-v,6.0);
 
@@ -176,39 +176,50 @@ float voronoise( in vec3 p, float u, float v )
     vec3 f = fract(p);
     
 	vec2 a = vec2(0.0,0.0);
+    vec3 dir = vec3(0.0);
     for( int z=-2; z<=2; z++ )
     for( int y=-2; y<=2; y++ )
     for( int x=-2; x<=2; x++ )
     {
         vec3 g = vec3( x, y, z );
 		vec4 o = hash4( i + g )*vec4(vec3(u), 1.0);
-		vec3  d = g - f + o.xyz;
+		vec3 d = g - f + o.xyz;
 		float w = pow( 1.0-smoothstep(0.0,1.414,length(d)), k );
 		a += vec2(o.w*w,w);
+        dir += d * (2.0*o.w - 1.0) * w;
     }
 	
-    return a.x/a.y;
+    return vec4(dir, a.x)/a.y;
 }
 
-vec3 material_color(uvec2 voxel_data, vec3 pos) {
+struct MaterialProperties {
+    vec3 color;
+    vec3 normal;
+    float shine;
+};
+
+MaterialProperties material_props(uvec2 voxel_data, vec3 pos, vec3 in_normal) {
     if (voxel_data.x == 0) {
         // air: invalid state
-        return vec3(1.0, 0.0, 0.0);
+        return MaterialProperties(vec3(1.0, 0.0, 0.0), in_normal, 0.0);
     } else if (voxel_data.x == 1) {
         //stone
-        return mix(vec3(0.7, 0.7, 0.7), vec3(0.2, 0.2, 0.2), voronoise(2.0*pos, 1.0, 1.0)) * (1.0 - voxel_data.y / 10.0);
+        vec4 noise = voronoise(2.0*pos, 1.0, 1.0);
+        return MaterialProperties(mix(vec3(0.7, 0.7, 0.7), vec3(0.2, 0.2, 0.25), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.35 * noise.xyz), 0.35);
     } else if (voxel_data.x == 2) {
         // out of bounds: invalid state
-        return vec3(0.0, 0.0, 1.0);
+        return MaterialProperties(vec3(0.0, 0.0, 1.0), in_normal, 0.0);
     } else if (voxel_data.x == 3) {
         // dirt
-        return mix(vec3(0.5, 0.25, 0.0), vec3(0.2, 0.2, 0.2), voronoise(7.0*pos, 1.0, 1.0)) * (1.0 - voxel_data.y / 10.0);
+        vec4 noise = voronoise(7.0*pos, 1.0, 1.0);
+        return MaterialProperties(mix(vec3(0.5, 0.25, 0.0), vec3(0.2, 0.2, 0.2), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.2 * noise.xyz), 0.25);
     } else if (voxel_data.x == 4) {
         // grass
-        return mix(vec3(0.2, 0.9, 0.2), vec3(0.0, 0.2, 0.0), voronoise(20.0*pos, 1.0, 1.0)) * (1.0 - voxel_data.y / 10.0);
+        vec4 noise = voronoise(20.0*pos, 1.0, 1.0);
+        return MaterialProperties(mix(vec3(0.25, 0.8, 0.25), vec3(0.1, 0.3, 0.1), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.5 * noise.xyz), 0.1);
     }
     // unregistered voxel type: invalid state
-    return vec3(1.0, 0.0, 1.0);
+    return MaterialProperties(vec3(1.0, 0.0, 1.0), in_normal, 0.0);
 }
 
 void main() {
@@ -255,17 +266,24 @@ void main() {
         primary_ray.dist = max_depth;
         primary_ray.voxel_data = uvec2(1, 0);
     } else if (primary_ray.voxel_data.x == 2) {
-        f_color = vec4(0.529, 0.808, 0.922, 1.0);
+        float sky_brightness = pow(max(dot(ray, -light_dir), 0.0), 2.0);
+        f_color = vec4(sky_brightness * vec3(0.429, 0.608, 0.622) + vec3(0.1, 0.1, 0.4), 1.0);
         return;
     }
-    vec3 mat_color = material_color(primary_ray.voxel_data, primary_ray.pos);
+    MaterialProperties mat_props = material_props(primary_ray.voxel_data, primary_ray.pos, primary_ray.normal);
     RaycastResult shade_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, -light_dir, 100, true, 0.0);
-    vec3 color = 0.1 * mat_color;
+    vec3 color = 0.15 * mat_props.color;
     if (!shade_check.hit || shade_check.voxel_data.x == 2) {
-        float diffuse = max(dot(primary_ray.normal, -light_dir), 0.0);
-        vec3 reflected = reflect(-ray, primary_ray.normal);
+        float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
+        vec3 reflected = reflect(-ray, mat_props.normal);
         float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
-        color += (0.7*diffuse + 0.3 * specular)*mat_color;
+        color += (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
+    }
+    RaycastResult ao_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, mat_props.normal, 50, false, 0.0);
+    if (!ao_check.hit || ao_check.voxel_data.x == 2) {
+        vec3 reflected = reflect(-ray, mat_props.normal);
+        float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
+        color += 0.2 * (0.65 + mat_props.shine * specular)*mat_props.color;
     }
 
     f_color = vec4(color, 1.0);

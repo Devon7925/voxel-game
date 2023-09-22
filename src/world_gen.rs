@@ -25,9 +25,9 @@ impl WorldGen {
                                     (chunk_location[2] * (CHUNK_SIZE as i32) + (z as i32)) as f64,
                                 ];
                                 let density = self.world_density.get(true_pos) - ((true_pos[1] - 1800.0) / 50.0);
-                                if density > 0.5 { 
+                                if density > 0.2 { 
                                     [1, 0x00000000]
-                                } else if density > 0.1 {
+                                } else if density > 0.05 {
                                     [3, 0x00000000]
                                 } else if density > 0.0 {
                                     [4, 0x00000000]
