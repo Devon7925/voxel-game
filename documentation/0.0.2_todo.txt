@@ -1,5 +1,3 @@
-better visuals
-    tuning
 basic ui
     player health
     player cooldowns

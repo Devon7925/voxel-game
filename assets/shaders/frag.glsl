@@ -134,6 +134,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             float t_min = max(max(t_x.x, t_y.x), t_z.x);
             float t_max = min(min(t_x.y, t_y.y), t_z.y);
             if (t_min > t_max) continue;
+            if (t_min < 0.01) continue;
             if (t_min < min_dist) {
                 min_dist = t_min;
                 if (t_x.x == t_min) {
@@ -237,25 +238,34 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             break;
         }
         MaterialProperties mat_props = material_props(primary_ray.voxel_data, primary_ray.pos, primary_ray.normal);
+        color += (1 - mat_props.transparency) * multiplier * 0.15 * mat_props.color;
+
         RaycastResult shade_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, -light_dir, 100, true, 0.0);
-        color += multiplier * 0.15 * mat_props.color;
-        if (!shade_check.hit || shade_check.voxel_data.x == 2) {
+        MaterialProperties shade_mat_props = material_props(shade_check.voxel_data, shade_check.pos, shade_check.normal);
+        if (shade_mat_props.transparency > 0.0) {
+            shade_check = raycast(shade_check.pos, -light_dir, 100, false, 0.0);
+            if (!shade_check.hit || shade_check.voxel_data.x == 2) {
+                float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
+                vec3 reflected = reflect(-ray, mat_props.normal);
+                float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
+                color += shade_mat_props.transparency * (1 - mat_props.transparency) * multiplier * (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
+            }
+        } else if (!shade_check.hit || shade_check.voxel_data.x == 2) {
             float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
             vec3 reflected = reflect(-ray, mat_props.normal);
             float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
-            color += multiplier * (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
+            color += (1 - mat_props.transparency) * multiplier * (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
         }
         RaycastResult ao_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, mat_props.normal, 50, false, 0.0);
         if (!ao_check.hit || ao_check.voxel_data.x == 2) {
             vec3 reflected = reflect(-ray, mat_props.normal);
             float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
-            color += multiplier * 0.2 * (0.65 + mat_props.shine * specular)*mat_props.color;
+            color += (1 - mat_props.transparency) * multiplier * 0.2 * (0.65 + mat_props.shine * specular)*mat_props.color;
         }
-
-        color *= 1 - mat_props.transparency;
+        
         multiplier *= mat_props.transparency;
 
-        primary_ray = raycast(primary_ray.pos, ray, 100, false, 0.0);
+        primary_ray = raycast(primary_ray.pos, ray, 100, true, 0.0);
         if (!primary_ray.hit) {
             color += multiplier * vec3(1.0, 0.0, 0.0);
             break;

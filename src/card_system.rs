@@ -73,7 +73,7 @@ impl BaseCard {
                     }
                 }
                 if damage > 0 {
-                    0.01 * damage as f32 * 1.5f32.powi(speed) * (1.0 + 1.25f32.powi(size))
+                    0.005 * damage as f32 * 1.5f32.powi(speed) * (1.0 + 1.25f32.powi(size))
                 } else {
                     -0.05 * damage as f32
                 }
