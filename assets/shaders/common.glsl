@@ -25,7 +25,7 @@ struct Player {
     vec4 right;
 };
 
-const uint[] material_damage_threshhold = {0, 10, 0, 5, 5};
+const uint[] material_damage_threshhold = {0, 10, 0, 5, 5, 0};
 
 uint get_index(ivec3 global_pos, uvec3 render_size) {
     uvec3 chunk_pos = (global_pos / CHUNK_SIZE) % render_size;

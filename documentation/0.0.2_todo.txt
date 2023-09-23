@@ -1,5 +1,4 @@
 better visuals
-    projectile material
     tuning
 basic ui
     player health
