@@ -356,7 +356,7 @@ impl WorldState {
                 player.vel += accel_speed * move_vec * time_step;
 
                 if action.jump == ACTIVE_BUTTON {
-                    player.vel += player.collision_vec.zip(Vector3::new(0.3, 5.0, 0.3), |c, m| c as f32 * m);
+                    player.vel += player.collision_vec.zip(Vector3::new(0.3, 8.0, 0.3), |c, m| c as f32 * m);
                 }
 
                 if action.shoot == ACTIVE_BUTTON && player.cooldown <= 0.0 {
@@ -389,7 +389,7 @@ impl WorldState {
             }
             player.cooldown -= time_step;
 
-            player.vel.y -= 2.5 * time_step;
+            player.vel.y -= 7.5 * time_step;
             if player.vel.magnitude() > 0.0 {
                 player.vel -= 0.1 * player.vel * player.vel.magnitude() * time_step
                     + 0.2 * player.vel.normalize() * time_step;
