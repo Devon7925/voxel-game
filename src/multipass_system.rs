@@ -7,8 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 use cgmath::{Matrix4, SquareMatrix, Vector3};
-use egui_winit_vulkano::{Gui, GuiConfig, egui::{self, epaint, pos2, Stroke, Color32}};
-use winit::event_loop::EventLoop;
+use egui_winit_vulkano::{
+    egui::{self, emath, epaint, pos2, Align2, Color32, Rect, Rounding, Stroke, Vec2, RichText},
+    Gui, GuiConfig,
+};
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferContents, Subbuffer},
@@ -22,16 +24,14 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract},
     memory::allocator::StandardMemoryAllocator,
-    pipeline::graphics::vertex_input::Vertex,
+    pipeline::graphics::vertex_input::{Vertex, VertexMember},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    sync::GpuFuture, swapchain::Surface,
+    swapchain::Surface,
+    sync::GpuFuture,
 };
+use winit::event_loop::EventLoop;
 
-use crate::{
-    raytracer::PointLightingSystem,
-    rollback_manager::RollbackData,
-    SimData,
-};
+use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -208,11 +208,17 @@ impl FrameSystem {
             command_buffer_allocator.clone(),
             descriptor_set_allocator,
         );
-        let gui = Gui::new_with_subpass(&event_loop, surface.clone(), gfx_queue.clone(), lighting_subpass, GuiConfig {
-            preferred_format: Some(Format::B8G8R8A8_UNORM),
-            is_overlay: true,
-            ..Default::default()
-        });
+        let gui = Gui::new_with_subpass(
+            &event_loop,
+            surface.clone(),
+            gfx_queue.clone(),
+            lighting_subpass,
+            GuiConfig {
+                preferred_format: Some(Format::B8G8R8A8_UNORM),
+                is_overlay: true,
+                ..Default::default()
+            },
+        );
 
         FrameSystem {
             gfx_queue,
@@ -519,19 +525,81 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
             .unwrap();
         self.frame.system.gui.immediate_ui(|gui| {
             let ctx = gui.context();
+            let screen_size = ctx.screen_rect().size();
             // Fill egui UI layout here
-            egui::Area::new("crosshair")
-            .show(&ctx, |ui| {
-                let center = ctx.screen_rect().size() / 2.0;
+            egui::Area::new("crosshair").show(&ctx, |ui| {
+                let center = screen_size / 2.0;
                 let thickness = 1.0;
                 let color = Color32::from_additive_luminance(255);
                 let crosshair_size = 10.0;
 
-                ui.painter().add(epaint::Shape::line_segment([pos2(-crosshair_size, 0.0) + center, pos2(crosshair_size, 0.0) + center], Stroke::new(thickness, color)));
-                ui.painter().add(epaint::Shape::line_segment([pos2(0.0, -crosshair_size) + center, pos2(0.0, crosshair_size) + center], Stroke::new(thickness, color)));
+                ui.painter().add(epaint::Shape::line_segment(
+                    [
+                        pos2(-crosshair_size, 0.0) + center,
+                        pos2(crosshair_size, 0.0) + center,
+                    ],
+                    Stroke::new(thickness, color),
+                ));
+                ui.painter().add(epaint::Shape::line_segment(
+                    [
+                        pos2(0.0, -crosshair_size) + center,
+                        pos2(0.0, crosshair_size) + center,
+                    ],
+                    Stroke::new(thickness, color),
+                ));
             });
+
+            let corner_offset = 10.0;
+            egui::Area::new("healthbar")
+                .anchor(
+                    Align2::LEFT_BOTTOM,
+                    Vec2::new(corner_offset, -corner_offset),
+                )
+                .show(&ctx, |ui| {
+                    let thickness = 1.0;
+                    let color = Color32::from_additive_luminance(255);
+                    let player_health =
+                        rollback_manager.cached_current_state.players[0].health as f32;
+                    let player_max_health = 100.0;
+
+                    ui.label(RichText::new(format!("{} / {}", player_health, player_max_health)).color(Color32::WHITE));
+                    let desired_size = egui::vec2(200.0, 30.0);
+                    let (_id, rect) = ui.allocate_space(desired_size);
+
+                    let to_screen = emath::RectTransform::from_to(
+                        Rect::from_x_y_ranges(0.0..=1.0, 0.0..=1.0),
+                        rect,
+                    );
+
+                    let healthbar_size = Rect::from_min_max(
+                        to_screen * pos2(0.0, 0.0),
+                        to_screen * pos2(1.0, 1.0),
+                    );
+                    let health_size = Rect::from_min_max(
+                        to_screen * pos2(0.0, 0.0),
+                        to_screen * pos2(
+                            player_health / player_max_health,
+                            1.0,
+                        ),
+                    );
+
+                    ui.painter().add(epaint::Shape::rect_stroke(
+                        healthbar_size,
+                        Rounding::none(),
+                        Stroke::new(thickness, color),
+                    ));
+                    ui.painter().add(epaint::Shape::rect_filled(
+                        health_size,
+                        Rounding::none(),
+                        color,
+                    ));
+                });
         });
-        let cb = self.frame.system.gui.draw_on_subpass_image(self.frame.framebuffer.extent());
+        let cb = self
+            .frame
+            .system
+            .gui
+            .draw_on_subpass_image(self.frame.framebuffer.extent());
         self.frame
             .command_buffer_builder
             .as_mut()
