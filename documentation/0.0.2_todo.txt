@@ -1,8 +1,7 @@
 more cards
     on hit
-    lifetime
-    piercing
-    gravity
+    create material
+settings.json
 multiple card abilities
 more materials
     ice

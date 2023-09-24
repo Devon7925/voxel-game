@@ -3,6 +3,7 @@ more cards
     health control
     friendly fire
     shape control
+    piercing
 bug fixes
     fix aspect ratio issue
     fix camera flip when looking up and down

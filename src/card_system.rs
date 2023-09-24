@@ -11,12 +11,16 @@ pub enum ProjectileModifier {
     Damage(i32),
     Speed(i32),
     Size(i32),
+    Lifetime(i32),
+    Gravity(i32),
 }
 
 pub struct ProjStats {
     pub damage: i32,
     pub speed: i32,
     pub size: i32,
+    pub lifetime: i32,
+    pub gravity: i32,
 }
 
 impl BaseCard {
@@ -35,17 +39,23 @@ impl BaseCard {
                 let mut damage = 0;
                 let mut speed = 0;
                 let mut size = 0;
+                let mut lifetime = 0;
+                let mut gravity = 0;
                 for modifier in modifiers {
                     match modifier {
                         ProjectileModifier::Damage(d) => damage += d,
                         ProjectileModifier::Speed(s) => speed += s,
                         ProjectileModifier::Size(s) => size += s,
+                        ProjectileModifier::Lifetime(l) => lifetime += l,
+                        ProjectileModifier::Gravity(g) => gravity += g,
                     }
                 }
                 stats.push(ProjStats {
                     damage,
                     speed,
                     size,
+                    lifetime,
+                    gravity,
                 });
                 stats
             }
@@ -65,26 +75,24 @@ impl BaseCard {
                 let mut damage = 0;
                 let mut speed = 0;
                 let mut size = 0;
+                let mut lifetime = 0;
+                let mut gravity = 0;
                 for modifier in modifiers {
                     match modifier {
                         ProjectileModifier::Damage(d) => damage += d,
                         ProjectileModifier::Speed(s) => speed += s,
                         ProjectileModifier::Size(s) => size += s,
+                        ProjectileModifier::Lifetime(l) => lifetime += l,
+                        ProjectileModifier::Gravity(g) => gravity += g,
                     }
                 }
                 if damage > 0 {
-                    0.002 * damage as f32 * 1.5f32.powi(speed) * (1.0 + 1.25f32.powi(size))
+                    0.002 * damage as f32 * (1.0 + 1.5f32.powi(speed) * 1.5f32.powi(lifetime)) * (1.0 + 1.25f32.powi(size))
                 } else {
                     -0.02 * damage as f32
                 }
             }
-            BaseCard::MultiCast(cards) => {
-                let mut value = 0.0;
-                for card in cards {
-                    value += card.evaluate_value();
-                }
-                value
-            }
+            BaseCard::MultiCast(cards) => cards.iter().map(|card| card.evaluate_value()).sum::<f32>(),
         }
     }
 }

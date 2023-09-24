@@ -288,10 +288,21 @@ impl WorldState {
             let projectile_rot =
                 Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]).conjugate();
             let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+            let mut proj_vel = projectile_dir * proj.vel;
+            proj_vel.y -= proj.gravity * time_step;
             for i in 0..3 {
-                proj.pos[i] += projectile_dir[i] * proj.vel * time_step;
+                proj.pos[i] += proj_vel[i] * time_step;
             }
+            // recompute vel and rot
+            let new_projectile_rot = Quaternion::look_at(proj_vel.normalize(), Vector3::new(0.0, 1.0, 0.0));
+            proj.dir = [new_projectile_rot.v[0], new_projectile_rot.v[1], new_projectile_rot.v[2], new_projectile_rot.s];
+            proj.vel = proj_vel.magnitude();
+
             proj.lifetime += time_step;
+            proj.ttl -= time_step;
+            if proj.ttl <= 0.0 {
+                proj.health = 0.0;
+            }
         }
         let voxel_reader = voxels.read().unwrap();
         for (player_idx, (player, action)) in self
@@ -364,6 +375,8 @@ impl WorldState {
                     for proj_stats in player.cards.get_proj_stats() {
                         let proj_size = 1.25f32.powi(proj_stats.size);
                         let proj_speed = 3.0 * 1.5f32.powi(proj_stats.speed);
+                        let proj_lifetime = 3.0 * 1.5f32.powi(proj_stats.lifetime);
+                        let proj_gravity = 2.0 * proj_stats.gravity as f32;
                         let proj_damage = proj_stats.damage as f32;
                         self.projectiles.push(Projectile {
                             pos: [player.pos.x, player.pos.y, player.pos.z, 1.0],
@@ -380,8 +393,8 @@ impl WorldState {
                             lifetime: 0.0,
                             owner: player_idx as u32,
                             damage: proj_damage,
-                            _filler1: 0.0,
-                            _filler2: 0.0,
+                            gravity: proj_gravity,
+                            ttl: proj_lifetime,
                             _filler3: 0.0,
                         })
                     }
