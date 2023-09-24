@@ -1,7 +1,6 @@
 basic ui
     player health
     player cooldowns
-    crosshair
     death / respawn time
 more materials
     ice

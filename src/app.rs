@@ -29,7 +29,7 @@ use vulkano::{
 
 use vulkano_win::VkSurfaceBuild;
 use winit::{
-    dpi::{LogicalSize, PhysicalSize},
+    dpi::PhysicalSize,
     event_loop::EventLoop,
     window::{Window, WindowBuilder},
 };
@@ -173,6 +173,8 @@ impl RenderPipeline {
         // Here is the basic initialization for the deferred system.
         let frame_system = FrameSystem::new(
             queue.clone(),
+            surface.clone(),
+            event_loop,
             swapchain.image_format(),
             memory_allocator.clone(),
             command_buffer_allocator.clone(),

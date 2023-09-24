@@ -28,7 +28,7 @@ use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
-    window::Window, dpi::{LogicalPosition, PhysicalPosition},
+    window::Window, dpi::PhysicalPosition,
 };
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
@@ -203,107 +203,110 @@ fn handle_events(
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
         match &event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => {
-                    is_running = false;
-                }
-                // Resize window and its images.
-                WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
-                    //TODO
-                    // let vulkano_window = app.windows.get_renderer_mut(*window_id).unwrap();
-                    // vulkano_window.resize();
-                }
-                // Handle mouse position events.
-                WindowEvent::CursorMoved { position, .. } => {
-                    let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
-
-                    window.set_cursor_position(PhysicalPosition::new(
-                        (WINDOW_WIDTH / 2.0) as f64,
-                        (WINDOW_HEIGHT / 2.0) as f64,
-                    )).unwrap_or_else(|_| println!("Failed to set cursor position"));
-                    // turn camera
-                    let delta =
-                        Vector2::new(position.x as f32, position.y as f32) - Vector2::new((WINDOW_WIDTH / 2.0) as f32, (WINDOW_HEIGHT / 2.0) as f32);
-                    controls.mouse_move[0] += delta.x;
-                    controls.mouse_move[1] += delta.y;
-                    *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
-                }
-                // Handle mouse button events.
-                WindowEvent::MouseInput { state, button, .. } => {
-                    if button == &MouseButton::Left {
-                        controls.mouse_left = state == &ElementState::Pressed;
+            Event::WindowEvent { event, .. } => {
+                app.vulkano_interface.frame_system.gui.update(&event);
+                match event {
+                    WindowEvent::CloseRequested => {
+                        is_running = false;
                     }
-                    if button == &MouseButton::Right {
-                        controls.mouse_right = state == &ElementState::Pressed;
+                    // Resize window and its images.
+                    WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
+                        //TODO
+                        // let vulkano_window = app.windows.get_renderer_mut(*window_id).unwrap();
+                        // vulkano_window.resize();
                     }
-                }
-                WindowEvent::KeyboardInput { input, .. } => {
-                    input.virtual_keycode.map(|key| match key {
-                        winit::event::VirtualKeyCode::Escape => {
-                            is_running = false;
-                        }
-                        winit::event::VirtualKeyCode::Space => {
-                            controls.up = input.state == ElementState::Pressed;
-                        }
-                        winit::event::VirtualKeyCode::LControl => {
-                            controls.down = input.state == ElementState::Pressed;
-                        }
-                        winit::event::VirtualKeyCode::D => {
-                            controls.right = input.state == ElementState::Pressed;
-                        }
-                        winit::event::VirtualKeyCode::A => {
-                            controls.left = input.state == ElementState::Pressed;
-                        }
-                        winit::event::VirtualKeyCode::W => {
-                            controls.forward = input.state == ElementState::Pressed;
-                        }
-                        winit::event::VirtualKeyCode::S => {
-                            controls.backward = input.state == ElementState::Pressed;
-                        }
-                        winit::event::VirtualKeyCode::LShift => {
-                            controls.sprint = input.state == ElementState::Pressed;
-                        }
-                        winit::event::VirtualKeyCode::Up => {
-                            if input.state == ElementState::Released {
-                                sim_settings.max_dist += 1;
-                                println!("max_dist: {}", sim_settings.max_dist);
-                            }
-                        }
-                        winit::event::VirtualKeyCode::Down => {
-                            if input.state == ElementState::Released {
-                                sim_settings.max_dist -= 1;
-                                println!("max_dist: {}", sim_settings.max_dist);
-                            }
-                        }
-                        winit::event::VirtualKeyCode::P => {
-                            if input.state == ElementState::Released {
-                                sim_settings.do_compute = !sim_settings.do_compute;
-                                println!("do_compute: {}", sim_settings.do_compute);
-                            }
-                        }
-                        winit::event::VirtualKeyCode::R => {
-                            if input.state == ElementState::Released {
-                                let cam_player =
-                                    app.rollback_data.cached_current_state.players[0].clone();
-                                println!("cam_pos: {:?}", cam_player.pos);
-                                println!("cam_dir: {:?}", cam_player.dir);
-                            }
-                        }
-                        winit::event::VirtualKeyCode::C => {
-                            if input.state == ElementState::Released {
-                                controls.do_chunk_load = !controls.do_chunk_load;
-                                println!("chunk load: {}", controls.do_chunk_load);
-                            }
-                        }
-                        _ => (),
-                    });
-                }
-                WindowEvent::Focused(true) => {
-                    let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                    // Handle mouse position events.
+                    WindowEvent::CursorMoved { position, .. } => {
+                        let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
-                    window.set_cursor_visible(false);
+                        window.set_cursor_position(PhysicalPosition::new(
+                            (WINDOW_WIDTH / 2.0) as f64,
+                            (WINDOW_HEIGHT / 2.0) as f64,
+                        )).unwrap_or_else(|_| println!("Failed to set cursor position"));
+                        // turn camera
+                        let delta =
+                            Vector2::new(position.x as f32, position.y as f32) - Vector2::new((WINDOW_WIDTH / 2.0) as f32, (WINDOW_HEIGHT / 2.0) as f32);
+                        controls.mouse_move[0] += delta.x;
+                        controls.mouse_move[1] += delta.y;
+                        *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
+                    }
+                    // Handle mouse button events.
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        if button == &MouseButton::Left {
+                            controls.mouse_left = state == &ElementState::Pressed;
+                        }
+                        if button == &MouseButton::Right {
+                            controls.mouse_right = state == &ElementState::Pressed;
+                        }
+                    }
+                    WindowEvent::KeyboardInput { input, .. } => {
+                        input.virtual_keycode.map(|key| match key {
+                            winit::event::VirtualKeyCode::Escape => {
+                                is_running = false;
+                            }
+                            winit::event::VirtualKeyCode::Space => {
+                                controls.up = input.state == ElementState::Pressed;
+                            }
+                            winit::event::VirtualKeyCode::LControl => {
+                                controls.down = input.state == ElementState::Pressed;
+                            }
+                            winit::event::VirtualKeyCode::D => {
+                                controls.right = input.state == ElementState::Pressed;
+                            }
+                            winit::event::VirtualKeyCode::A => {
+                                controls.left = input.state == ElementState::Pressed;
+                            }
+                            winit::event::VirtualKeyCode::W => {
+                                controls.forward = input.state == ElementState::Pressed;
+                            }
+                            winit::event::VirtualKeyCode::S => {
+                                controls.backward = input.state == ElementState::Pressed;
+                            }
+                            winit::event::VirtualKeyCode::LShift => {
+                                controls.sprint = input.state == ElementState::Pressed;
+                            }
+                            winit::event::VirtualKeyCode::Up => {
+                                if input.state == ElementState::Released {
+                                    sim_settings.max_dist += 1;
+                                    println!("max_dist: {}", sim_settings.max_dist);
+                                }
+                            }
+                            winit::event::VirtualKeyCode::Down => {
+                                if input.state == ElementState::Released {
+                                    sim_settings.max_dist -= 1;
+                                    println!("max_dist: {}", sim_settings.max_dist);
+                                }
+                            }
+                            winit::event::VirtualKeyCode::P => {
+                                if input.state == ElementState::Released {
+                                    sim_settings.do_compute = !sim_settings.do_compute;
+                                    println!("do_compute: {}", sim_settings.do_compute);
+                                }
+                            }
+                            winit::event::VirtualKeyCode::R => {
+                                if input.state == ElementState::Released {
+                                    let cam_player =
+                                        app.rollback_data.cached_current_state.players[0].clone();
+                                    println!("cam_pos: {:?}", cam_player.pos);
+                                    println!("cam_dir: {:?}", cam_player.dir);
+                                }
+                            }
+                            winit::event::VirtualKeyCode::C => {
+                                if input.state == ElementState::Released {
+                                    controls.do_chunk_load = !controls.do_chunk_load;
+                                    println!("chunk load: {}", controls.do_chunk_load);
+                                }
+                            }
+                            _ => (),
+                        });
+                    }
+                    WindowEvent::Focused(true) => {
+                        let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+
+                        window.set_cursor_visible(false);
+                    }
+                    _ => (),
                 }
-                _ => (),
             },
             Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
             _ => (),

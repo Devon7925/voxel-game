@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 use cgmath::{Matrix4, SquareMatrix, Vector3};
+use egui_winit_vulkano::{Gui, GuiConfig, egui::{self, epaint, pos2, Stroke, Color32}};
+use winit::event_loop::EventLoop;
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferContents, Subbuffer},
@@ -22,7 +24,7 @@ use vulkano::{
     memory::allocator::StandardMemoryAllocator,
     pipeline::graphics::vertex_input::Vertex,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    sync::GpuFuture,
+    sync::GpuFuture, swapchain::Surface,
 };
 
 use crate::{
@@ -63,6 +65,7 @@ pub struct FrameSystem {
 
     // Will allow us to add an ambient lighting to a scene during the second subpass.
     ambient_lighting_system: PointLightingSystem,
+    pub gui: Gui,
 }
 
 impl FrameSystem {
@@ -76,6 +79,8 @@ impl FrameSystem {
     ///   to create a new `FrameSystem`.
     pub fn new(
         gfx_queue: Arc<Queue>,
+        surface: Arc<Surface>,
+        event_loop: &EventLoop<()>,
         final_output_format: Format,
         memory_allocator: Arc<StandardMemoryAllocator>,
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
@@ -198,11 +203,16 @@ impl FrameSystem {
         let lighting_subpass = Subpass::from(render_pass.clone(), 1).unwrap();
         let ambient_lighting_system = PointLightingSystem::new(
             gfx_queue.clone(),
-            lighting_subpass,
+            lighting_subpass.clone(),
             memory_allocator.clone(),
             command_buffer_allocator.clone(),
             descriptor_set_allocator,
         );
+        let gui = Gui::new_with_subpass(&event_loop, surface.clone(), gfx_queue.clone(), lighting_subpass, GuiConfig {
+            preferred_format: Some(Format::B8G8R8A8_UNORM),
+            is_overlay: true,
+            ..Default::default()
+        });
 
         FrameSystem {
             gfx_queue,
@@ -213,6 +223,7 @@ impl FrameSystem {
             normals_buffer,
             depth_buffer,
             ambient_lighting_system,
+            gui,
         }
     }
 
@@ -505,6 +516,27 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
             .as_mut()
             .unwrap()
             .execute_commands(command_buffer)
+            .unwrap();
+        self.frame.system.gui.immediate_ui(|gui| {
+            let ctx = gui.context();
+            // Fill egui UI layout here
+            egui::Area::new("crosshair")
+            .show(&ctx, |ui| {
+                let center = ctx.screen_rect().size() / 2.0;
+                let thickness = 1.0;
+                let color = Color32::from_additive_luminance(255);
+                let crosshair_size = 10.0;
+
+                ui.painter().add(epaint::Shape::line_segment([pos2(-crosshair_size, 0.0) + center, pos2(crosshair_size, 0.0) + center], Stroke::new(thickness, color)));
+                ui.painter().add(epaint::Shape::line_segment([pos2(0.0, -crosshair_size) + center, pos2(0.0, crosshair_size) + center], Stroke::new(thickness, color)));
+            });
+        });
+        let cb = self.frame.system.gui.draw_on_subpass_image(self.frame.framebuffer.extent());
+        self.frame
+            .command_buffer_builder
+            .as_mut()
+            .unwrap()
+            .execute_commands(cb)
             .unwrap();
     }
 }
