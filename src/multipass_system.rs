@@ -594,6 +594,34 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                         color,
                     ));
                 });
+            
+            let respawn_time =
+                rollback_manager.cached_current_state.players[0].respawn_timer;
+            if respawn_time > 0.0 {
+                egui::Area::new("respawn")
+                    .anchor(
+                        Align2::LEFT_TOP,
+                        Vec2::new(corner_offset, corner_offset),
+                    )
+                    .show(&ctx, |ui| {
+
+                        ui.label(RichText::new("You have died").color(Color32::WHITE)); 
+                        ui.label(RichText::new(format!("Respawn in {}", respawn_time)).color(Color32::WHITE)); 
+                    });
+            }
+
+            egui::Area::new("cooldowns")
+                .anchor(
+                    Align2::RIGHT_BOTTOM,
+                    Vec2::new(-corner_offset, -corner_offset),
+                )
+                .show(&ctx, |ui| {
+                    let cooldown =
+                        rollback_manager.cached_current_state.players[0].cooldown as f32;
+                    if cooldown > 0.0 {
+                        ui.label(RichText::new(format!("{}", cooldown as i32)).color(Color32::WHITE).size(36.0)); 
+                    }
+                });
         });
         let cb = self
             .frame

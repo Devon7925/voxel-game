@@ -1,6 +1,3 @@
-basic ui
-    player cooldowns
-    death / respawn time
 more cards
     on hit
     lifetime
