@@ -4,6 +4,22 @@ more cards
     friendly fire
     shape control
     piercing
+Tweaks
+    Worldgen
+        flatter terrain
+        better cover
+        more variation
+    Movement
+        faster - look into mc speed?
+        increace gravity more
+    fullscreen toggle
+    esc removes mouse override until click
+    Increace base bullet speed
+    balance 1 shots
 bug fixes
     fix aspect ratio issue
     fix camera flip when looking up and down
+    fix player model rotation
+    add player material
+    fix player model height
+    fix visible mouse on startup
