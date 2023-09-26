@@ -96,9 +96,11 @@ fn main() {
         start_pos: FIRST_START_POS,
     };
 
+    let player_deck = BaseCard::from_string(fs::read_to_string("player_cards.txt").unwrap().as_str());
+
     app.rollback_data.player_join(Player {
         pos: SPAWN_LOCATION,
-        cards: BaseCard::from_string(fs::read_to_string("player_cards.txt").unwrap().as_str()),
+        cards_reference: app.card_manager.register_base_card(player_deck.clone()),
         ..Default::default()
     });
 
@@ -155,7 +157,7 @@ fn main() {
                 sprint: controls.sprint as u8,
             };
             if MIN_PLAYERS > 1 {
-                network_connection.network_update(&action, &mut app.rollback_data);
+                network_connection.network_update(&action, &player_deck, &mut app.card_manager, &mut app.rollback_data);
             }
             controls.mouse_move = [0.0, 0.0];
             time += std::time::Duration::from_secs_f64(1.0 / 30.0);
@@ -389,10 +391,10 @@ fn compute_then_render(
         }
         
         // Compute.
-        pipeline.rollback_data.download_projectiles(&pipeline.projectile_compute, &mut pipeline.voxel_compute);
+        pipeline.rollback_data.download_projectiles(&pipeline.card_manager, &pipeline.projectile_compute, &mut pipeline.voxel_compute);
         pipeline.rollback_data
         .send_action(action, 0, pipeline.rollback_data.current_time);
-        pipeline.rollback_data.step(time_step, pipeline.voxel_compute.voxels());
+        pipeline.rollback_data.step(&pipeline.card_manager, time_step, pipeline.voxel_compute.voxels());
         pipeline.projectile_compute.upload(&pipeline.rollback_data.rollback_state.projectiles);
         let after_proj_compute = pipeline.projectile_compute.compute(future, &pipeline.voxel_compute, sim_data, time_step);
         let after_compute = pipeline.voxel_compute.compute(after_proj_compute, sim_data);

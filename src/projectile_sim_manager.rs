@@ -8,9 +8,11 @@
 // according to those terms.
 
 use crate::{
-    app::VulkanoInterface, voxel_sim_manager::VoxelComputePipeline, SimData,
+    app::VulkanoInterface, card_system::CardManager, voxel_sim_manager::VoxelComputePipeline,
+    SimData,
 };
 use bytemuck::{Pod, Zeroable};
+use cgmath::{Quaternion, Vector3};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -56,8 +58,8 @@ pub struct Projectile {
     pub lifetime: f32,
     pub owner: u32,
     pub damage: f32,
-    pub gravity: f32,
-    pub ttl: f32,
+    pub proj_card_idx: u32,
+    pub _filler2: f32,
     pub _filler3: f32,
 }
 
@@ -202,13 +204,29 @@ impl ProjectileComputePipeline {
         self.projectile_buffer.clone()
     }
 
-    pub fn download_projectiles(&self, vox_compute: &mut VoxelComputePipeline) -> Vec<Projectile> {
+    pub fn download_projectiles(
+        &self,
+        card_manager: &CardManager,
+        vox_compute: &mut VoxelComputePipeline,
+    ) -> Vec<Projectile> {
         let mut projectiles = Vec::new();
         let projectiles_buffer = self.projectile_buffer.read().unwrap();
         for i in 0..self.upload_projectile_count {
             let projectile = projectiles_buffer[i];
             if projectile.health == 0.0 {
-                vox_compute.queue_update_from_voxel_pos(&[projectile.chunk_update_pos[0], projectile.chunk_update_pos[1], projectile.chunk_update_pos[2]]);
+                vox_compute.queue_update_from_voxel_pos(&[
+                    projectile.chunk_update_pos[0],
+                    projectile.chunk_update_pos[1],
+                    projectile.chunk_update_pos[2],
+                ]);
+                for card_ref in card_manager
+                    .get_referenced_proj(projectile.proj_card_idx as usize)
+                    .on_hit.clone()
+                {
+                    let proj_rot = projectile.dir;
+                    let proj_rot = Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
+                    projectiles.extend(card_manager.get_projectiles_from_base_card(&card_ref, &Vector3::new(projectile.pos[0], projectile.pos[1], projectile.pos[2]), &proj_rot, projectile.owner))
+                }
                 continue;
             }
             projectiles.push(projectile);

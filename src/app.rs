@@ -9,7 +9,7 @@
 
 use crate::{
     multipass_system::FrameSystem, rasterizer::RasterizerSystem, rollback_manager::RollbackData,
-    voxel_sim_manager::VoxelComputePipeline, WINDOW_HEIGHT, WINDOW_WIDTH, projectile_sim_manager::ProjectileComputePipeline,
+    voxel_sim_manager::VoxelComputePipeline, WINDOW_HEIGHT, WINDOW_WIDTH, projectile_sim_manager::ProjectileComputePipeline, card_system::CardManager,
 };
 use std::sync::Arc;
 use vulkano::{
@@ -52,6 +52,7 @@ pub struct RenderPipeline {
     pub voxel_compute: VoxelComputePipeline,
     pub projectile_compute: ProjectileComputePipeline,
     pub rollback_data: RollbackData,
+    pub card_manager: CardManager,
 }
 
 impl RenderPipeline {
@@ -209,6 +210,7 @@ impl RenderPipeline {
             projectile_compute: ProjectileComputePipeline::new(&vulkano_interface, compute_queue.clone()),
             rollback_data,
             vulkano_interface,
+            card_manager: CardManager::default(),
         }
     }
 }

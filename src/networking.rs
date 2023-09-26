@@ -6,7 +6,7 @@ use std::{time::Duration, collections::HashMap};
 use tokio::runtime::Runtime;
 use std::str;
 
-use crate::{rollback_manager::{PlayerAction, RollbackData, Player}, SPAWN_LOCATION, card_system::BaseCard};
+use crate::{rollback_manager::{PlayerAction, RollbackData, Player}, SPAWN_LOCATION, card_system::{BaseCard, CardManager}};
 
 pub struct NetworkConnection {
     socket: WebRtcSocket,
@@ -58,7 +58,7 @@ impl NetworkConnection {
         }
     }
 
-    pub fn network_update(&mut self, player_action: &PlayerAction, rollback_manager: &mut RollbackData) {
+    pub fn network_update(&mut self, player_action: &PlayerAction, player_cards: &BaseCard, card_system: &mut CardManager, rollback_manager: &mut RollbackData) {
         // Build message to send to peers
         let packet_data = NetworkPacket::Action(rollback_manager.current_time, player_action.clone());
         let packet = ron::to_string(&packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
@@ -76,7 +76,7 @@ impl NetworkConnection {
                         ..Default::default()
                     });
 
-                    let deck_packet_data = NetworkPacket::DeckUpdate(rollback_manager.rollback_state.players.first().unwrap().cards.clone());
+                    let deck_packet_data = NetworkPacket::DeckUpdate(player_cards.clone());
                     let deck_packet = ron::to_string(&deck_packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
                     self.socket.send(deck_packet.clone(), peer);
                 }
@@ -106,7 +106,7 @@ impl NetworkConnection {
                     rollback_manager.send_action(action, player_idx, time);
                 }
                 NetworkPacket::DeckUpdate(card) => {
-                    rollback_manager.rollback_state.players[player_idx].cards = card;
+                    rollback_manager.rollback_state.players[player_idx].cards_reference = card_system.register_base_card(card);
                 }
             }
         }

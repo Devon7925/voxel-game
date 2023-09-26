@@ -1,5 +1,4 @@
 more cards
-    on hit
     create material
 settings.yaml
     local url
