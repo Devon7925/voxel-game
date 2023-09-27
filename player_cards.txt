@@ -1,1 +1,1 @@
-Projectile([Damage(10),Speed(5),Size(-5)])
+Projectile([Damage(5),Speed(5),Size(-5), OnHit(CreateMaterial(Stone))])

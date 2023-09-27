@@ -8,11 +8,11 @@
 // according to those terms.
 
 use crate::{
-    app::VulkanoInterface, card_system::CardManager, voxel_sim_manager::VoxelComputePipeline,
-    SimData,
+    app::VulkanoInterface, card_system::{CardManager, VoxelMaterial}, voxel_sim_manager::VoxelComputePipeline,
+    SimData, rollback_manager::get_index,
 };
 use bytemuck::{Pod, Zeroable};
-use cgmath::{Quaternion, Vector3};
+use cgmath::{Quaternion, Vector3, Point3};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -210,6 +210,7 @@ impl ProjectileComputePipeline {
         vox_compute: &mut VoxelComputePipeline,
     ) -> Vec<Projectile> {
         let mut projectiles = Vec::new();
+        let mut new_voxels = Vec::new();
         let projectiles_buffer = self.projectile_buffer.read().unwrap();
         for i in 0..self.upload_projectile_count {
             let projectile = projectiles_buffer[i];
@@ -221,16 +222,35 @@ impl ProjectileComputePipeline {
                 ]);
                 for card_ref in card_manager
                     .get_referenced_proj(projectile.proj_card_idx as usize)
-                    .on_hit.clone()
+                    .on_hit
+                    .clone()
                 {
                     let proj_rot = projectile.dir;
-                    let proj_rot = Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
-                    projectiles.extend(card_manager.get_projectiles_from_base_card(&card_ref, &Vector3::new(projectile.pos[0], projectile.pos[1], projectile.pos[2]), &proj_rot, projectile.owner))
+                    let proj_rot =
+                        Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
+                    let effects = card_manager.get_effects_from_base_card(
+                        &card_ref,
+                        &Point3::new(projectile.pos[0], projectile.pos[1], projectile.pos[2]),
+                        &proj_rot,
+                        projectile.owner,
+                    );
+                    projectiles.extend(effects.0);
+                    new_voxels.extend(effects.1);
                 }
                 continue;
             }
             projectiles.push(projectile);
         }
+
+        if new_voxels.len() > 0 {
+            let voxels = vox_compute.voxels();
+            let mut writer = voxels.write().unwrap();
+            for (pos, material) in new_voxels {
+                vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
+                writer[get_index(pos) as usize] = material.to_memory();
+            }
+        }
+
         projectiles
     }
 }

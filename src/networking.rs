@@ -106,7 +106,9 @@ impl NetworkConnection {
                     rollback_manager.send_action(action, player_idx, time);
                 }
                 NetworkPacket::DeckUpdate(card) => {
+                    let card_value = card.evaluate_value();
                     rollback_manager.rollback_state.players[player_idx].cards_reference = card_system.register_base_card(card);
+                    rollback_manager.rollback_state.players[player_idx].cards_value = card_value;
                 }
             }
         }

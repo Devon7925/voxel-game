@@ -1,6 +1,6 @@
 use noise::NoiseFn;
 
-use crate::CHUNK_SIZE;
+use crate::{CHUNK_SIZE, card_system::VoxelMaterial};
 
 pub struct WorldGen {
     world_density: Box<dyn NoiseFn<f64, 3> + Sync>,
@@ -26,14 +26,14 @@ impl WorldGen {
                                 ];
                                 let density = self.world_density.get(true_pos) - ((true_pos[1] - 1800.0) / 50.0);
                                 if density > 0.2 { 
-                                    [1, 0x00000000]
+                                    VoxelMaterial::Stone
                                 } else if density > 0.05 {
-                                    [3, 0x00000000]
+                                    VoxelMaterial::Dirt
                                 } else if density > 0.0 {
-                                    [4, 0x00000000]
+                                    VoxelMaterial::Grass
                                 } else {
-                                    [0, 0x11111111]
-                                }
+                                    VoxelMaterial::Air
+                                }.to_memory()
                             })
                             .collect::<Vec<_>>()
                     })

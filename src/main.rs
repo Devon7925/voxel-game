@@ -97,10 +97,12 @@ fn main() {
     };
 
     let player_deck = BaseCard::from_string(fs::read_to_string("player_cards.txt").unwrap().as_str());
+    let player_deck_value = player_deck.evaluate_value();
 
     app.rollback_data.player_join(Player {
         pos: SPAWN_LOCATION,
         cards_reference: app.card_manager.register_base_card(player_deck.clone()),
+        cards_value: player_deck_value,
         ..Default::default()
     });
 
@@ -394,7 +396,7 @@ fn compute_then_render(
         pipeline.rollback_data.download_projectiles(&pipeline.card_manager, &pipeline.projectile_compute, &mut pipeline.voxel_compute);
         pipeline.rollback_data
         .send_action(action, 0, pipeline.rollback_data.current_time);
-        pipeline.rollback_data.step(&pipeline.card_manager, time_step, pipeline.voxel_compute.voxels());
+        pipeline.rollback_data.step(&pipeline.card_manager, time_step, &mut pipeline.voxel_compute);
         pipeline.projectile_compute.upload(&pipeline.rollback_data.rollback_state.projectiles);
         let after_proj_compute = pipeline.projectile_compute.compute(future, &pipeline.voxel_compute, sim_data, time_step);
         let after_compute = pipeline.voxel_compute.compute(after_proj_compute, sim_data);

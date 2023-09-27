@@ -1,4 +1,4 @@
-use cgmath::{Vector3, Quaternion};
+use cgmath::{Quaternion, Vector3, Point3};
 use serde::{Deserialize, Serialize};
 
 use crate::projectile_sim_manager::Projectile;
@@ -7,6 +7,7 @@ use crate::projectile_sim_manager::Projectile;
 pub enum BaseCard {
     Projectile(Vec<ProjectileModifier>),
     MultiCast(Vec<BaseCard>),
+    CreateMaterial(VoxelMaterial),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -17,6 +18,25 @@ pub enum ProjectileModifier {
     Lifetime(i32),
     Gravity(i32),
     OnHit(BaseCard),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum VoxelMaterial {
+    Stone,
+    Dirt,
+    Grass,
+    Air,
+}
+
+impl VoxelMaterial {
+    pub fn to_memory(&self) -> [u32; 2] {
+        match self {
+            VoxelMaterial::Air => [0, 0x11111111],
+            VoxelMaterial::Stone => [1, 0x00000000],
+            VoxelMaterial::Dirt => [3, 0x00000000],
+            VoxelMaterial::Grass => [4, 0x00000000],
+        }
+    }
 }
 
 impl BaseCard {
@@ -60,6 +80,12 @@ impl BaseCard {
             BaseCard::MultiCast(cards) => {
                 cards.iter().map(|card| card.evaluate_value()).sum::<f32>()
             }
+            BaseCard::CreateMaterial(material) => match material {
+                VoxelMaterial::Stone => 0.1,
+                VoxelMaterial::Dirt => 0.05,
+                VoxelMaterial::Grass => 0.05,
+                VoxelMaterial::Air => 0.0,
+            },
         }
     }
 }
@@ -81,6 +107,7 @@ pub struct ProjStats {
 pub enum ReferencedBaseCardType {
     Projectile,
     MultiCast,
+    CreateMaterial,
     None,
 }
 
@@ -106,19 +133,18 @@ pub struct ReferencedProjectile {
     pub size: i32,
     pub lifetime: i32,
     pub gravity: i32,
-    pub value: f32,
     pub on_hit: Vec<ReferencedBaseCard>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReferencedMulticast {
     pub sub_cards: Vec<ReferencedBaseCard>,
-    pub value: f32,
 }
 
 pub struct CardManager {
     pub referenced_multicasts: Vec<ReferencedMulticast>,
     pub referenced_projs: Vec<ReferencedProjectile>,
+    pub referenced_material_creators: Vec<VoxelMaterial>,
 }
 
 impl Default for CardManager {
@@ -126,6 +152,7 @@ impl Default for CardManager {
         CardManager {
             referenced_multicasts: vec![],
             referenced_projs: vec![],
+            referenced_material_creators: vec![],
         }
     }
 }
@@ -154,7 +181,6 @@ impl CardManager {
                     }
                 }
                 self.referenced_projs.push(ReferencedProjectile {
-                    value,
                     damage,
                     speed,
                     size,
@@ -171,7 +197,6 @@ impl CardManager {
             BaseCard::MultiCast(cards) => {
                 let mut referenced_multicast = ReferencedMulticast {
                     sub_cards: Vec::new(),
-                    value,
                 };
                 for card in cards {
                     referenced_multicast
@@ -185,74 +210,88 @@ impl CardManager {
                     card_idx: self.referenced_multicasts.len() - 1,
                 }
             }
-        }
-    }
-
-    pub fn get_value(&self, reference: &ReferencedBaseCard) -> f32 {
-        match reference.card_type {
-            ReferencedBaseCardType::Projectile => self.referenced_projs[reference.card_idx].value,
-            ReferencedBaseCardType::MultiCast => {
-                self.referenced_multicasts[reference.card_idx].value
+            BaseCard::CreateMaterial(material) => {
+                self.referenced_material_creators.push(material);
+                ReferencedBaseCard {
+                    card_type: ReferencedBaseCardType::CreateMaterial,
+                    card_idx: self.referenced_material_creators.len() - 1,
+                }
             }
-            ReferencedBaseCardType::None => panic!("Cannot get value of None card"),
         }
     }
 
-    pub fn get_proj_refs_from_basecard(&self, reference: &ReferencedBaseCard) -> Vec<u32> {
+    pub fn get_single_refs_from_basecard(
+        &self,
+        reference: &ReferencedBaseCard,
+    ) -> Vec<ReferencedBaseCard> {
         match reference {
-            ReferencedBaseCard {
-                card_type: ReferencedBaseCardType::Projectile,
-                card_idx,
-            } => {
-                vec![*card_idx as u32]
-            }
             ReferencedBaseCard {
                 card_type: ReferencedBaseCardType::MultiCast,
                 card_idx,
+                ..
             } => self.referenced_multicasts[*card_idx]
                 .sub_cards
                 .iter()
-                .map(|card| self.get_proj_refs_from_basecard(card))
+                .map(|card| self.get_single_refs_from_basecard(card))
                 .flatten()
                 .collect(),
             ReferencedBaseCard {
                 card_type: ReferencedBaseCardType::None,
-                card_idx: _,
+                ..
             } => {
                 panic!("Cannot get projs from None card")
             }
+            card_reference => vec![card_reference.clone()],
         }
     }
 
-    pub fn get_projectiles_from_base_card(&self, card: &ReferencedBaseCard, pos: &Vector3<f32>, rot: &Quaternion<f32>, player_idx: u32) -> Vec<Projectile> {
-        self.get_proj_refs_from_basecard(card)
-            .iter()
-            .map(|idx| (idx, self.get_referenced_proj(*idx as usize)))
-            .map(|(proj_card_idx, proj_stats)| {
-                let proj_size = 1.25f32.powi(proj_stats.size);
-                let proj_speed = 3.0 * 1.5f32.powi(proj_stats.speed);
-                let proj_damage = proj_stats.damage as f32;
-                Projectile {
-                    pos: pos.extend(1.0).into(),
-                    chunk_update_pos: [0, 0, 0, 0],
-                    dir: [
-                        rot.v[0],
-                        rot.v[1],
-                        rot.v[2],
-                        rot.s,
-                    ],
-                    size: [proj_size, proj_size, proj_size, 1.0],
-                    vel: proj_speed,
-                    health: 10.0,
-                    lifetime: 0.0,
-                    owner: player_idx,
-                    damage: proj_damage,
-                    proj_card_idx: *proj_card_idx,
-                    _filler2: 0.0,
-                    _filler3: 0.0,
+    pub fn get_effects_from_base_card(
+        &self,
+        card: &ReferencedBaseCard,
+        pos: &Point3<f32>,
+        rot: &Quaternion<f32>,
+        player_idx: u32,
+    ) -> (Vec<Projectile>, Vec<(Point3<i32>, VoxelMaterial)>) {
+        let mut projectiles = vec![];
+        let mut new_voxels = vec![];
+        for reference in self.get_single_refs_from_basecard(card) {
+            match reference {
+                ReferencedBaseCard {
+                    card_type: ReferencedBaseCardType::Projectile,
+                    card_idx,
+                    ..
+                } => {
+                    let proj_stats = self.get_referenced_proj(card_idx);
+                    let proj_size = 1.25f32.powi(proj_stats.size);
+                    let proj_speed = 3.0 * 1.5f32.powi(proj_stats.speed);
+                    let proj_damage = proj_stats.damage as f32;
+                    projectiles.push(Projectile {
+                        pos: [pos.x, pos.y, pos.z, 1.0],
+                        chunk_update_pos: [0, 0, 0, 0],
+                        dir: [rot.v[0], rot.v[1], rot.v[2], rot.s],
+                        size: [proj_size, proj_size, proj_size, 1.0],
+                        vel: proj_speed,
+                        health: 10.0,
+                        lifetime: 0.0,
+                        owner: player_idx,
+                        damage: proj_damage,
+                        proj_card_idx: card_idx as u32,
+                        _filler2: 0.0,
+                        _filler3: 0.0,
+                    });
                 }
-            })
-            .collect()
+                ReferencedBaseCard {
+                    card_type: ReferencedBaseCardType::CreateMaterial,
+                    card_idx,
+                    ..
+                } => {
+                    let material = &self.referenced_material_creators[card_idx];
+                    new_voxels.push((pos.cast::<i32>().unwrap(), material.clone()));
+                }
+                _ => panic!("Invalid state")
+            }
+        }
+        (projectiles, new_voxels)
     }
 
     pub fn get_referenced_proj(&self, idx: usize) -> &ReferencedProjectile {

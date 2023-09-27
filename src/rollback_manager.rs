@@ -60,6 +60,7 @@ pub struct Player {
     pub right: Vector3<f32>,
     pub health: f32,
     pub cards_reference: ReferencedBaseCard,
+    pub cards_value: f32,
     pub cooldown: f32,
     pub respawn_timer: f32,
     pub collision_vec: Vector3<i32>,
@@ -106,6 +107,7 @@ impl Default for Player {
             vel: Vector3::new(0.0, 0.0, 0.0),
             health: 100.0,
             cards_reference: ReferencedBaseCard::default(),
+            cards_value: 0.0,
             cooldown: 0.0,
             respawn_timer: 0.0,
             collision_vec: Vector3::new(0, 0, 0),
@@ -198,7 +200,7 @@ impl RollbackData {
         &mut self,
         card_manager: &CardManager,
         time_step: f32,
-        voxels: &Subbuffer<[[u32; 2]]>,
+        vox_compute: &mut VoxelComputePipeline,
     ) {
         self.rollback_time += 1;
         if self.rollback_time < 50 {
@@ -207,14 +209,14 @@ impl RollbackData {
         let player_actions = self.actions.pop_front().unwrap();
         assert!(player_actions.iter().all(|x| x.is_some()));
         self.rollback_state
-            .step_sim(&player_actions, card_manager, time_step, voxels);
+            .step_sim(&player_actions, true, card_manager, time_step, vox_compute);
     }
 
     fn get_current_state(
         &self,
         card_manager: &CardManager,
         time_step: f32,
-        voxels: &Subbuffer<[[u32; 2]]>,
+        vox_compute: &mut VoxelComputePipeline,
     ) -> WorldState {
         let mut state = self.rollback_state.clone();
         for i in self.rollback_time..self.current_time {
@@ -228,7 +230,7 @@ impl RollbackData {
                         self.actions.len()
                     )
                 });
-            state.step_sim(actions, card_manager, time_step, voxels);
+            state.step_sim(actions, false, card_manager, time_step, vox_compute);
         }
         state
     }
@@ -237,13 +239,13 @@ impl RollbackData {
         &mut self,
         card_manager: &CardManager,
         time_step: f32,
-        voxels: Subbuffer<[[u32; 2]]>,
+        vox_compute: &mut VoxelComputePipeline,
     ) {
-        self.update_rollback_state(card_manager, time_step, &voxels);
+        self.update_rollback_state(card_manager, time_step, vox_compute);
         self.current_time += 1;
         self.actions
             .push_back(vec![None; self.rollback_state.players.len()]);
-        self.cached_current_state = self.get_current_state(card_manager, time_step, &voxels);
+        self.cached_current_state = self.get_current_state(card_manager, time_step, vox_compute);
         //send projectiles
         let projectile_count = 128.min(self.cached_current_state.projectiles.len());
         {
@@ -299,10 +301,12 @@ impl WorldState {
     pub fn step_sim(
         &mut self,
         player_actions: &Vec<Option<PlayerAction>>,
+        is_real_update: bool,
         card_manager: &CardManager,
         time_step: f32,
-        voxels: &Subbuffer<[[u32; 2]]>,
+        vox_compute: &mut VoxelComputePipeline,
     ) {
+        let voxels = vox_compute.voxels();
         let mut new_projectiles = Vec::new();
         for proj in self.projectiles.iter_mut() {
             let projectile_rot =
@@ -402,34 +406,15 @@ impl WorldState {
                 }
 
                 if action.shoot == ACTIVE_BUTTON && player.cooldown <= 0.0 {
-                    player.cooldown = card_manager.get_value(&player.cards_reference);
-                    for (proj_idx, proj_stats) in card_manager
-                        .get_proj_refs_from_basecard(&player.cards_reference)
-                        .iter()
-                        .map(|idx| (idx, card_manager.get_referenced_proj(*idx as usize)))
-                    {
-                        let proj_size = 1.25f32.powi(proj_stats.size);
-                        let proj_speed = 3.0 * 1.5f32.powi(proj_stats.speed);
-                        let proj_damage = proj_stats.damage as f32;
-                        self.projectiles.push(Projectile {
-                            pos: [player.pos.x, player.pos.y, player.pos.z, 1.0],
-                            chunk_update_pos: [0, 0, 0, 0],
-                            dir: [
-                                player.rot.v[0],
-                                player.rot.v[1],
-                                player.rot.v[2],
-                                player.rot.s,
-                            ],
-                            size: [proj_size, proj_size, proj_size, 1.0],
-                            vel: proj_speed,
-                            health: 10.0,
-                            lifetime: 0.0,
-                            owner: player_idx as u32,
-                            damage: proj_damage,
-                            proj_card_idx: *proj_idx,
-                            _filler2: 0.0,
-                            _filler3: 0.0,
-                        })
+                    player.cooldown = player.cards_value;
+                    let effects = card_manager.get_effects_from_base_card(&player.cards_reference, &player.pos, &player.rot, player_idx as u32);
+                    self.projectiles.extend(effects.0);
+                    if is_real_update && effects.1.len() > 0 {
+                        let mut writer = voxels.write().unwrap();
+                        for (pos, material) in effects.1 {
+                            vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
+                            writer[get_index(pos) as usize] = material.to_memory();
+                        }
                     }
                 }
             }
@@ -479,11 +464,30 @@ impl WorldState {
                                 proj.health = 0.0;
                                 for card_ref in card_manager
                                     .get_referenced_proj(proj.proj_card_idx as usize)
-                                    .on_hit.clone()
+                                    .on_hit
+                                    .clone()
                                 {
                                     let proj_rot = proj.dir;
-                                    let proj_rot = Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
-                                    new_projectiles.extend(card_manager.get_projectiles_from_base_card(&card_ref, &Vector3::new(proj.pos[0], proj.pos[1], proj.pos[2]), &proj_rot, proj.owner))
+                                    let proj_rot = Quaternion::new(
+                                        proj_rot[3],
+                                        proj_rot[0],
+                                        proj_rot[1],
+                                        proj_rot[2],
+                                    );
+                                    let effects = card_manager.get_effects_from_base_card(
+                                        &card_ref,
+                                        &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                                        &proj_rot,
+                                        proj.owner,
+                                    );
+                                    new_projectiles.extend(effects.0);
+                                    if is_real_update && effects.1.len() > 0 {
+                                        let mut writer = voxels.write().unwrap();
+                                        for (pos, material) in effects.1 {
+                                            vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
+                                            writer[get_index(pos) as usize] = material.to_memory();
+                                        }
+                                    }
                                 }
                                 break 'outer;
                             }
@@ -501,7 +505,7 @@ impl WorldState {
     }
 }
 
-fn get_index(global_pos: Point3<i32>) -> i32 {
+pub fn get_index(global_pos: Point3<i32>) -> i32 {
     const SIGNED_CHUNK_SIZE: i32 = CHUNK_SIZE as i32;
     let chunk_pos = (global_pos / SIGNED_CHUNK_SIZE)
         .zip(Point3::from(RENDER_SIZE).map(|c| c as i32), |a, b| a % b);
