@@ -44,6 +44,10 @@ impl BaseCard {
         ron::from_str(ron_string).unwrap()
     }
 
+    pub fn vec_from_string(ron_string: &str) -> Vec<Self> {
+        ron::from_str(ron_string).unwrap()
+    }
+
     pub fn to_string(&self) -> String {
         ron::to_string(self).unwrap()
     }
@@ -51,39 +55,33 @@ impl BaseCard {
     pub fn evaluate_value(&self) -> f32 {
         match self {
             BaseCard::Projectile(modifiers) => {
-                let mut damage = 0;
+                let mut hit_value = 0.0;
                 let mut speed = 0;
                 let mut size = 0;
                 let mut lifetime = 0;
                 let mut gravity = 0;
-                let mut value = 0.0;
                 for modifier in modifiers {
                     match modifier {
-                        ProjectileModifier::Damage(d) => damage += d,
+                        ProjectileModifier::Damage(d) => hit_value += *d as f32,
                         ProjectileModifier::Speed(s) => speed += s,
                         ProjectileModifier::Size(s) => size += s,
                         ProjectileModifier::Lifetime(l) => lifetime += l,
                         ProjectileModifier::Gravity(g) => gravity += g,
-                        ProjectileModifier::OnHit(card) => value += card.evaluate_value(),
+                        ProjectileModifier::OnHit(card) => hit_value += card.evaluate_value(),
                     }
                 }
-                value += if damage > 0 {
-                    0.002
-                        * damage as f32
-                        * (1.0 + 1.5f32.powi(speed) * 1.5f32.powi(lifetime))
-                        * (1.0 + 1.25f32.powi(size))
-                } else {
-                    -0.02 * damage as f32
-                };
-                value
+                0.002
+                    * hit_value as f32
+                    * (1.0 + 1.5f32.powi(speed) * 1.5f32.powi(lifetime))
+                    * (1.0 + 1.25f32.powi(size))
             }
             BaseCard::MultiCast(cards) => {
                 cards.iter().map(|card| card.evaluate_value()).sum::<f32>()
             }
             BaseCard::CreateMaterial(material) => match material {
-                VoxelMaterial::Stone => 0.1,
-                VoxelMaterial::Dirt => 0.05,
-                VoxelMaterial::Grass => 0.05,
+                VoxelMaterial::Stone => 10.0,
+                VoxelMaterial::Dirt => 5.0,
+                VoxelMaterial::Grass => 5.0,
                 VoxelMaterial::Air => 0.0,
             },
         }

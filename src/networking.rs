@@ -6,7 +6,7 @@ use std::{time::Duration, collections::HashMap};
 use tokio::runtime::Runtime;
 use std::str;
 
-use crate::{rollback_manager::{PlayerAction, RollbackData, Player}, SPAWN_LOCATION, card_system::{BaseCard, CardManager}, settings_manager::Settings};
+use crate::{rollback_manager::{PlayerAction, RollbackData, Player, PlayerAbility}, SPAWN_LOCATION, card_system::{BaseCard, CardManager}, settings_manager::Settings};
 
 pub struct NetworkConnection {
     socket: WebRtcSocket,
@@ -17,7 +17,7 @@ pub struct NetworkConnection {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum NetworkPacket {
     Action(u64, PlayerAction),
-    DeckUpdate(BaseCard),
+    DeckUpdate(Vec<BaseCard>),
 }
 
 impl NetworkConnection {
@@ -56,7 +56,7 @@ impl NetworkConnection {
         }
     }
 
-    pub fn network_update(&mut self, player_action: &PlayerAction, player_cards: &BaseCard, card_system: &mut CardManager, rollback_manager: &mut RollbackData) {
+    pub fn network_update(&mut self, player_action: &PlayerAction, player_cards: &Vec<BaseCard>, card_system: &mut CardManager, rollback_manager: &mut RollbackData) {
         // Build message to send to peers
         let packet_data = NetworkPacket::Action(rollback_manager.current_time, player_action.clone());
         let packet = ron::to_string(&packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
@@ -103,10 +103,14 @@ impl NetworkConnection {
                 NetworkPacket::Action(time, action) => {
                     rollback_manager.send_action(action, player_idx, time);
                 }
-                NetworkPacket::DeckUpdate(card) => {
-                    let card_value = card.evaluate_value();
-                    rollback_manager.rollback_state.players[player_idx].cards_reference = card_system.register_base_card(card);
-                    rollback_manager.rollback_state.players[player_idx].cards_value = card_value;
+                NetworkPacket::DeckUpdate(cards) => {
+                    rollback_manager.rollback_state.players[player_idx].abilities = cards.into_iter().map(|card| {
+                        PlayerAbility {
+                            value: card.evaluate_value(),
+                            ability: card_system.register_base_card(card),
+                            cooldown: 0.0,
+                        }
+                    }).collect();
                 }
             }
         }

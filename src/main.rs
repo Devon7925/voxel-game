@@ -11,7 +11,7 @@ mod card_system;
 mod utils;
 mod settings_manager;
 
-use crate::{app::RenderPipeline, card_system::BaseCard, settings_manager::Settings};
+use crate::{app::RenderPipeline, card_system::BaseCard, settings_manager::Settings, rollback_manager::PlayerAbility};
 use cgmath::{Matrix4, Point3, SquareMatrix, Vector2, Vector3};
 use multipass_system::Pass;
 use networking::NetworkConnection;
@@ -52,20 +52,6 @@ pub struct SimData {
     start_pos: [i32; 3],
 }
 
-pub struct Controls {
-    forward: bool,
-    backward: bool,
-    left: bool,
-    right: bool,
-    up: bool,
-    down: bool,
-    sprint: bool,
-    mouse_left: bool,
-    mouse_right: bool,
-    do_chunk_load: bool,
-    mouse_move: [f32; 2],
-}
-
 pub const FIRST_START_POS: [i32; 3] = [100, 105, 100];
 pub const SPAWN_LOCATION: Point3<f32> = Point3::new(
     ((FIRST_START_POS[0] + (RENDER_SIZE[0] as i32) / 2) * CHUNK_SIZE as i32) as f32,
@@ -75,6 +61,8 @@ pub const SPAWN_LOCATION: Point3<f32> = Point3::new(
 
 pub const PLAYER_HITBOX_OFFSET: Vector3<f32> = Vector3::new(0.0, -2.0, 0.0);
 pub const PLAYER_HITBOX_SIZE: Vector3<f32> = Vector3::new(1.8, 4.8, 1.8);
+
+pub const CHUNK_LOAD: bool = false;
 
 fn main() {
     // Create event loop.
@@ -98,28 +86,30 @@ fn main() {
         start_pos: FIRST_START_POS,
     };
 
-    let player_deck = BaseCard::from_string(fs::read_to_string("player_cards.txt").unwrap().as_str());
-    let player_deck_value = player_deck.evaluate_value();
+    let player_deck = BaseCard::vec_from_string(fs::read_to_string("player_cards.txt").unwrap().as_str());
 
     app.rollback_data.player_join(Player {
         pos: SPAWN_LOCATION,
-        cards_reference: app.card_manager.register_base_card(player_deck.clone()),
-        cards_value: player_deck_value,
+        abilities: player_deck.iter().map(|card| {
+            PlayerAbility {
+                value: card.evaluate_value(),
+                ability: app.card_manager.register_base_card(card.clone()),
+                cooldown: 0.0,
+            }
+        }).collect(),
         ..Default::default()
     });
 
-    let mut controls = Controls {
+    let mut player_action = PlayerAction {
         forward: false,
         backward: false,
         left: false,
         right: false,
-        up: false,
-        down: false,
+        jump: false,
+        crouch: false,
         sprint: false,
-        mouse_left: false,
-        mouse_right: false,
-        do_chunk_load: false,
-        mouse_move: [0.0, 0.0],
+        activate_ability: vec![false; app.settings.ability_controls.len()],
+        aim: [0.0, 0.0],
     };
 
     app.voxel_compute.load_chunks(&mut sim_data);
@@ -139,7 +129,7 @@ fn main() {
             &mut app,
             &mut cursor_pos,
             &mut sim_settings,
-            &mut controls,
+            &mut player_action,
         );
         // Event handling.
         if !should_continue {
@@ -149,21 +139,9 @@ fn main() {
         // Compute voxels & render 60fps.
         if (Instant::now() - time).as_secs_f32() > TIME_STEP {
             previous_frame_end.as_mut().unwrap().cleanup_finished();
-            let action = PlayerAction {
-                aim: controls.mouse_move,
-                forward: controls.forward as u8,
-                backward: controls.backward as u8,
-                left: controls.left as u8,
-                right: controls.right as u8,
-                jump: controls.up as u8,
-                crouch: controls.down as u8,
-                shoot: controls.mouse_left as u8,
-                sprint: controls.sprint as u8,
-            };
             if app.settings.player_count > 1 {
-                network_connection.network_update(&action, &player_deck, &mut app.card_manager, &mut app.rollback_data);
+                network_connection.network_update(&player_action, &player_deck, &mut app.card_manager, &mut app.rollback_data);
             }
-            controls.mouse_move = [0.0, 0.0];
             time += std::time::Duration::from_secs_f64(1.0 / 30.0);
             if app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize {
                 compute_then_render(
@@ -172,13 +150,14 @@ fn main() {
                     &mut sim_data,
                     &mut recreate_swapchain,
                     &mut previous_frame_end,
-                    action,
+                    player_action.clone(),
                     TIME_STEP,
                 );
             }
+            player_action.aim = [0.0, 0.0];
         }
         if (Instant::now() - chunk_time).as_secs_f64() > 2.0
-            && controls.do_chunk_load
+            && CHUNK_LOAD
             && app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize
         {
             let cam_player = app.rollback_data.cached_current_state.players[0].clone();
@@ -202,7 +181,7 @@ fn handle_events(
     app: &mut RenderPipeline,
     cursor_pos: &mut Vector2<f32>,
     sim_settings: &mut SimSettings,
-    controls: &mut Controls,
+    controls: &mut PlayerAction,
 ) -> bool {
     let mut is_running = true;
 
@@ -232,26 +211,21 @@ fn handle_events(
                         // turn camera
                         let delta = app.settings.movement_controls.sensitivity * 
                             (Vector2::new(position.x as f32, position.y as f32) - Vector2::new((WINDOW_WIDTH / 2.0) as f32, (WINDOW_HEIGHT / 2.0) as f32));
-                        controls.mouse_move[0] += delta.x;
-                        controls.mouse_move[1] += delta.y;
+                        controls.aim[0] += delta.x;
+                        controls.aim[1] += delta.y;
                         *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
                     }
                     // Handle mouse button events.
                     WindowEvent::MouseInput { state, button, .. } => {
-                        if button == &MouseButton::Left {
-                            controls.mouse_left = state == &ElementState::Pressed;
-                        }
-                        if button == &MouseButton::Right {
-                            controls.mouse_right = state == &ElementState::Pressed;
-                        }
+                        // TODO
                     }
                     WindowEvent::KeyboardInput { input, .. } => {
                         input.virtual_keycode.map(|key| {
                             if key == app.settings.movement_controls.jump {
-                                controls.up = input.state == ElementState::Pressed;
+                                controls.jump = input.state == ElementState::Pressed;
                             }
                             if key == app.settings.movement_controls.crouch {
-                                controls.down = input.state == ElementState::Pressed;
+                                controls.crouch = input.state == ElementState::Pressed;
                             }
                             if key == app.settings.movement_controls.right {
                                 controls.right = input.state == ElementState::Pressed;
@@ -267,6 +241,11 @@ fn handle_events(
                             }
                             if key == app.settings.movement_controls.sprint {
                                 controls.sprint = input.state == ElementState::Pressed;
+                            }
+                            for (ability_idx, ability_key) in app.settings.ability_controls.iter().enumerate() {
+                                if key == *ability_key {
+                                    controls.activate_ability[ability_idx] = input.state == ElementState::Pressed;
+                                }
                             }
                             match key {
                                 winit::event::VirtualKeyCode::Escape => {
@@ -296,12 +275,6 @@ fn handle_events(
                                             app.rollback_data.cached_current_state.players[0].clone();
                                         println!("cam_pos: {:?}", cam_player.pos);
                                         println!("cam_dir: {:?}", cam_player.dir);
-                                    }
-                                }
-                                winit::event::VirtualKeyCode::C => {
-                                    if input.state == ElementState::Released {
-                                        controls.do_chunk_load = !controls.do_chunk_load;
-                                        println!("chunk load: {}", controls.do_chunk_load);
                                     }
                                 }
                                 _ => (),

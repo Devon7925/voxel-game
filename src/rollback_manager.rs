@@ -15,8 +15,6 @@ use crate::{
     CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, SPAWN_LOCATION,
 };
 
-const ACTIVE_BUTTON: u8 = 1;
-
 #[derive(Clone, Debug)]
 pub struct WorldState {
     pub players: Vec<Player>,
@@ -34,18 +32,17 @@ pub struct RollbackData {
     pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, Zeroable, Pod)]
-#[repr(C)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PlayerAction {
     pub aim: [f32; 2],
-    pub forward: u8,
-    pub backward: u8,
-    pub left: u8,
-    pub right: u8,
-    pub jump: u8,
-    pub crouch: u8,
-    pub shoot: u8,
-    pub sprint: u8,
+    pub forward: bool,
+    pub backward: bool,
+    pub left: bool,
+    pub right: bool,
+    pub jump: bool,
+    pub crouch: bool,
+    pub sprint: bool,
+    pub activate_ability: Vec<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -59,11 +56,16 @@ pub struct Player {
     pub up: Vector3<f32>,
     pub right: Vector3<f32>,
     pub health: f32,
-    pub cards_reference: ReferencedBaseCard,
-    pub cards_value: f32,
-    pub cooldown: f32,
+    pub abilities: Vec<PlayerAbility>,
     pub respawn_timer: f32,
     pub collision_vec: Vector3<i32>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PlayerAbility {
+    pub ability: ReferencedBaseCard,
+    pub value: f32,
+    pub cooldown: f32,
 }
 
 #[derive(Clone, Copy, Zeroable, Debug, Pod)]
@@ -82,14 +84,14 @@ impl Default for PlayerAction {
     fn default() -> Self {
         PlayerAction {
             aim: [0.0, 0.0],
-            forward: 0,
-            backward: 0,
-            left: 0,
-            right: 0,
-            jump: 0,
-            crouch: 0,
-            shoot: 0,
-            sprint: 0,
+            forward: false,
+            backward: false,
+            left: false,
+            right: false,
+            jump: false,
+            crouch: false,
+            sprint: false,
+            activate_ability: vec![],
         }
     }
 }
@@ -106,9 +108,7 @@ impl Default for Player {
             size: 1.0,
             vel: Vector3::new(0.0, 0.0, 0.0),
             health: 100.0,
-            cards_reference: ReferencedBaseCard::default(),
-            cards_value: 0.0,
-            cooldown: 0.0,
+            abilities: Vec::new(),
             respawn_timer: 0.0,
             collision_vec: Vector3::new(0, 0, 0),
         }
@@ -366,28 +366,28 @@ impl WorldState {
                 let mut move_vec = Vector3::new(0.0, 0.0, 0.0);
                 let player_forward = Vector3::new(player.dir.x, 0.0, player.dir.z).normalize();
                 let player_right = Vector3::new(player.right.x, 0.0, player.right.z).normalize();
-                if action.forward == ACTIVE_BUTTON {
+                if action.forward {
                     move_vec += player_forward;
                 }
-                if action.backward == ACTIVE_BUTTON {
+                if action.backward {
                     move_vec -= player_forward;
                 }
-                if action.left == ACTIVE_BUTTON {
+                if action.left {
                     move_vec -= player_right;
                 }
-                if action.right == ACTIVE_BUTTON {
+                if action.right {
                     move_vec += player_right;
                 }
-                if action.jump == ACTIVE_BUTTON {
+                if action.jump {
                     move_vec += Vector3::new(0.0, 0.5, 0.0);
                 }
-                if action.crouch == ACTIVE_BUTTON {
+                if action.crouch {
                     move_vec -= Vector3::new(0.0, 0.5, 0.0);
                 }
                 if move_vec.magnitude() > 0.0 {
                     move_vec = move_vec.normalize();
                 }
-                let accel_speed = if action.sprint == ACTIVE_BUTTON {
+                let accel_speed = if action.sprint {
                     1.5
                 } else {
                     1.0
@@ -398,26 +398,30 @@ impl WorldState {
                 };
                 player.vel += accel_speed * move_vec * time_step;
 
-                if action.jump == ACTIVE_BUTTON {
+                if action.jump {
                     player.vel += player
                         .collision_vec
                         .zip(Vector3::new(0.3, 8.0, 0.3), |c, m| c as f32 * m);
                 }
 
-                if action.shoot == ACTIVE_BUTTON && player.cooldown <= 0.0 {
-                    player.cooldown = player.cards_value;
-                    let effects = card_manager.get_effects_from_base_card(&player.cards_reference, &player.pos, &player.rot, player_idx as u32);
-                    self.projectiles.extend(effects.0);
-                    if is_real_update && effects.1.len() > 0 {
-                        let mut writer = voxels.write().unwrap();
-                        for (pos, material) in effects.1 {
-                            vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
-                            writer[get_index(pos) as usize] = material.to_memory();
+                for (ability_idx, ability) in player.abilities.iter_mut().enumerate() {
+                    if ability_idx < action.activate_ability.len() && action.activate_ability[ability_idx] && ability.cooldown <= 0.0 {
+                        ability.cooldown = ability.value;
+                        let effects = card_manager.get_effects_from_base_card(&ability.ability, &player.pos, &player.rot, player_idx as u32);
+                        self.projectiles.extend(effects.0);
+                        if is_real_update && effects.1.len() > 0 {
+                            let mut writer = voxels.write().unwrap();
+                            for (pos, material) in effects.1 {
+                                vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
+                                writer[get_index(pos) as usize] = material.to_memory();
+                            }
                         }
                     }
                 }
             }
-            player.cooldown -= time_step;
+            for ability in player.abilities.iter_mut() {
+                ability.cooldown -= time_step;
+            }
 
             player.vel.y -= 7.5 * time_step;
             if player.vel.magnitude() > 0.0 {

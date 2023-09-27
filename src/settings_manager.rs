@@ -8,6 +8,7 @@ pub struct Settings {
     pub is_remote: bool,
     pub player_count: u32,
     pub movement_controls: ControlSettings,
+    pub ability_controls: Vec<VirtualKeyCode>,
 }
 
 impl Settings {

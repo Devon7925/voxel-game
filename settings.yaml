@@ -11,3 +11,6 @@ movement_controls:
   crouch: LControl
   sprint: LShift
   sensitivity: 0.001
+ability_controls:
+- Q
+- E

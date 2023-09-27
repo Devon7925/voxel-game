@@ -616,10 +616,8 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                     Vec2::new(-corner_offset, -corner_offset),
                 )
                 .show(&ctx, |ui| {
-                    let cooldown =
-                        rollback_manager.cached_current_state.players[0].cooldown as f32;
-                    if cooldown > 0.0 {
-                        ui.label(RichText::new(format!("{}", cooldown as i32)).color(Color32::WHITE).size(36.0)); 
+                    for ability in rollback_manager.cached_current_state.players[0].abilities.iter() {
+                        ui.label(RichText::new(if ability.cooldown > 0.0 {format!("{}", ability.cooldown as i32)} else {"".to_string()}).color(Color32::WHITE).size(36.0));
                     }
                 });
         });
