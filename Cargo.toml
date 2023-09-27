@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 
 cgmath = "0.18"
-winit = "0.28"
+winit = { version = "0.28", features = ["serde"] }
 vulkano = "0.33.0"
 vulkano-util = "0.33.0"
 vulkano-win = "0.33.0"
@@ -22,6 +22,7 @@ tokio = "1.29"
 futures-timer = { version = "3" }
 obj-rs = "0.7.1"
 ron = "0.8"
+serde_yaml = "0.9.25"
 serde = { version = "1", features = ["derive"] }
 rayon = "1.8"
 egui_winit_vulkano = "0.24.0"

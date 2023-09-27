@@ -9,8 +9,9 @@ mod voxel_sim_manager;
 mod world_gen;
 mod card_system;
 mod utils;
+mod settings_manager;
 
-use crate::{app::RenderPipeline, card_system::BaseCard};
+use crate::{app::RenderPipeline, card_system::BaseCard, settings_manager::Settings};
 use cgmath::{Matrix4, Point3, SquareMatrix, Vector2, Vector3};
 use multipass_system::Pass;
 use networking::NetworkConnection;
@@ -39,7 +40,6 @@ const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
 pub const TOTAL_VOXEL_COUNT: usize =
     (RENDER_SIZE[0] * RENDER_SIZE[1] * RENDER_SIZE[2] * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE)
         as usize;
-pub const MIN_PLAYERS: usize = 1;
 
 struct SimSettings {
     pub max_dist: u32,
@@ -80,8 +80,10 @@ fn main() {
     // Create event loop.
     let mut event_loop = EventLoop::new();
 
+    let settings = Settings::from_string(fs::read_to_string("settings.yaml").unwrap().as_str());
+
     // Create app with vulkano context.
-    let mut app = RenderPipeline::new(&event_loop);
+    let mut app = RenderPipeline::new(&event_loop, settings);
 
     // Time & inputs...
     let mut cursor_pos = Vector2::new(0.0, 0.0);
@@ -122,7 +124,7 @@ fn main() {
 
     app.voxel_compute.load_chunks(&mut sim_data);
 
-    let mut network_connection = NetworkConnection::new();
+    let mut network_connection = NetworkConnection::new(&app.settings);
     let mut time = Instant::now();
     let mut chunk_time = Instant::now();
 
@@ -158,12 +160,12 @@ fn main() {
                 shoot: controls.mouse_left as u8,
                 sprint: controls.sprint as u8,
             };
-            if MIN_PLAYERS > 1 {
+            if app.settings.player_count > 1 {
                 network_connection.network_update(&action, &player_deck, &mut app.card_manager, &mut app.rollback_data);
             }
             controls.mouse_move = [0.0, 0.0];
             time += std::time::Duration::from_secs_f64(1.0 / 30.0);
-            if app.rollback_data.rollback_state.players.len() >= MIN_PLAYERS {
+            if app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize {
                 compute_then_render(
                     &mut app,
                     &sim_settings,
@@ -177,7 +179,7 @@ fn main() {
         }
         if (Instant::now() - chunk_time).as_secs_f64() > 2.0
             && controls.do_chunk_load
-            && app.rollback_data.rollback_state.players.len() >= MIN_PLAYERS
+            && app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize
         {
             let cam_player = app.rollback_data.cached_current_state.players[0].clone();
             let diff_from_mid: Point3<i32> = (cam_player.pos.map(|c| c as i32)
@@ -228,8 +230,8 @@ fn handle_events(
                             (WINDOW_HEIGHT / 2.0) as f64,
                         )).unwrap_or_else(|_| println!("Failed to set cursor position"));
                         // turn camera
-                        let delta =
-                            Vector2::new(position.x as f32, position.y as f32) - Vector2::new((WINDOW_WIDTH / 2.0) as f32, (WINDOW_HEIGHT / 2.0) as f32);
+                        let delta = app.settings.movement_controls.sensitivity * 
+                            (Vector2::new(position.x as f32, position.y as f32) - Vector2::new((WINDOW_WIDTH / 2.0) as f32, (WINDOW_HEIGHT / 2.0) as f32));
                         controls.mouse_move[0] += delta.x;
                         controls.mouse_move[1] += delta.y;
                         *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
@@ -244,64 +246,66 @@ fn handle_events(
                         }
                     }
                     WindowEvent::KeyboardInput { input, .. } => {
-                        input.virtual_keycode.map(|key| match key {
-                            winit::event::VirtualKeyCode::Escape => {
-                                is_running = false;
-                            }
-                            winit::event::VirtualKeyCode::Space => {
+                        input.virtual_keycode.map(|key| {
+                            if key == app.settings.movement_controls.jump {
                                 controls.up = input.state == ElementState::Pressed;
                             }
-                            winit::event::VirtualKeyCode::LControl => {
+                            if key == app.settings.movement_controls.crouch {
                                 controls.down = input.state == ElementState::Pressed;
                             }
-                            winit::event::VirtualKeyCode::D => {
+                            if key == app.settings.movement_controls.right {
                                 controls.right = input.state == ElementState::Pressed;
                             }
-                            winit::event::VirtualKeyCode::A => {
+                            if key == app.settings.movement_controls.left {
                                 controls.left = input.state == ElementState::Pressed;
                             }
-                            winit::event::VirtualKeyCode::W => {
+                            if key == app.settings.movement_controls.forward {
                                 controls.forward = input.state == ElementState::Pressed;
                             }
-                            winit::event::VirtualKeyCode::S => {
+                            if key == app.settings.movement_controls.back {
                                 controls.backward = input.state == ElementState::Pressed;
                             }
-                            winit::event::VirtualKeyCode::LShift => {
+                            if key == app.settings.movement_controls.sprint {
                                 controls.sprint = input.state == ElementState::Pressed;
                             }
-                            winit::event::VirtualKeyCode::Up => {
-                                if input.state == ElementState::Released {
-                                    sim_settings.max_dist += 1;
-                                    println!("max_dist: {}", sim_settings.max_dist);
+                            match key {
+                                winit::event::VirtualKeyCode::Escape => {
+                                    is_running = false;
                                 }
-                            }
-                            winit::event::VirtualKeyCode::Down => {
-                                if input.state == ElementState::Released {
-                                    sim_settings.max_dist -= 1;
-                                    println!("max_dist: {}", sim_settings.max_dist);
+                                winit::event::VirtualKeyCode::Up => {
+                                    if input.state == ElementState::Released {
+                                        sim_settings.max_dist += 1;
+                                        println!("max_dist: {}", sim_settings.max_dist);
+                                    }
                                 }
-                            }
-                            winit::event::VirtualKeyCode::P => {
-                                if input.state == ElementState::Released {
-                                    sim_settings.do_compute = !sim_settings.do_compute;
-                                    println!("do_compute: {}", sim_settings.do_compute);
+                                winit::event::VirtualKeyCode::Down => {
+                                    if input.state == ElementState::Released {
+                                        sim_settings.max_dist -= 1;
+                                        println!("max_dist: {}", sim_settings.max_dist);
+                                    }
                                 }
-                            }
-                            winit::event::VirtualKeyCode::R => {
-                                if input.state == ElementState::Released {
-                                    let cam_player =
-                                        app.rollback_data.cached_current_state.players[0].clone();
-                                    println!("cam_pos: {:?}", cam_player.pos);
-                                    println!("cam_dir: {:?}", cam_player.dir);
+                                winit::event::VirtualKeyCode::P => {
+                                    if input.state == ElementState::Released {
+                                        sim_settings.do_compute = !sim_settings.do_compute;
+                                        println!("do_compute: {}", sim_settings.do_compute);
+                                    }
                                 }
-                            }
-                            winit::event::VirtualKeyCode::C => {
-                                if input.state == ElementState::Released {
-                                    controls.do_chunk_load = !controls.do_chunk_load;
-                                    println!("chunk load: {}", controls.do_chunk_load);
+                                winit::event::VirtualKeyCode::R => {
+                                    if input.state == ElementState::Released {
+                                        let cam_player =
+                                            app.rollback_data.cached_current_state.players[0].clone();
+                                        println!("cam_pos: {:?}", cam_player.pos);
+                                        println!("cam_dir: {:?}", cam_player.dir);
+                                    }
                                 }
+                                winit::event::VirtualKeyCode::C => {
+                                    if input.state == ElementState::Released {
+                                        controls.do_chunk_load = !controls.do_chunk_load;
+                                        println!("chunk load: {}", controls.do_chunk_load);
+                                    }
+                                }
+                                _ => (),
                             }
-                            _ => (),
                         });
                     }
                     WindowEvent::Focused(true) => {

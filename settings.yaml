@@ -1,0 +1,13 @@
+local_url: ws://127.0.0.1:3536/extreme_bevy?next=2
+remote_url: ws://primd.net:3536/extreme_bevy?next=2
+is_remote: false
+player_count: 1
+movement_controls:
+  forward: W
+  back: S
+  left: A
+  right: D
+  jump: Space
+  crouch: LControl
+  sprint: LShift
+  sensitivity: 0.001

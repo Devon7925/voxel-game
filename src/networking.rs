@@ -6,7 +6,7 @@ use std::{time::Duration, collections::HashMap};
 use tokio::runtime::Runtime;
 use std::str;
 
-use crate::{rollback_manager::{PlayerAction, RollbackData, Player}, SPAWN_LOCATION, card_system::{BaseCard, CardManager}};
+use crate::{rollback_manager::{PlayerAction, RollbackData, Player}, SPAWN_LOCATION, card_system::{BaseCard, CardManager}, settings_manager::Settings};
 
 pub struct NetworkConnection {
     socket: WebRtcSocket,
@@ -20,14 +20,12 @@ pub enum NetworkPacket {
     DeckUpdate(BaseCard),
 }
 
-const IS_REMOTE_SERVER: bool = false;
-
 impl NetworkConnection {
-    pub fn new() -> Self {
-        let room_url = if IS_REMOTE_SERVER {
-            "ws://primd.net:3536/extreme_bevy?next=2"
+    pub fn new(settings: &Settings) -> Self {
+        let room_url = if settings.is_remote {
+            settings.remote_url.clone()
         } else {
-            "ws://127.0.0.1:3536/extreme_bevy?next=2"
+            settings.local_url.clone()
         };
         println!("connecting to matchbox server: {:?}", room_url);
         let (socket, loop_fut) = WebRtcSocket::new_reliable(room_url);

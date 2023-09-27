@@ -1,11 +1,3 @@
-settings.yaml
-    local url
-    remote url
-    is remote
-    player count
-    movement controls
-        WASD SPACE CROUCH SPRINT
-        sensitivity
 multiple card abilities
 more materials
     ice

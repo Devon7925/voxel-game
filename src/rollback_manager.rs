@@ -350,10 +350,9 @@ impl WorldState {
                 continue;
             }
             if let Some(action) = action {
-                let sensitivity = 0.001;
                 player.facing[0] =
-                    (player.facing[0] - action.aim[0] * sensitivity + 2.0 * PI) % (2.0 * PI);
-                player.facing[1] = (player.facing[1] - action.aim[1] * sensitivity)
+                    (player.facing[0] - action.aim[0] + 2.0 * PI) % (2.0 * PI);
+                player.facing[1] = (player.facing[1] - action.aim[1])
                     .min(PI / 2.0)
                     .max(-PI / 2.0);
                 player.dir = Vector3::new(
