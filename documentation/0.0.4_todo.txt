@@ -1,0 +1,6 @@
+more cards
+    shotgun spread multicast thing
+    on expiry
+    effects
+        Damage
+        Knockback

@@ -36,13 +36,13 @@ const vec3 light_dir = normalize(vec3(0.5, -1, 0.25));
 
 uvec2 get_data(ivec3 global_pos) {
     ivec3 rel_pos = global_pos - ivec3(CHUNK_SIZE * sim_data.start_pos);
-    if (any(lessThan(rel_pos, ivec3(0))) || any(greaterThanEqual(rel_pos, ivec3(CHUNK_SIZE * sim_data.render_size)))) return uvec2(2, 0);
+    if (any(lessThan(rel_pos, ivec3(0))) || any(greaterThanEqual(rel_pos, ivec3(CHUNK_SIZE * sim_data.render_size)))) return uvec2(MAT_OOB, 0);
     uint index = get_index(global_pos, sim_data.render_size);
     return voxels[index];
 }
 
 uint get_dist(uvec2 voxel_data, uint offset) {
-    if (voxel_data.x == 1) return 0;
+    if (voxel_data.x != MAT_AIR) return 0;
     return (voxel_data.y >> (offset * 4)) & 0xF;
 }
 
@@ -69,11 +69,11 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
     vec3 ray_pos = pos;
     vec3 normal = vec3(0);
     float depth = 0;
-    uvec2 voxel_data = uvec2(20, 0);
+    uvec2 voxel_data = uvec2(MAT_OOB, 0);
     bool did_hit = false;
     for(uint i = 0; i < max_iterations; i++) {
         voxel_data = get_data(ivec3(floor(ray_pos)));
-        if(voxel_data.x != 0) {
+        if(voxel_data.x != MAT_AIR) {
             did_hit = true;
             break;
         }
@@ -152,7 +152,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             did_hit = true;
             ray_pos = pos + min_dist*ray;
             normal = min_normal;
-            voxel_data = uvec2(5, 0);
+            voxel_data = uvec2(MAT_PROJECTILE, 0);
         }
     }
 
@@ -201,27 +201,29 @@ struct MaterialProperties {
 };
 
 MaterialProperties material_props(uvec2 voxel_data, vec3 pos, vec3 in_normal) {
-    if (voxel_data.x == 0) {
+    if (voxel_data.x == MAT_AIR) {
         // air: invalid state
         return MaterialProperties(vec3(1.0, 0.0, 0.0), in_normal, 0.0, 0.0);
-    } else if (voxel_data.x == 1) {
-        //stone
+    } else if (voxel_data.x == MAT_STONE) {
         vec4 noise = voronoise(2.0*pos, 1.0, 1.0);
         return MaterialProperties(mix(vec3(0.7, 0.7, 0.7), vec3(0.2, 0.2, 0.25), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.35 * noise.xyz), 0.35, 0.0);
-    } else if (voxel_data.x == 2) {
+    } else if (voxel_data.x == MAT_OOB) {
         // out of bounds: invalid state
         return MaterialProperties(vec3(0.0, 0.0, 1.0), in_normal, 0.0, 0.0);
-    } else if (voxel_data.x == 3) {
-        // dirt
+    } else if (voxel_data.x == MAT_DIRT) {
         vec4 noise = voronoise(7.0*pos, 1.0, 1.0);
         return MaterialProperties(mix(vec3(0.5, 0.25, 0.0), vec3(0.2, 0.2, 0.2), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.2 * noise.xyz), 0.25, 0.0);
-    } else if (voxel_data.x == 4) {
-        // grass
+    } else if (voxel_data.x == MAT_GRASS) {
         vec4 noise = voronoise(20.0*pos, 1.0, 1.0);
         return MaterialProperties(mix(vec3(0.25, 0.8, 0.25), vec3(0.1, 0.3, 0.1), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.5 * noise.xyz), 0.1, 0.0);
-    } else if (voxel_data.x == 5) {
-        // projectile
+    } else if (voxel_data.x == MAT_PROJECTILE) {
         return MaterialProperties(vec3(1.0, 0.3, 0.3), in_normal, 0.0, 0.5);
+    } else if (voxel_data.x == MAT_ICE) {
+        vec4 noise = voronoise(2.0*pos, 1.0, 1.0);
+        return MaterialProperties(mix(vec3(0.75, 0.75, 1.0), vec3(0.65, 0.65, 0.65), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.1 * noise.xyz), 0.35, 0.3);
+    } else if (voxel_data.x == MAT_GLASS) {
+        vec4 noise = voronoise(4.0*pos, 1.0, 1.0);
+        return MaterialProperties(mix(vec3(0.7, 0.7, 0.7), vec3(0.7, 0.7, 0.7), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.35 * noise.xyz), 0.35, 0.7);
     }
     // unregistered voxel type: invalid state
     return MaterialProperties(vec3(1.0, 0.0, 1.0), in_normal, 0.0, 0.0);
@@ -232,7 +234,7 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
     float multiplier = 1.0;
 
     while (multiplier != 0.0) {
-        if (primary_ray.voxel_data.x == 2) {
+        if (primary_ray.voxel_data.x == MAT_OOB) {
             float sky_brightness = pow(max(dot(ray, -light_dir), 0.0), 2.0);
             color += multiplier * (sky_brightness * vec3(0.429, 0.608, 0.622) + vec3(0.1, 0.1, 0.4));
             break;
@@ -243,21 +245,25 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
         RaycastResult shade_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, -light_dir, 100, true, 0.0);
         MaterialProperties shade_mat_props = material_props(shade_check.voxel_data, shade_check.pos, shade_check.normal);
         if (shade_mat_props.transparency > 0.0) {
-            shade_check = raycast(shade_check.pos, -light_dir, 100, false, 0.0);
-            if (!shade_check.hit || shade_check.voxel_data.x == 2) {
+            vec3 v_min = floor(shade_check.pos);
+            vec3 v_max = floor(shade_check.pos) + vec3(1);
+            vec3 delta = RayBoxDist(shade_check.pos, -light_dir, v_min, v_max);
+            float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
+            shade_check = raycast(shade_check.pos - dist_diff * light_dir, -light_dir, 100, false, 0.0);
+            if (!shade_check.hit || shade_check.voxel_data.x == MAT_OOB) {
                 float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
                 vec3 reflected = reflect(-ray, mat_props.normal);
                 float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
                 color += shade_mat_props.transparency * (1 - mat_props.transparency) * multiplier * (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
             }
-        } else if (!shade_check.hit || shade_check.voxel_data.x == 2) {
+        } else if (!shade_check.hit || shade_check.voxel_data.x == MAT_OOB) {
             float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
             vec3 reflected = reflect(-ray, mat_props.normal);
             float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
             color += (1 - mat_props.transparency) * multiplier * (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
         }
         RaycastResult ao_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, mat_props.normal, 50, false, 0.0);
-        if (!ao_check.hit || ao_check.voxel_data.x == 2) {
+        if (!ao_check.hit || ao_check.voxel_data.x == MAT_OOB) {
             vec3 reflected = reflect(-ray, mat_props.normal);
             float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
             color += (1 - mat_props.transparency) * multiplier * 0.2 * (0.65 + mat_props.shine * specular)*mat_props.color;
@@ -265,7 +271,11 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
         
         multiplier *= mat_props.transparency;
 
-        primary_ray = raycast(primary_ray.pos, ray, 100, true, 0.0);
+        vec3 v_min = floor(primary_ray.pos);
+        vec3 v_max = floor(primary_ray.pos) + vec3(1);
+        vec3 delta = RayBoxDist(primary_ray.pos, ray, v_min, v_max);
+        float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
+        primary_ray = raycast(primary_ray.pos+dist_diff*ray, ray, 100, true, 0.0);
         if (!primary_ray.hit) {
             color += multiplier * vec3(1.0, 0.0, 0.0);
             break;
@@ -318,7 +328,7 @@ void main() {
         primary_ray.normal = in_normal;
         primary_ray.pos = pos + max_depth*ray;
         primary_ray.dist = max_depth;
-        primary_ray.voxel_data = uvec2(5, 0);
+        primary_ray.voxel_data = uvec2(MAT_PROJECTILE, 0);
     }
 
     f_color = vec4(get_color(pos, ray, primary_ray), 1.0);

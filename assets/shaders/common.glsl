@@ -25,7 +25,15 @@ struct Player {
     vec4 right;
 };
 
-const uint[] material_damage_threshhold = {0, 10, 0, 5, 5, 0};
+const uint MAT_AIR = 0;
+const uint MAT_STONE = 1;
+const uint MAT_OOB = 2;
+const uint MAT_DIRT = 3;
+const uint MAT_GRASS = 4;
+const uint MAT_PROJECTILE = 5;
+const uint MAT_ICE = 6;
+const uint MAT_GLASS = 7;
+const uint[] material_damage_threshhold = {0, 10, 0, 5, 5, 0, 5, 10};
 
 uint get_index(ivec3 global_pos, uvec3 render_size) {
     uvec3 chunk_pos = (global_pos / CHUNK_SIZE) % render_size;

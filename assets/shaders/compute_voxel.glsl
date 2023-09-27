@@ -41,9 +41,9 @@ void main() {
     ivec3 pos = ivec3(gl_WorkGroupSize)*chunk_updates[gl_WorkGroupID.x].xyz + ivec3(gl_LocalInvocationID); 
     uvec2 pos_data = get_data(pos);
 
-    if (pos_data.x != 0) {
+    if (pos_data.x != MAT_AIR) {
         if (pos_data.y >= material_damage_threshhold[pos_data.x]) {
-            set_data(pos, uvec2(0, 0x11111111));
+            set_data(pos, uvec2(MAT_AIR, 0x11111111));
             return;
         }
         set_data(pos, pos_data);
@@ -58,12 +58,12 @@ void main() {
         for (uint j = 1; j < 8; j++) {
             ivec3 dir = d * ivec3(j % 2, (j / 2) % 2, j / 4);
             uvec2 dir_data = get_data(pos + dir);
-            if (dir_data.x == 1) {
-                direction_dist = 0;
-                break;
-            } else if (dir_data.x == 2) {
+            if (dir_data.x == MAT_OOB) {
                 direction_dist = min(direction_dist, ((pos_data.y >> (4*(7 - i))) & 0xF) - 1);
                 continue;
+            } else if (dir_data.x != MAT_AIR) {
+                direction_dist = 0;
+                break;
             }
             direction_dist = min(direction_dist, (dir_data.y >> (4*(7 - i))) & 0xF);
         }

@@ -59,11 +59,12 @@ void main() {
                 vec3 pos = start + dir*grid_dist.z*k + right*grid_dist.x*i + up*grid_dist.y*j;
                 ivec3 voxel_pos = ivec3(pos);
                 uvec2 data = get_data(voxel_pos);
-                if (data.x == 0 || data.x == 2) {
-                    if (data.x == 2) {
-                        projectile.health = 0.0;
-                    }
+                if (data.x == MAT_AIR) {
                     continue;
+                } else if (data.x == MAT_OOB) {
+                    projectile.health = 0.0;
+                    projectiles[projectile_idx] = projectile;
+                    return;
                 }
                 if (projectile.damage > 0) {
                     uint vox_index = get_index(voxel_pos, sim_data.render_size);

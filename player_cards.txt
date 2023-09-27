@@ -1,4 +1,4 @@
 [
     Projectile([Damage(5),Speed(5),Size(-5)]),
-    Projectile([Speed(7),Size(-5), OnHit(CreateMaterial(Stone))]),
+    Projectile([Speed(7),Size(-5), OnHit(CreateMaterial(Ice))]),
 ]

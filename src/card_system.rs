@@ -26,15 +26,20 @@ pub enum VoxelMaterial {
     Dirt,
     Grass,
     Air,
+    Ice,
+    Glass,
 }
 
 impl VoxelMaterial {
+    pub const FRICTION_COEFFICIENTS: [f32; 8] = [0.0, 1.5, 0.0, 1.5, 1.5, 0.0, 0.1, 1.0];
     pub fn to_memory(&self) -> [u32; 2] {
         match self {
             VoxelMaterial::Air => [0, 0x11111111],
             VoxelMaterial::Stone => [1, 0x00000000],
             VoxelMaterial::Dirt => [3, 0x00000000],
             VoxelMaterial::Grass => [4, 0x00000000],
+            VoxelMaterial::Ice => [6, 0x00000000],
+            VoxelMaterial::Glass => [7, 0x00000000],
         }
     }
 }
@@ -79,10 +84,12 @@ impl BaseCard {
                 cards.iter().map(|card| card.evaluate_value()).sum::<f32>()
             }
             BaseCard::CreateMaterial(material) => match material {
+                VoxelMaterial::Air => 0.0,
                 VoxelMaterial::Stone => 10.0,
                 VoxelMaterial::Dirt => 5.0,
                 VoxelMaterial::Grass => 5.0,
-                VoxelMaterial::Air => 0.0,
+                VoxelMaterial::Ice => 20.0,
+                VoxelMaterial::Glass => 15.0,
             },
         }
     }

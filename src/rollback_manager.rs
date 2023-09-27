@@ -9,7 +9,7 @@ use vulkano::{
 };
 
 use crate::{
-    card_system::{CardManager, ReferencedBaseCard},
+    card_system::{CardManager, ReferencedBaseCard, VoxelMaterial},
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     voxel_sim_manager::VoxelComputePipeline,
     CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, SPAWN_LOCATION,
@@ -630,10 +630,11 @@ fn collide_player(
                                 player.vel[(component + 2) % 3],
                             );
                             if perp_vel.magnitude() > 0.0 {
+                                let friction_factor = VoxelMaterial::FRICTION_COEFFICIENTS[voxel[0] as usize];
                                 player.vel[(component + 1) % 3] -=
-                                    (0.5 * perp_vel.normalize().x + 1.5 * perp_vel.x) * time_step;
+                                    (0.5 * perp_vel.normalize().x + friction_factor * perp_vel.x) * time_step;
                                 player.vel[(component + 2) % 3] -=
-                                    (0.5 * perp_vel.normalize().y + 1.5 * perp_vel.y) * time_step;
+                                    (0.5 * perp_vel.normalize().y + friction_factor * perp_vel.y) * time_step;
                             }
 
                             player.collision_vec[component] = -vel_dir[component].signum() as i32;
