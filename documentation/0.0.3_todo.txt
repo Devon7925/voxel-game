@@ -3,7 +3,6 @@ more cards
     health control
     friendly fire
     shape control
-    piercing
 Tweaks
     Worldgen
         flatter terrain
@@ -23,4 +22,3 @@ bug fixes
     fix player model rotation
     add player material
     fix player model height
-    fix visible mouse on startup

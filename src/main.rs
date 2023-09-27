@@ -283,12 +283,15 @@ fn handle_events(
                     }
                     WindowEvent::Focused(true) => {
                         let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
-
                         window.set_cursor_visible(false);
                     }
                     _ => (),
                 }
             },
+            Event::Resumed => {
+                let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                window.set_cursor_visible(false);
+            }
             Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
             _ => (),
         }
