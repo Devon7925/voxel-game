@@ -26,7 +26,7 @@ use vulkano::{
     sync::{self, FlushError, GpuFuture},
 };
 use winit::{
-    event::{ElementState, Event, MouseButton, WindowEvent},
+    event::{ElementState, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
     window::Window, dpi::PhysicalPosition,
@@ -121,6 +121,8 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(app.vulkano_interface.device.clone()).boxed());
 
+    let mut did_render = false;
+
     const TIME_STEP: f32 = 1.0 / 30.0;
 
     loop {
@@ -153,6 +155,11 @@ fn main() {
                     player_action.clone(),
                     TIME_STEP,
                 );
+                if !did_render {
+                    let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                    window.set_cursor_visible(false);
+                    did_render = true;
+                }
             }
             player_action.aim = [0.0, 0.0];
         }
@@ -288,10 +295,6 @@ fn handle_events(
                     _ => (),
                 }
             },
-            Event::Resumed => {
-                let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
-                window.set_cursor_visible(false);
-            }
             Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
             _ => (),
         }
