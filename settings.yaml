@@ -3,14 +3,14 @@ remote_url: ws://primd.net:3536/extreme_bevy?next=2
 is_remote: false
 player_count: 1
 movement_controls:
-  forward: W
-  back: S
-  left: A
-  right: D
-  jump: Space
-  crouch: LControl
-  sprint: LShift
+  forward: !Key W
+  backward: !Key S
+  left: !Key A
+  right: !Key D
+  jump: !Key Space
+  crouch: !Key LControl
+  sprint: !Key LShift
   sensitivity: 0.001
 ability_controls:
-- Q
-- E
+- !Mouse Left
+- !Mouse Right

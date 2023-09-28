@@ -1,22 +1,26 @@
 mod app;
+mod card_system;
 mod multipass_system;
 mod networking;
 mod projectile_sim_manager;
 mod rasterizer;
 mod raytracer;
 mod rollback_manager;
+mod settings_manager;
+mod utils;
 mod voxel_sim_manager;
 mod world_gen;
-mod card_system;
-mod utils;
-mod settings_manager;
 
-use crate::{app::RenderPipeline, card_system::BaseCard, settings_manager::Settings, rollback_manager::PlayerAbility};
+use crate::{
+    app::RenderPipeline, card_system::BaseCard, rollback_manager::PlayerAbility,
+    settings_manager::Settings,
+};
 use cgmath::{Matrix4, Point3, SquareMatrix, Vector2, Vector3};
 use multipass_system::Pass;
 use networking::NetworkConnection;
 use rollback_manager::{Player, PlayerAction};
-use std::{time::Instant, fs};
+use settings_manager::Control;
+use std::{fs, time::Instant};
 use vulkano::{
     image::view::ImageView,
     swapchain::{
@@ -26,10 +30,11 @@ use vulkano::{
     sync::{self, FlushError, GpuFuture},
 };
 use winit::{
+    dpi::PhysicalPosition,
     event::{ElementState, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
-    window::Window, dpi::PhysicalPosition,
+    window::Window,
 };
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
@@ -86,17 +91,19 @@ fn main() {
         start_pos: FIRST_START_POS,
     };
 
-    let player_deck = BaseCard::vec_from_string(fs::read_to_string("player_cards.txt").unwrap().as_str());
+    let player_deck =
+        BaseCard::vec_from_string(fs::read_to_string("player_cards.txt").unwrap().as_str());
 
     app.rollback_data.player_join(Player {
         pos: SPAWN_LOCATION,
-        abilities: player_deck.iter().map(|card| {
-            PlayerAbility {
+        abilities: player_deck
+            .iter()
+            .map(|card| PlayerAbility {
                 value: card.evaluate_value(),
                 ability: app.card_manager.register_base_card(card.clone()),
                 cooldown: 0.0,
-            }
-        }).collect(),
+            })
+            .collect(),
         ..Default::default()
     });
 
@@ -142,10 +149,16 @@ fn main() {
         if (Instant::now() - time).as_secs_f32() > TIME_STEP {
             previous_frame_end.as_mut().unwrap().cleanup_finished();
             if app.settings.player_count > 1 {
-                network_connection.network_update(&player_action, &player_deck, &mut app.card_manager, &mut app.rollback_data);
+                network_connection.network_update(
+                    &player_action,
+                    &player_deck,
+                    &mut app.card_manager,
+                    &mut app.rollback_data,
+                );
             }
             time += std::time::Duration::from_secs_f64(1.0 / 30.0);
-            if app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize {
+            if app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize
+            {
                 compute_then_render(
                     &mut app,
                     &sim_settings,
@@ -156,7 +169,13 @@ fn main() {
                     TIME_STEP,
                 );
                 if !did_render {
-                    let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                    let window = app
+                        .vulkano_interface
+                        .surface
+                        .object()
+                        .unwrap()
+                        .downcast_ref::<Window>()
+                        .unwrap();
                     window.set_cursor_visible(false);
                     did_render = true;
                 }
@@ -209,49 +228,91 @@ fn handle_events(
                     }
                     // Handle mouse position events.
                     WindowEvent::CursorMoved { position, .. } => {
-                        let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                        let window = app
+                            .vulkano_interface
+                            .surface
+                            .object()
+                            .unwrap()
+                            .downcast_ref::<Window>()
+                            .unwrap();
 
-                        window.set_cursor_position(PhysicalPosition::new(
-                            (WINDOW_WIDTH / 2.0) as f64,
-                            (WINDOW_HEIGHT / 2.0) as f64,
-                        )).unwrap_or_else(|_| println!("Failed to set cursor position"));
+                        window
+                            .set_cursor_position(PhysicalPosition::new(
+                                (WINDOW_WIDTH / 2.0) as f64,
+                                (WINDOW_HEIGHT / 2.0) as f64,
+                            ))
+                            .unwrap_or_else(|_| println!("Failed to set cursor position"));
                         // turn camera
-                        let delta = app.settings.movement_controls.sensitivity * 
-                            (Vector2::new(position.x as f32, position.y as f32) - Vector2::new((WINDOW_WIDTH / 2.0) as f32, (WINDOW_HEIGHT / 2.0) as f32));
+                        let delta = app.settings.movement_controls.sensitivity
+                            * (Vector2::new(position.x as f32, position.y as f32)
+                                - Vector2::new(
+                                    (WINDOW_WIDTH / 2.0) as f32,
+                                    (WINDOW_HEIGHT / 2.0) as f32,
+                                ));
                         controls.aim[0] += delta.x;
                         controls.aim[1] += delta.y;
                         *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
                     }
                     // Handle mouse button events.
                     WindowEvent::MouseInput { state, button, .. } => {
-                        // TODO
+                        macro_rules! mouse_match {
+                            ($property:ident) => {
+                                if let Control::Mouse(mouse_code) =
+                                    app.settings.movement_controls.$property
+                                {
+                                    if button == &mouse_code {
+                                        controls.$property = state == &ElementState::Pressed;
+                                    }
+                                }
+                            };
+                        }
+                        mouse_match!(jump);
+                        mouse_match!(crouch);
+                        mouse_match!(right);
+                        mouse_match!(left);
+                        mouse_match!(forward);
+                        mouse_match!(backward);
+                        mouse_match!(sprint);
+                        for (ability_idx, ability_key) in
+                            app.settings.ability_controls.iter().enumerate()
+                        {
+                            if let Control::Mouse(mouse_code) = ability_key {
+                                if button == mouse_code {
+                                    controls.activate_ability[ability_idx] =
+                                        state == &ElementState::Pressed;
+                                }
+                            }
+                        }
                     }
                     WindowEvent::KeyboardInput { input, .. } => {
                         input.virtual_keycode.map(|key| {
-                            if key == app.settings.movement_controls.jump {
-                                controls.jump = input.state == ElementState::Pressed;
+                            macro_rules! key_match {
+                                ($property:ident) => {
+                                    if let Control::Key(key_code) =
+                                        app.settings.movement_controls.$property
+                                    {
+                                        if key == key_code {
+                                            controls.$property =
+                                                input.state == ElementState::Pressed;
+                                        }
+                                    }
+                                };
                             }
-                            if key == app.settings.movement_controls.crouch {
-                                controls.crouch = input.state == ElementState::Pressed;
-                            }
-                            if key == app.settings.movement_controls.right {
-                                controls.right = input.state == ElementState::Pressed;
-                            }
-                            if key == app.settings.movement_controls.left {
-                                controls.left = input.state == ElementState::Pressed;
-                            }
-                            if key == app.settings.movement_controls.forward {
-                                controls.forward = input.state == ElementState::Pressed;
-                            }
-                            if key == app.settings.movement_controls.back {
-                                controls.backward = input.state == ElementState::Pressed;
-                            }
-                            if key == app.settings.movement_controls.sprint {
-                                controls.sprint = input.state == ElementState::Pressed;
-                            }
-                            for (ability_idx, ability_key) in app.settings.ability_controls.iter().enumerate() {
-                                if key == *ability_key {
-                                    controls.activate_ability[ability_idx] = input.state == ElementState::Pressed;
+                            key_match!(jump);
+                            key_match!(crouch);
+                            key_match!(right);
+                            key_match!(left);
+                            key_match!(forward);
+                            key_match!(backward);
+                            key_match!(sprint);
+                            for (ability_idx, ability_key) in
+                                app.settings.ability_controls.iter().enumerate()
+                            {
+                                if let Control::Key(key_code) = ability_key {
+                                    if key == *key_code {
+                                        controls.activate_ability[ability_idx] =
+                                            input.state == ElementState::Pressed;
+                                    }
                                 }
                             }
                             match key {
@@ -279,7 +340,8 @@ fn handle_events(
                                 winit::event::VirtualKeyCode::R => {
                                     if input.state == ElementState::Released {
                                         let cam_player =
-                                            app.rollback_data.cached_current_state.players[0].clone();
+                                            app.rollback_data.cached_current_state.players[0]
+                                                .clone();
                                         println!("cam_pos: {:?}", cam_player.pos);
                                         println!("cam_dir: {:?}", cam_player.dir);
                                     }
@@ -289,12 +351,18 @@ fn handle_events(
                         });
                     }
                     WindowEvent::Focused(true) => {
-                        let window = app.vulkano_interface.surface.object().unwrap().downcast_ref::<Window>().unwrap();
+                        let window = app
+                            .vulkano_interface
+                            .surface
+                            .object()
+                            .unwrap()
+                            .downcast_ref::<Window>()
+                            .unwrap();
                         window.set_cursor_visible(false);
                     }
                     _ => (),
                 }
-            },
+            }
             Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
             _ => (),
         }
@@ -365,8 +433,10 @@ fn compute_then_render(
     // Start the frame.
     let mut frame = if sim_settings.do_compute {
         sim_data.max_dist = sim_settings.max_dist;
-        pipeline.voxel_compute.push_updates_from_changed(sim_data.start_pos);
-        
+        pipeline
+            .voxel_compute
+            .push_updates_from_changed(sim_data.start_pos);
+
         for player in pipeline.rollback_data.cached_current_state.players.iter() {
             pipeline.voxel_compute.queue_update_from_world_pos(&[
                 player.pos.x,
@@ -374,14 +444,30 @@ fn compute_then_render(
                 player.pos.z,
             ]);
         }
-        
+
         // Compute.
-        pipeline.rollback_data.download_projectiles(&pipeline.card_manager, &pipeline.projectile_compute, &mut pipeline.voxel_compute);
-        pipeline.rollback_data
-        .send_action(action, 0, pipeline.rollback_data.current_time);
-        pipeline.rollback_data.step(&pipeline.card_manager, time_step, &mut pipeline.voxel_compute);
-        pipeline.projectile_compute.upload(&pipeline.rollback_data.rollback_state.projectiles);
-        let after_proj_compute = pipeline.projectile_compute.compute(future, &pipeline.voxel_compute, sim_data, time_step);
+        pipeline.rollback_data.download_projectiles(
+            &pipeline.card_manager,
+            &pipeline.projectile_compute,
+            &mut pipeline.voxel_compute,
+        );
+        pipeline
+            .rollback_data
+            .send_action(action, 0, pipeline.rollback_data.current_time);
+        pipeline.rollback_data.step(
+            &pipeline.card_manager,
+            time_step,
+            &mut pipeline.voxel_compute,
+        );
+        pipeline
+            .projectile_compute
+            .upload(&pipeline.rollback_data.rollback_state.projectiles);
+        let after_proj_compute = pipeline.projectile_compute.compute(
+            future,
+            &pipeline.voxel_compute,
+            sim_data,
+            time_step,
+        );
         let after_compute = pipeline.voxel_compute.compute(after_proj_compute, sim_data);
         pipeline.vulkano_interface.frame_system.frame(
             after_compute,

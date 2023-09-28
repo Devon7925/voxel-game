@@ -13,7 +13,6 @@ Tweaks
         increace gravity more
     fullscreen toggle
     esc removes mouse override until click
-    mouse control support
     Increace base bullet speed
     balance 1 shots
 bug fixes

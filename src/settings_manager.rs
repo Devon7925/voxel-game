@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use winit::event::VirtualKeyCode;
+use winit::event::{MouseButton, VirtualKeyCode};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Settings {
@@ -8,7 +8,13 @@ pub struct Settings {
     pub is_remote: bool,
     pub player_count: u32,
     pub movement_controls: ControlSettings,
-    pub ability_controls: Vec<VirtualKeyCode>,
+    pub ability_controls: Vec<Control>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum Control {
+    Key(VirtualKeyCode),
+    Mouse(MouseButton),
 }
 
 impl Settings {
@@ -23,12 +29,12 @@ impl Settings {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ControlSettings {
-    pub forward: VirtualKeyCode,
-    pub back: VirtualKeyCode,
-    pub left: VirtualKeyCode,
-    pub right: VirtualKeyCode,
-    pub jump: VirtualKeyCode,
-    pub crouch: VirtualKeyCode,
-    pub sprint: VirtualKeyCode,
+    pub forward: Control,
+    pub backward: Control,
+    pub left: Control,
+    pub right: Control,
+    pub jump: Control,
+    pub crouch: Control,
+    pub sprint: Control,
     pub sensitivity: f32,
 }
