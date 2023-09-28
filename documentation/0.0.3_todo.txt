@@ -18,7 +18,6 @@ Tweaks
     balance 1 shots
 bug fixes
     fix aspect ratio issue
-    fix camera flip when looking up and down
     fix player model rotation
     add player material
     fix player model height

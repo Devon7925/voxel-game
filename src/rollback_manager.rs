@@ -355,13 +355,19 @@ impl WorldState {
                 player.facing[1] = (player.facing[1] - action.aim[1])
                     .min(PI / 2.0)
                     .max(-PI / 2.0);
+                let (h_sin, h_cos) = player.facing[0].sin_cos();
+                let (v_sin, v_cos) = player.facing[1].sin_cos();
                 player.dir = Vector3::new(
-                    player.facing[0].sin() * player.facing[1].cos(),
-                    player.facing[1].sin(),
-                    player.facing[0].cos() * player.facing[1].cos(),
+                    h_sin * v_cos,
+                    v_sin,
+                    h_cos * v_cos,
                 );
                 player.rot = Quaternion::look_at(player.dir, Vector3::new(0.0, 1.0, 0.0));
-                player.right = player.dir.cross(Vector3::new(0.0, 1.0, 0.0)).normalize();
+                player.right = Vector3::new(
+                    -h_cos,
+                    0.0,
+                    h_sin,
+                );
                 player.up = player.right.cross(player.dir).normalize();
                 let mut move_vec = Vector3::new(0.0, 0.0, 0.0);
                 let player_forward = Vector3::new(player.dir.x, 0.0, player.dir.z).normalize();
