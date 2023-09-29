@@ -23,6 +23,7 @@ layout(set = 1, binding = 3) buffer Projectiles { Projectile projectiles[]; };
 layout(push_constant) uniform PushConstants {
     // The `screen_to_world` parameter of the `draw` method.
     mat4 screen_to_world;
+    float aspect_ratio;
 } push_constants;
 
 layout(location = 0) in vec2 v_screen_coords;
@@ -288,15 +289,16 @@ void main() {
 
     float in_depth = subpassLoad(u_depth).x;
 
-     // Find the world coordinates of the current pixel.
-    vec4 world = push_constants.screen_to_world * vec4(v_screen_coords, in_depth, 1.0);
+    // Find the world coordinates of the current pixel.
+    vec2 scaled_screen_coords = v_screen_coords * vec2(push_constants.aspect_ratio, 1.0);
+    vec4 world = push_constants.screen_to_world * vec4(scaled_screen_coords, in_depth, 1.0);
     world /= world.w;
 
     float max_depth = 0.0;
     if (in_depth < 1.0) {
         max_depth = length(world.xyz - cam_data.pos.xyz);
     }
-    vec3 ray = normalize(cam_data.dir.xyz + v_screen_coords.x * cam_data.right.xyz - v_screen_coords.y * cam_data.up.xyz);
+    vec3 ray = normalize(cam_data.dir.xyz + scaled_screen_coords.x * cam_data.right.xyz - scaled_screen_coords.y * cam_data.up.xyz);
 
     vec3 pos = cam_data.pos.xyz;
 

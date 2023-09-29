@@ -209,6 +209,7 @@ impl PointLightingSystem {
     ) -> SecondaryAutoCommandBuffer {
         let push_constants = fs::PushConstants {
             screen_to_world: screen_to_world.into(),
+            aspect_ratio: viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32,
         };
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();

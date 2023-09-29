@@ -57,6 +57,11 @@ pub struct SimData {
     start_pos: [i32; 3],
 }
 
+struct WindowProperties {
+    pub width: u32,
+    pub height: u32,
+}
+
 pub const FIRST_START_POS: [i32; 3] = [100, 105, 100];
 pub const SPAWN_LOCATION: Point3<f32> = Point3::new(
     ((FIRST_START_POS[0] + (RENDER_SIZE[0] as i32) / 2) * CHUNK_SIZE as i32) as f32,
@@ -130,6 +135,11 @@ fn main() {
 
     let mut did_render = false;
 
+    let mut window_props = WindowProperties {
+        width: WINDOW_WIDTH as u32,
+        height: WINDOW_HEIGHT as u32,
+    };
+
     const TIME_STEP: f32 = 1.0 / 30.0;
 
     loop {
@@ -139,6 +149,7 @@ fn main() {
             &mut cursor_pos,
             &mut sim_settings,
             &mut player_action,
+            &mut window_props,
         );
         // Event handling.
         if !should_continue {
@@ -208,6 +219,7 @@ fn handle_events(
     cursor_pos: &mut Vector2<f32>,
     sim_settings: &mut SimSettings,
     controls: &mut PlayerAction,
+    window_props: &mut WindowProperties,
 ) -> bool {
     let mut is_running = true;
 
@@ -221,10 +233,9 @@ fn handle_events(
                         is_running = false;
                     }
                     // Resize window and its images.
-                    WindowEvent::Resized(..) | WindowEvent::ScaleFactorChanged { .. } => {
-                        //TODO
-                        // let vulkano_window = app.windows.get_renderer_mut(*window_id).unwrap();
-                        // vulkano_window.resize();
+                    WindowEvent::Resized(new_size) => {
+                        window_props.width = new_size.width;
+                        window_props.height = new_size.height;
                     }
                     // Handle mouse position events.
                     WindowEvent::CursorMoved { position, .. } => {
@@ -238,16 +249,16 @@ fn handle_events(
 
                         window
                             .set_cursor_position(PhysicalPosition::new(
-                                (WINDOW_WIDTH / 2.0) as f64,
-                                (WINDOW_HEIGHT / 2.0) as f64,
+                                (window_props.width / 2) as f64,
+                                (window_props.height / 2) as f64,
                             ))
                             .unwrap_or_else(|_| println!("Failed to set cursor position"));
                         // turn camera
                         let delta = app.settings.movement_controls.sensitivity
                             * (Vector2::new(position.x as f32, position.y as f32)
                                 - Vector2::new(
-                                    (WINDOW_WIDTH / 2.0) as f32,
-                                    (WINDOW_HEIGHT / 2.0) as f32,
+                                    (window_props.width / 2) as f32,
+                                    (window_props.height / 2) as f32,
                                 ));
                         controls.aim[0] += delta.x;
                         controls.aim[1] += delta.y;
