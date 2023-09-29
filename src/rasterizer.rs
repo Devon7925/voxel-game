@@ -1,6 +1,6 @@
 use std::{sync::Arc, fs::File, io::BufReader};
 use bytemuck::{Zeroable, Pod};
-use cgmath::{Rad, Matrix4, SquareMatrix};
+use cgmath::{Rad, Matrix4, Quaternion, Vector3, Rotation3};
 use obj::{Obj, load_obj};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer, allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}},
@@ -188,19 +188,16 @@ impl RasterizerSystem {
     pub fn draw(&self, viewport_dimensions: [u32; 2], view_matrix: Matrix4<f32>, world_state: &WorldState) -> SecondaryAutoCommandBuffer {
 
         let uniform_buffer_subbuffer = {
-            let model_matrix = Matrix4::identity();
-
             let aspect_ratio =
                 viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32;
             let proj = cgmath::perspective(
                 Rad(std::f32::consts::FRAC_PI_2),
                 aspect_ratio,
-                0.01,
+                0.1,
                 100.0,
-            );
+            );  
 
             let uniform_data = vs::Data {
-                world: model_matrix.into(),
                 view: view_matrix.into(),
                 proj: proj.into(),
             };
@@ -213,7 +210,7 @@ impl RasterizerSystem {
 
         let mut projectile_writer = self.proj_instance_data.write().unwrap();
         for (i, projectile) in world_state.projectiles.iter().enumerate() {
-            projectile_writer[i].instance_position = [-projectile.pos[0], -projectile.pos[1], -projectile.pos[2]];
+            projectile_writer[i].instance_position = [projectile.pos[0], projectile.pos[1], projectile.pos[2]];
             projectile_writer[i].instance_rotation = projectile.dir;
             projectile_writer[i].instance_scale = [projectile.size[0], projectile.size[1], projectile.size[2]];
         }
@@ -224,17 +221,51 @@ impl RasterizerSystem {
             if player.health <= 0.0 {
                 continue;
             }
-            player_writer[player_buffer_idx].instance_position = [-player.pos[0], -player.pos[1], -player.pos[2]];
-            player_writer[player_buffer_idx].instance_rotation = [player.rot.v[0], player.rot.v[1], player.rot.v[2], player.rot.s];
+            player_writer[player_buffer_idx].instance_position = [player.pos[0], player.pos[1], player.pos[2]];
+            let render_rotation = Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]));
+            player_writer[player_buffer_idx].instance_rotation = [render_rotation.v[0], render_rotation.v[1], render_rotation.v[2], render_rotation.s];
             player_writer[player_buffer_idx].instance_scale = [player.size, player.size, player.size];
             player_buffer_idx += 1;
         }
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
-        let descriptor_set = PersistentDescriptorSet::new(
+
+        let proj_color_uniform_buffer_subbuffer = {
+            let uniform_data = fs::Material {
+                material_color: [0.0, 0.0, 0.0, 0.0],
+            };
+
+            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *subbuffer.write().unwrap() = uniform_data;
+
+            subbuffer
+        };
+        let proj_descriptor_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
             layout.clone(),
-            [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
+            [
+                WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer.clone()),
+                WriteDescriptorSet::buffer(1, proj_color_uniform_buffer_subbuffer),
+            ],
+        )
+        .unwrap();
+        let player_color_uniform_buffer_subbuffer = {
+            let uniform_data = fs::Material {
+                material_color: [1.0, 0.0, 0.0, 0.0],
+            };
+
+            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *subbuffer.write().unwrap() = uniform_data;
+
+            subbuffer
+        };
+        let player_descriptor_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
+            layout.clone(),
+            [
+                WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
+                WriteDescriptorSet::buffer(1, player_color_uniform_buffer_subbuffer),
+            ],
         )
         .unwrap();
 
@@ -262,11 +293,17 @@ impl RasterizerSystem {
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
-                descriptor_set,
+                proj_descriptor_set,
             )
             .bind_vertex_buffers(0, (self.proj_vertex_buffer.clone(), self.proj_normal_buffer.clone(), self.proj_instance_data.clone()))
             .draw(self.proj_vertex_buffer.len() as u32, world_state.projectiles.len() as u32, 0, 0)
             .unwrap()
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
+                player_descriptor_set,
+            )
             .bind_vertex_buffers(0, (self.player_vertex_buffer.clone(), self.player_normal_buffer.clone(), self.player_instance_data.clone()))
             .draw(self.player_vertex_buffer.len() as u32, player_buffer_idx as u32, 0, 0)
             .unwrap();
@@ -371,7 +408,6 @@ mod vs {
             layout(location = 0) out vec3 v_normal;
 
             layout(set = 0, binding = 0) uniform Data {
-                mat4 world;
                 mat4 view;
                 mat4 proj;
             } uniforms;
@@ -385,11 +421,9 @@ mod vs {
             }
 
             void main() {
-                mat4 worldview = uniforms.view * uniforms.world;
-                vec4 proj_rot_quaternion = quat_inverse(instance_rotation);
-                v_normal = -transpose(inverse(mat3(uniforms.world))) * quat_transform(proj_rot_quaternion, normal);
-                vec3 instance_vertex_pos = quat_transform(proj_rot_quaternion, instance_scale * position) + instance_position;
-                gl_Position = uniforms.proj * worldview * vec4(instance_vertex_pos, 1.0);
+                v_normal = -quat_transform(instance_rotation, normal);
+                vec3 instance_vertex_pos = quat_transform(instance_rotation, instance_scale * position) - instance_position;
+                gl_Position = uniforms.proj * (uniforms.view * vec4(instance_vertex_pos, 1.0));
             }
         ",
     }
@@ -406,8 +440,12 @@ mod fs {
             layout(location = 0) out vec4 f_color;
             layout(location = 1) out vec3 f_normal;
 
+            layout(set = 0, binding = 1) uniform Material {
+                vec4 material_color;
+            } material;
+
             void main() {
-                f_color = vec4(1.0, 1.0, 1.0, 1.0);
+                f_color = material.material_color;
                 f_normal = v_normal;
             }
         ",

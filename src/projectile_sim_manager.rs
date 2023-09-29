@@ -8,11 +8,11 @@
 // according to those terms.
 
 use crate::{
-    app::VulkanoInterface, card_system::{CardManager, VoxelMaterial}, voxel_sim_manager::VoxelComputePipeline,
+    app::VulkanoInterface, card_system::CardManager, voxel_sim_manager::VoxelComputePipeline,
     SimData, rollback_manager::get_index,
 };
 use bytemuck::{Pod, Zeroable};
-use cgmath::{Quaternion, Vector3, Point3};
+use cgmath::{Quaternion, Point3};
 use std::sync::Arc;
 use vulkano::{
     buffer::{

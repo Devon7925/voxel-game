@@ -48,10 +48,9 @@ void main() {
     grid_iteration_count.z = int(ceil((2.0*projectile.size.z + sim_data.dt * projectile.vel) * sqrt(2.0)));
     vec3 grid_dist = 2.0 * projectile.size.xyz / grid_iteration_count;
     grid_dist.z = (2.0 * projectile.size.z + sim_data.dt * projectile.vel) / grid_iteration_count.z;
-    vec4 inverse_rot = quat_inverse(projectile.dir);
-    vec3 dir = quat_transform(inverse_rot, vec3(0.0, 0.0, 1.0));
-    vec3 right = quat_transform(inverse_rot, vec3(1.0, 0.0, 0.0));
-    vec3 up = quat_transform(inverse_rot, vec3(0.0, 1.0, 0.0));
+    vec3 dir = quat_transform(projectile.dir, vec3(0.0, 0.0, 1.0));
+    vec3 right = quat_transform(projectile.dir, vec3(1.0, 0.0, 0.0));
+    vec3 up = quat_transform(projectile.dir, vec3(0.0, 1.0, 0.0));
     vec3 start = projectile.pos.xyz - dir*projectile.size.z - right*projectile.size.x - up*projectile.size.y;
     for (int i = 0; i <= grid_iteration_count.x; i++) {
         for (int j = 0; j <= grid_iteration_count.y; j++) {

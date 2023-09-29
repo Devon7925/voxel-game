@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, f32::consts::PI, sync::Arc};
 
 use bytemuck::{Pod, Zeroable};
-use cgmath::{InnerSpace, One, Point3, Quaternion, Rotation, Vector2, Vector3};
+use cgmath::{InnerSpace, One, Point3, Quaternion, Rotation, Vector2, Vector3, Rotation3, Rad};
 use serde::{Deserialize, Serialize};
 use vulkano::{
     buffer::{subbuffer::BufferReadGuard, Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -310,7 +310,7 @@ impl WorldState {
         let mut new_projectiles = Vec::new();
         for proj in self.projectiles.iter_mut() {
             let projectile_rot =
-                Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]).conjugate();
+                Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
             let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
             let mut proj_vel = projectile_dir * proj.vel;
             let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
@@ -319,8 +319,8 @@ impl WorldState {
                 proj.pos[i] += proj_vel[i] * time_step;
             }
             // recompute vel and rot
-            let new_projectile_rot =
-                Quaternion::look_at(proj_vel.normalize(), Vector3::new(0.0, 1.0, 0.0));
+            let new_projectile_rot:Quaternion<f32> =
+                Quaternion::from_arc(projectile_dir, proj_vel.normalize(), None) * projectile_rot;
             proj.dir = [
                 new_projectile_rot.v[0],
                 new_projectile_rot.v[1],
@@ -350,24 +350,14 @@ impl WorldState {
                 continue;
             }
             if let Some(action) = action {
-                player.facing[0] =
-                    (player.facing[0] - action.aim[0] + 2.0 * PI) % (2.0 * PI);
+                player.facing[0] = (player.facing[0] - action.aim[0] + 2.0 * PI) % (2.0 * PI);
                 player.facing[1] = (player.facing[1] - action.aim[1])
                     .min(PI / 2.0)
                     .max(-PI / 2.0);
-                let (h_sin, h_cos) = player.facing[0].sin_cos();
-                let (v_sin, v_cos) = player.facing[1].sin_cos();
-                player.dir = Vector3::new(
-                    h_sin * v_cos,
-                    v_sin,
-                    h_cos * v_cos,
-                );
-                player.rot = Quaternion::look_at(player.dir, Vector3::new(0.0, 1.0, 0.0));
-                player.right = Vector3::new(
-                    -h_cos,
-                    0.0,
-                    h_sin,
-                );
+                player.rot = Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]))
+                    * Quaternion::from_axis_angle(Vector3::new(1.0, 0.0, 0.0), Rad(-player.facing[1]));
+                player.dir = player.rot * Vector3::new(0.0, 0.0, 1.0);
+                player.right = player.rot * Vector3::new(-1.0, 0.0, 0.0);
                 player.up = player.right.cross(player.dir).normalize();
                 let mut move_vec = Vector3::new(0.0, 0.0, 0.0);
                 let player_forward = Vector3::new(player.dir.x, 0.0, player.dir.z).normalize();
@@ -393,15 +383,12 @@ impl WorldState {
                 if move_vec.magnitude() > 0.0 {
                     move_vec = move_vec.normalize();
                 }
-                let accel_speed = if action.sprint {
-                    1.5
-                } else {
-                    1.0
-                } * if player.collision_vec != Vector3::new(0, 0, 0) {
-                    4.0
-                } else {
-                    1.0
-                };
+                let accel_speed = if action.sprint { 1.5 } else { 1.0 }
+                    * if player.collision_vec != Vector3::new(0, 0, 0) {
+                        4.0
+                    } else {
+                        1.0
+                    };
                 player.vel += accel_speed * move_vec * time_step;
 
                 if action.jump {
@@ -411,9 +398,17 @@ impl WorldState {
                 }
 
                 for (ability_idx, ability) in player.abilities.iter_mut().enumerate() {
-                    if ability_idx < action.activate_ability.len() && action.activate_ability[ability_idx] && ability.cooldown <= 0.0 {
+                    if ability_idx < action.activate_ability.len()
+                        && action.activate_ability[ability_idx]
+                        && ability.cooldown <= 0.0
+                    {
                         ability.cooldown = ability.value;
-                        let effects = card_manager.get_effects_from_base_card(&ability.ability, &player.pos, &player.rot, player_idx as u32);
+                        let effects = card_manager.get_effects_from_base_card(
+                            &ability.ability,
+                            &player.pos,
+                            &player.rot,
+                            player_idx as u32,
+                        );
                         self.projectiles.extend(effects.0);
                         if is_real_update && effects.1.len() > 0 {
                             let mut writer = voxels.write().unwrap();
@@ -444,7 +439,7 @@ impl WorldState {
                     continue;
                 }
                 let projectile_rot =
-                    Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]).conjugate();
+                    Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
                 let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
                 let projectile_right = projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
                 let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
@@ -493,7 +488,9 @@ impl WorldState {
                                     if is_real_update && effects.1.len() > 0 {
                                         let mut writer = voxels.write().unwrap();
                                         for (pos, material) in effects.1 {
-                                            vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
+                                            vox_compute.queue_update_from_voxel_pos(&[
+                                                pos.x, pos.y, pos.z,
+                                            ]);
                                             writer[get_index(pos) as usize] = material.to_memory();
                                         }
                                     }
@@ -636,11 +633,14 @@ fn collide_player(
                                 player.vel[(component + 2) % 3],
                             );
                             if perp_vel.magnitude() > 0.0 {
-                                let friction_factor = VoxelMaterial::FRICTION_COEFFICIENTS[voxel[0] as usize];
-                                player.vel[(component + 1) % 3] -=
-                                    (0.5 * perp_vel.normalize().x + friction_factor * perp_vel.x) * time_step;
-                                player.vel[(component + 2) % 3] -=
-                                    (0.5 * perp_vel.normalize().y + friction_factor * perp_vel.y) * time_step;
+                                let friction_factor =
+                                    VoxelMaterial::FRICTION_COEFFICIENTS[voxel[0] as usize];
+                                player.vel[(component + 1) % 3] -= (0.5 * perp_vel.normalize().x
+                                    + friction_factor * perp_vel.x)
+                                    * time_step;
+                                player.vel[(component + 2) % 3] -= (0.5 * perp_vel.normalize().y
+                                    + friction_factor * perp_vel.y)
+                                    * time_step;
                             }
 
                             player.collision_vec[component] = -vel_dir[component].signum() as i32;

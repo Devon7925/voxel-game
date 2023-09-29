@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use cgmath::{Matrix4, Vector3};
+use cgmath::Matrix4;
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -203,16 +203,12 @@ impl PointLightingSystem {
         normals_input: Arc<dyn ImageViewAbstract + 'static>,
         depth_input: Arc<dyn ImageViewAbstract + 'static>,
         screen_to_world: Matrix4<f32>,
-        position: Vector3<f32>,
-        color: [f32; 3],
         voxels: Subbuffer<[[u32; 2]]>,
         rollback_manager: &RollbackData,
         sim_data: &mut SimData,
     ) -> SecondaryAutoCommandBuffer {
         let push_constants = fs::PushConstants {
             screen_to_world: screen_to_world.into(),
-            color: [color[0], color[1], color[2], 1.0],
-            position: position.extend(0.0).into(),
         };
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();

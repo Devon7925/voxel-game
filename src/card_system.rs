@@ -1,4 +1,4 @@
-use cgmath::{Quaternion, Vector3, Point3};
+use cgmath::{Quaternion, Point3};
 use serde::{Deserialize, Serialize};
 
 use crate::projectile_sim_manager::Projectile;
@@ -101,13 +101,6 @@ impl Default for BaseCard {
     }
 }
 
-pub struct ProjStats {
-    pub damage: i32,
-    pub speed: i32,
-    pub size: i32,
-    pub idx: u32,
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum ReferencedBaseCardType {
     Projectile,
@@ -164,7 +157,6 @@ impl Default for CardManager {
 
 impl CardManager {
     pub fn register_base_card(&mut self, card: BaseCard) -> ReferencedBaseCard {
-        let value = card.evaluate_value();
         match card {
             BaseCard::Projectile(modifiers) => {
                 let mut damage = 0;

@@ -6,7 +6,7 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
-use cgmath::{Matrix4, SquareMatrix, Vector3};
+use cgmath::{Matrix4, SquareMatrix};
 use egui_winit_vulkano::{
     egui::{self, emath, epaint, pos2, Align2, Color32, Rect, Rounding, Stroke, Vec2, RichText},
     Gui, GuiConfig,
@@ -24,7 +24,7 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract},
     memory::allocator::StandardMemoryAllocator,
-    pipeline::graphics::vertex_input::{Vertex, VertexMember},
+    pipeline::graphics::vertex_input::Vertex,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::Surface,
     sync::GpuFuture,
@@ -496,8 +496,6 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// receive any light.
     pub fn raytrace(
         &mut self,
-        position: Vector3<f32>,
-        color: [f32; 3],
         voxels: Subbuffer<[[u32; 2]]>,
         rollback_manager: &RollbackData,
         sim_data: &mut SimData,
@@ -509,8 +507,6 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                 self.frame.system.normals_buffer.clone(),
                 self.frame.system.depth_buffer.clone(),
                 self.frame.world_to_framebuffer.invert().unwrap(),
-                position,
-                color,
                 voxels,
                 rollback_manager,
                 sim_data,

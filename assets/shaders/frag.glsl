@@ -23,10 +23,6 @@ layout(set = 1, binding = 3) buffer Projectiles { Projectile projectiles[]; };
 layout(push_constant) uniform PushConstants {
     // The `screen_to_world` parameter of the `draw` method.
     mat4 screen_to_world;
-    // The `color` parameter of the `draw` method.
-    vec4 color;
-    // The `position` parameter of the `draw` method.
-    vec4 position;
 } push_constants;
 
 layout(location = 0) in vec2 v_screen_coords;
@@ -117,11 +113,11 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         vec3 min_normal = vec3(0);
         for (int i = 0; i < sim_data.projectile_count; i++) {
             vec3 proj_pos = projectiles[i].pos.xyz;
-            vec4 proj_rot_quaternion = quat_inverse(projectiles[i].dir);
+            vec4 inv_proj_rot_quaternion = quat_inverse(projectiles[i].dir);
             vec3 proj_size = projectiles[i].size.xyz;
             float does_exist = projectiles[i].pos.w;
-            vec3 transformed_pos = quat_transform(projectiles[i].dir, (pos - proj_pos) / proj_size);
-            vec3 ray = quat_transform(projectiles[i].dir, ray / proj_size);
+            vec3 transformed_pos = quat_transform(inv_proj_rot_quaternion, (pos - proj_pos) / proj_size);
+            vec3 ray = quat_transform(inv_proj_rot_quaternion, ray / proj_size);
             vec2 t_x = vec2((-1 - transformed_pos.x) / ray.x, (1 - transformed_pos.x) / ray.x);
             t_x = vec2(max(min(t_x.x, t_x.y), 0.0), min(max(t_x.x, t_x.y), depth));
             if (t_x.y < 0 || t_x.x > depth) continue;
@@ -144,7 +140,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
                 } else {
                     min_normal = vec3(0, 0, -sign(ray.z));
                 }
-                min_normal = quat_transform(proj_rot_quaternion, min_normal);
+                min_normal = quat_transform(projectiles[i].dir, min_normal);
             }
         }
         if (length(min_normal) > 0) {
@@ -224,6 +220,8 @@ MaterialProperties material_props(uvec2 voxel_data, vec3 pos, vec3 in_normal) {
     } else if (voxel_data.x == MAT_GLASS) {
         vec4 noise = voronoise(4.0*pos, 1.0, 1.0);
         return MaterialProperties(mix(vec3(0.7, 0.7, 0.7), vec3(0.7, 0.7, 0.7), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.35 * noise.xyz), 0.35, 0.7);
+    } else if (voxel_data.x == MAT_PLAYER) {
+        return MaterialProperties(vec3(0.8, 0.8, 0.8), in_normal, 0.2, 0.0);
     }
     // unregistered voxel type: invalid state
     return MaterialProperties(vec3(1.0, 0.0, 1.0), in_normal, 0.0, 0.0);
@@ -290,24 +288,13 @@ void main() {
 
     float in_depth = subpassLoad(u_depth).x;
 
-    float n = 0.01;
-    float f = 100.0;
-
-    float z_ndc = 2.0 * in_depth - 1.0;
-    float z_eye = 2.0 * n * f / (f + n - z_ndc * (f - n));
-
-    float tanFov = tan(radians(90) / 2.0);
-    float aspect = 1.0;
-
-    vec3 viewPos = vec3(
-        z_eye * v_screen_coords.x * aspect * tanFov,
-        z_eye * v_screen_coords.y * tanFov,
-        -z_eye
-    );
+     // Find the world coordinates of the current pixel.
+    vec4 world = push_constants.screen_to_world * vec4(v_screen_coords, in_depth, 1.0);
+    world /= world.w;
 
     float max_depth = 0.0;
     if (in_depth < 1.0) {
-        max_depth = length(viewPos);
+        max_depth = length(world.xyz - cam_data.pos.xyz);
     }
     vec3 ray = normalize(cam_data.dir.xyz + v_screen_coords.x * cam_data.right.xyz - v_screen_coords.y * cam_data.up.xyz);
 
@@ -322,13 +309,19 @@ void main() {
         }
         vec3 in_normal = normalize(subpassLoad(u_normals).rgb);
 
-        vec3 in_diffuse = subpassLoad(u_diffuse).rgb;
-        // f_color.rgb = push_constants.color.rgb * light_percent * in_diffuse;
+        vec4 in_diffuse = subpassLoad(u_diffuse);
+        
         primary_ray.hit = true;
         primary_ray.normal = in_normal;
         primary_ray.pos = pos + max_depth*ray;
         primary_ray.dist = max_depth;
-        primary_ray.voxel_data = uvec2(MAT_PROJECTILE, 0);
+
+        uint raster_material = MAT_PROJECTILE;
+        if (in_diffuse.x == 1.0) {
+            raster_material = MAT_PLAYER;
+        }
+
+        primary_ray.voxel_data = uvec2(raster_material, 0);
     }
 
     f_color = vec4(get_color(pos, ray, primary_ray), 1.0);
