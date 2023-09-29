@@ -60,6 +60,7 @@ pub struct SimData {
 struct WindowProperties {
     pub width: u32,
     pub height: u32,
+    pub fullscreen: bool,
 }
 
 pub const FIRST_START_POS: [i32; 3] = [100, 105, 100];
@@ -138,6 +139,7 @@ fn main() {
     let mut window_props = WindowProperties {
         width: WINDOW_WIDTH as u32,
         height: WINDOW_HEIGHT as u32,
+        fullscreen: false,
     };
 
     const TIME_STEP: f32 = 1.0 / 30.0;
@@ -246,7 +248,7 @@ fn handle_events(
                             .unwrap()
                             .downcast_ref::<Window>()
                             .unwrap();
-
+                        
                         window
                             .set_cursor_position(PhysicalPosition::new(
                                 (window_props.width / 2) as f64,
@@ -297,6 +299,22 @@ fn handle_events(
                     }
                     WindowEvent::KeyboardInput { input, .. } => {
                         input.virtual_keycode.map(|key| {
+                            let window = app
+                                .vulkano_interface
+                                .surface
+                                .object()
+                                .unwrap()
+                                .downcast_ref::<Window>()
+                                .unwrap();
+                            if key == app.settings.fullscreen_toggle && input.state == ElementState::Pressed {
+                                window_props.fullscreen = !window_props.fullscreen;
+                                if window_props.fullscreen {
+                                    window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+                                } else {
+                                    window.set_fullscreen(None);
+                                }
+                            }
+
                             macro_rules! key_match {
                                 ($property:ident) => {
                                     if let Control::Key(key_code) =

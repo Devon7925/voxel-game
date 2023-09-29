@@ -2,6 +2,7 @@ local_url: ws://127.0.0.1:3536/extreme_bevy?next=2
 remote_url: ws://primd.net:3536/extreme_bevy?next=2
 is_remote: false
 player_count: 1
+fullscreen_toggle: F11
 movement_controls:
   forward: !Key W
   backward: !Key S

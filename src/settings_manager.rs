@@ -7,6 +7,7 @@ pub struct Settings {
     pub remote_url: String,
     pub is_remote: bool,
     pub player_count: u32,
+    pub fullscreen_toggle: VirtualKeyCode,
     pub movement_controls: ControlSettings,
     pub ability_controls: Vec<Control>,
 }
