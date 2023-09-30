@@ -1,4 +1,5 @@
 [
     Projectile([Damage(5),Speed(5),Size(-5),Gravity(5)]),
     Projectile([Speed(7),Size(-10),Lifetime(-3),OnHit(CreateMaterial(Ice))]),
+    Projectile([Speed(-1),Size(1),Lifetime(4),Health(5)]),
 ]

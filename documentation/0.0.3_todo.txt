@@ -1,5 +1,4 @@
 more cards
-    health control
     friendly fire
     shape control
 Tweaks

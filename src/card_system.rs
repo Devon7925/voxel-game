@@ -17,6 +17,7 @@ pub enum ProjectileModifier {
     Size(i32),
     Lifetime(i32),
     Gravity(i32),
+    Health(i32),
     OnHit(BaseCard),
 }
 
@@ -65,6 +66,7 @@ impl BaseCard {
                 let mut size = 0;
                 let mut lifetime = 0;
                 let mut gravity = 0;
+                let mut health = 0;
                 for modifier in modifiers {
                     match modifier {
                         ProjectileModifier::Damage(d) => hit_value += *d as f32,
@@ -72,13 +74,19 @@ impl BaseCard {
                         ProjectileModifier::Size(s) => size += s,
                         ProjectileModifier::Lifetime(l) => lifetime += l,
                         ProjectileModifier::Gravity(g) => gravity += g,
+                        ProjectileModifier::Health(g) => health += g,
                         ProjectileModifier::OnHit(card) => hit_value += card.evaluate_value(),
                     }
                 }
                 0.002
-                    * hit_value as f32
+                    * hit_value
                     * (1.0 + 1.5f32.powi(speed) * 1.5f32.powi(lifetime))
                     * (1.0 + 1.25f32.powi(size))
+                    * (1.0 + 1.25f32.powi(health))
+                + 0.02
+                    * 1.5f32.powi(lifetime)
+                    * (1.0 + 1.25f32.powi(size))
+                    * (1.0 + 1.25f32.powi(health))
             }
             BaseCard::MultiCast(cards) => {
                 cards.iter().map(|card| card.evaluate_value()).sum::<f32>()
@@ -131,6 +139,7 @@ pub struct ReferencedProjectile {
     pub size: i32,
     pub lifetime: i32,
     pub gravity: i32,
+    pub health: i32,
     pub on_hit: Vec<ReferencedBaseCard>,
 }
 
@@ -164,6 +173,7 @@ impl CardManager {
                 let mut size = 0;
                 let mut lifetime = 0;
                 let mut gravity = 0;
+                let mut health = 0;
                 let mut on_hit = Vec::new();
                 for modifier in modifiers {
                     match modifier {
@@ -172,6 +182,7 @@ impl CardManager {
                         ProjectileModifier::Size(s) => size += s,
                         ProjectileModifier::Lifetime(l) => lifetime += l,
                         ProjectileModifier::Gravity(g) => gravity += g,
+                        ProjectileModifier::Health(g) => health += g,
                         ProjectileModifier::OnHit(card) => {
                             on_hit.push(self.register_base_card(card))
                         }
@@ -183,6 +194,7 @@ impl CardManager {
                     size,
                     lifetime,
                     gravity,
+                    health,
                     on_hit,
                 });
 
@@ -261,6 +273,7 @@ impl CardManager {
                     let proj_stats = self.get_referenced_proj(card_idx);
                     let proj_size = 1.25f32.powi(proj_stats.size);
                     let proj_speed = 3.0 * 1.5f32.powi(proj_stats.speed);
+                    let proj_health = 10.0 * 1.5f32.powi(proj_stats.health);
                     let proj_damage = proj_stats.damage as f32;
                     projectiles.push(Projectile {
                         pos: [pos.x, pos.y, pos.z, 1.0],
@@ -268,7 +281,7 @@ impl CardManager {
                         dir: [rot.v[0], rot.v[1], rot.v[2], rot.s],
                         size: [proj_size, proj_size, proj_size, 1.0],
                         vel: proj_speed,
-                        health: 10.0,
+                        health: proj_health,
                         lifetime: 0.0,
                         owner: player_idx,
                         damage: proj_damage,
