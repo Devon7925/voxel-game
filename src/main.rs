@@ -15,7 +15,7 @@ use crate::{
     app::RenderPipeline, card_system::BaseCard, rollback_manager::PlayerAbility,
     settings_manager::Settings,
 };
-use cgmath::{Matrix4, Point3, SquareMatrix, Vector2, Vector3, Rad};
+use cgmath::{Matrix4, Point3, SquareMatrix, Vector2, Vector3, Rad, EuclideanSpace};
 use multipass_system::Pass;
 use networking::NetworkConnection;
 use rollback_manager::{Player, PlayerAction};
@@ -462,7 +462,7 @@ fn compute_then_render(
 
     let view_matrix = if pipeline.rollback_data.cached_current_state.players.len() > 0 {
         let cam_player = pipeline.rollback_data.cached_current_state.players[0].clone();
-        (Matrix4::from_translation(cam_player.pos.to_homogeneous().truncate()) * Matrix4::from(cam_player.rot)).invert().unwrap()
+        (Matrix4::from_translation(cam_player.pos.to_vec()) * Matrix4::from(cam_player.rot)).invert().unwrap()
     } else {
         println!("no players");
         Matrix4::identity()
@@ -533,7 +533,7 @@ fn compute_then_render(
         match pass {
             Pass::Deferred(mut draw_pass) => {
                 let cam_player = pipeline.rollback_data.cached_current_state.players[0].clone();
-                let view_matrix = (Matrix4::from_translation(-cam_player.pos.to_homogeneous().truncate()) * Matrix4::from(cam_player.rot)).invert().unwrap();
+                let view_matrix = (Matrix4::from_translation(-cam_player.pos.to_vec()) * Matrix4::from(cam_player.rot)).invert().unwrap();
                 let cb = pipeline.vulkano_interface.rasterizer_system.draw(
                     draw_pass.viewport_dimensions(),
                     view_matrix,

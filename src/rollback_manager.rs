@@ -1,7 +1,9 @@
 use std::{collections::VecDeque, f32::consts::PI, sync::Arc};
 
 use bytemuck::{Pod, Zeroable};
-use cgmath::{InnerSpace, One, Point3, Quaternion, Rotation, Vector2, Vector3, Rotation3, Rad};
+use cgmath::{
+    EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation, Rotation3, Vector2, Vector3,
+};
 use serde::{Deserialize, Serialize};
 use vulkano::{
     buffer::{subbuffer::BufferReadGuard, Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -319,7 +321,7 @@ impl WorldState {
                 proj.pos[i] += proj_vel[i] * time_step;
             }
             // recompute vel and rot
-            let new_projectile_rot:Quaternion<f32> =
+            let new_projectile_rot: Quaternion<f32> =
                 Quaternion::from_arc(projectile_dir, proj_vel.normalize(), None) * projectile_rot;
             proj.dir = [
                 new_projectile_rot.v[0],
@@ -334,6 +336,119 @@ impl WorldState {
                 proj.health = 0.0;
             }
         }
+        //collide projectiles <-> projectiles
+        let mut collision_pairs = Vec::new();
+        for i in 0..self.projectiles.len() {
+            let proj1 = self.projectiles.get(i).unwrap();
+            let projectile_1_rot =
+                Quaternion::new(proj1.dir[3], proj1.dir[0], proj1.dir[1], proj1.dir[2]);
+            let projectile_1_vectors = [
+                projectile_1_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0)),
+                projectile_1_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0)),
+                projectile_1_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
+            ];
+            let projectile_1_pos = Point3::new(proj1.pos[0], proj1.pos[1], proj1.pos[2]);
+            let projectile_1_size = Vector3::new(proj1.size[0], proj1.size[1], proj1.size[2]);
+            let projectile_1_coords = vec![
+                [-1.0, -1.0, -1.0],
+                [-1.0, -1.0, 1.0],
+                [-1.0, 1.0, -1.0],
+                [-1.0, 1.0, 1.0],
+                [1.0, -1.0, -1.0],
+                [1.0, -1.0, 1.0],
+                [1.0, 1.0, -1.0],
+                [1.0, 1.0, 1.0],
+            ]
+            .iter()
+            .map(|c| {
+                let mut pos = projectile_1_pos;
+                for i in 0..3 {
+                    pos += projectile_1_size[i] * projectile_1_vectors[i] * c[i];
+                }
+                pos
+            })
+            .collect::<Vec<_>>();
+            'second_proj_loop: for j in i + 1..self.projectiles.len() {
+                let proj2 = self.projectiles.get(j).unwrap();
+
+                let projectile_2_rot =
+                    Quaternion::new(proj2.dir[3], proj2.dir[0], proj2.dir[1], proj2.dir[2]);
+                let projectile_2_vectors = [
+                    projectile_2_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0)),
+                    projectile_2_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0)),
+                    projectile_2_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
+                ];
+                let projectile_2_pos = Point3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
+                let projectile_2_size = Vector3::new(proj2.size[0], proj2.size[1], proj2.size[2]);
+
+                let projectile_2_coords = vec![
+                    [-1.0, -1.0, -1.0],
+                    [-1.0, -1.0, 1.0],
+                    [-1.0, 1.0, -1.0],
+                    [-1.0, 1.0, 1.0],
+                    [1.0, -1.0, -1.0],
+                    [1.0, -1.0, 1.0],
+                    [1.0, 1.0, -1.0],
+                    [1.0, 1.0, 1.0],
+                ]
+                .iter()
+                .map(|c| {
+                    let mut pos = projectile_2_pos;
+                    for i in 0..3 {
+                        pos += projectile_2_size[i] * projectile_2_vectors[i] * c[i];
+                    }
+                    pos
+                })
+                .collect::<Vec<_>>();
+
+                // sat collision detection
+                for i in 0..3 {
+                    let (min_proj_2, max_proj_2) = projectile_2_coords
+                        .iter()
+                        .map(|c| c.to_vec().dot(projectile_1_vectors[i]))
+                        .fold((f32::INFINITY, f32::NEG_INFINITY), |acc, x| {
+                            (acc.0.min(x), acc.1.max(x))
+                        });
+                    if min_proj_2 > projectile_1_pos.to_vec().dot(projectile_1_vectors[i]) + projectile_1_size[i]
+                        || max_proj_2 < projectile_1_pos.to_vec().dot(projectile_1_vectors[i]) - projectile_1_size[i]
+                    {
+                        continue 'second_proj_loop;
+                    }
+                }
+                for i in 0..3 {
+                    let (min_proj_1, max_proj_1) = projectile_1_coords
+                        .iter()
+                        .map(|c| c.to_vec().dot(projectile_2_vectors[i]))
+                        .fold((f32::INFINITY, f32::NEG_INFINITY), |acc, x| {
+                            (acc.0.min(x), acc.1.max(x))
+                        });
+                    if min_proj_1 > projectile_2_pos.to_vec().dot(projectile_2_vectors[i]) + projectile_2_size[i]
+                        || max_proj_1 < projectile_2_pos.to_vec().dot(projectile_2_vectors[i]) - projectile_2_size[i]
+                    {
+                        continue 'second_proj_loop;
+                    }
+                }
+                // collision detected
+                collision_pairs.push((i, j));
+            }
+        }
+
+        for (i, j) in collision_pairs {
+            println!("collision detected between {} and {}", i, j);
+            let damage_1 = self.projectiles.get(i).unwrap().damage;
+            let damage_2 = self.projectiles.get(j).unwrap().damage;
+            {
+                let mut proj1_mut = self.projectiles.get_mut(j).unwrap();
+                proj1_mut.health -= damage_2;
+                proj1_mut.health -= damage_1;
+            }
+            {
+                let mut proj2_mut = self.projectiles.get_mut(i).unwrap();
+                proj2_mut.health -= damage_1;
+                proj2_mut.health -= damage_2;
+            }
+        }
+
         let voxel_reader = voxels.read().unwrap();
         for (player_idx, (player, action)) in self
             .players
@@ -354,8 +469,12 @@ impl WorldState {
                 player.facing[1] = (player.facing[1] - action.aim[1])
                     .min(PI / 2.0)
                     .max(-PI / 2.0);
-                player.rot = Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]))
-                    * Quaternion::from_axis_angle(Vector3::new(1.0, 0.0, 0.0), Rad(-player.facing[1]));
+                player.rot =
+                    Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]))
+                        * Quaternion::from_axis_angle(
+                            Vector3::new(1.0, 0.0, 0.0),
+                            Rad(-player.facing[1]),
+                        );
                 player.dir = player.rot * Vector3::new(0.0, 0.0, 1.0);
                 player.right = player.rot * Vector3::new(-1.0, 0.0, 0.0);
                 player.up = player.right.cross(player.dir).normalize();

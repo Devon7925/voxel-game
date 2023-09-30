@@ -1,4 +1,3 @@
-projectile <-> projectile collision
 more cards
     health control
     friendly fire
