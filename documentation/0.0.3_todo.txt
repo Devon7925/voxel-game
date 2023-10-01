@@ -1,4 +1,3 @@
 Tweaks
     esc removes mouse override until click
-    Increace base bullet speed
     balance 1 shots
