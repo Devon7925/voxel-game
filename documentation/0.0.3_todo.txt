@@ -1,5 +1,3 @@
-more cards
-    shape control
 Tweaks
     Worldgen
         flatter terrain

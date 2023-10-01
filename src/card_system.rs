@@ -14,7 +14,9 @@ pub enum BaseCard {
 pub enum ProjectileModifier {
     Damage(i32),
     Speed(i32),
-    Size(i32),
+    Length(i32),
+    Width(i32),
+    Height(i32),
     Lifetime(i32),
     Gravity(i32),
     Health(i32),
@@ -65,7 +67,9 @@ impl BaseCard {
             BaseCard::Projectile(modifiers) => {
                 let mut hit_value = 0.0;
                 let mut speed = 0;
-                let mut size = 0;
+                let mut length = 0;
+                let mut width = 0;
+                let mut height = 0;
                 let mut lifetime = 0;
                 let mut gravity = 0;
                 let mut health = 0;
@@ -75,7 +79,9 @@ impl BaseCard {
                     match modifier {
                         ProjectileModifier::Damage(d) => hit_value += (*d as f32).abs(),
                         ProjectileModifier::Speed(s) => speed += s,
-                        ProjectileModifier::Size(s) => size += s,
+                        ProjectileModifier::Length(s) => length += s,
+                        ProjectileModifier::Width(s) => width += s,
+                        ProjectileModifier::Height(s) => height += s,
                         ProjectileModifier::Lifetime(l) => lifetime += l,
                         ProjectileModifier::Gravity(g) => gravity += g,
                         ProjectileModifier::Health(g) => health += g,
@@ -87,11 +93,11 @@ impl BaseCard {
                 0.002
                     * hit_value
                     * (1.0 + 1.5f32.powi(speed) * 1.5f32.powi(lifetime))
-                    * (1.0 + 1.25f32.powi(size))
+                    * (1.0 + 1.25f32.powi(width) * 1.25f32.powi(height) + 1.25f32.powi(length))
                     * (1.0 + 1.25f32.powi(health))
                 + 0.02
                     * 1.5f32.powi(lifetime)
-                    * (1.0 + 1.25f32.powi(size))
+                    * (1.0 + 1.25f32.powi(width) * 1.25f32.powi(height) + 1.25f32.powi(length))
                     * (1.0 + 1.25f32.powi(health))
                     * if friendly_fire {1.0} else {2.0}
             }
@@ -143,7 +149,9 @@ impl Default for ReferencedBaseCard {
 pub struct ReferencedProjectile {
     pub damage: i32,
     pub speed: i32,
-    pub size: i32,
+    pub length: i32,
+    pub width: i32,
+    pub height: i32,
     pub lifetime: i32,
     pub gravity: i32,
     pub health: i32,
@@ -179,7 +187,9 @@ impl CardManager {
             BaseCard::Projectile(modifiers) => {
                 let mut damage = 0;
                 let mut speed = 0;
-                let mut size = 0;
+                let mut length = 0;
+                let mut width = 0;
+                let mut height = 0;
                 let mut lifetime = 0;
                 let mut gravity = 0;
                 let mut health = 0;
@@ -190,7 +200,9 @@ impl CardManager {
                     match modifier {
                         ProjectileModifier::Damage(d) => damage += d,
                         ProjectileModifier::Speed(s) => speed += s,
-                        ProjectileModifier::Size(s) => size += s,
+                        ProjectileModifier::Length(s) => length += s,
+                        ProjectileModifier::Width(s) => width += s,
+                        ProjectileModifier::Height(s) => height += s,
                         ProjectileModifier::Lifetime(l) => lifetime += l,
                         ProjectileModifier::Gravity(g) => gravity += g,
                         ProjectileModifier::Health(g) => health += g,
@@ -204,7 +216,9 @@ impl CardManager {
                 self.referenced_projs.push(ReferencedProjectile {
                     damage,
                     speed,
-                    size,
+                    length,
+                    width,
+                    height,
                     lifetime,
                     gravity,
                     health,
@@ -286,7 +300,9 @@ impl CardManager {
                     ..
                 } => {
                     let proj_stats = self.get_referenced_proj(card_idx);
-                    let proj_size = 1.25f32.powi(proj_stats.size);
+                    let proj_length = 1.25f32.powi(proj_stats.length);
+                    let proj_width = 1.25f32.powi(proj_stats.width);
+                    let proj_height = 1.25f32.powi(proj_stats.height);
                     let proj_speed = 3.0 * 1.5f32.powi(proj_stats.speed);
                     let proj_health = 10.0 * 1.5f32.powi(proj_stats.health);
                     let proj_damage = proj_stats.damage as f32;
@@ -294,7 +310,7 @@ impl CardManager {
                         pos: [pos.x, pos.y, pos.z, 1.0],
                         chunk_update_pos: [0, 0, 0, 0],
                         dir: [rot.v[0], rot.v[1], rot.v[2], rot.s],
-                        size: [proj_size, proj_size, proj_size, 1.0],
+                        size: [proj_width, proj_height, proj_length, 1.0],
                         vel: proj_speed,
                         health: proj_health,
                         lifetime: 0.0,

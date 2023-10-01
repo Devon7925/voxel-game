@@ -117,8 +117,8 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             vec4 inv_proj_rot_quaternion = quat_inverse(projectiles[i].dir);
             vec3 proj_size = projectiles[i].size.xyz;
             float does_exist = projectiles[i].pos.w;
-            vec3 transformed_pos = quat_transform(inv_proj_rot_quaternion, (pos - proj_pos) / proj_size);
-            vec3 ray = quat_transform(inv_proj_rot_quaternion, ray / proj_size);
+            vec3 transformed_pos = quat_transform(inv_proj_rot_quaternion, (pos - proj_pos)) / proj_size;
+            vec3 ray = quat_transform(inv_proj_rot_quaternion, ray) / proj_size;
             vec2 t_x = vec2((-1 - transformed_pos.x) / ray.x, (1 - transformed_pos.x) / ray.x);
             t_x = vec2(max(min(t_x.x, t_x.y), 0.0), min(max(t_x.x, t_x.y), depth));
             if (t_x.y < 0 || t_x.x > depth) continue;

@@ -613,7 +613,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                 )
                 .show(&ctx, |ui| {
                     for ability in rollback_manager.cached_current_state.players[0].abilities.iter() {
-                        ui.label(RichText::new(if ability.cooldown > 0.0 {format!("{}", ability.cooldown as i32)} else {"".to_string()}).color(Color32::WHITE).size(36.0));
+                        ui.label(RichText::new(if ability.cooldown > 0.0 {format!("{}", ability.cooldown.ceil() as i32)} else {"".to_string()}).color(Color32::WHITE).size(36.0));
                     }
                 });
         });
