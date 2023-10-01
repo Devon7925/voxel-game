@@ -12,7 +12,7 @@ use crate::{
     SUB_CHUNK_COUNT,
 };
 use noise::{Add, Constant, Multiply, NoiseFn, OpenSimplex, ScalePoint};
-use rayon::prelude::{ParallelIterator, IntoParallelIterator};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -95,18 +95,22 @@ impl VoxelComputePipeline {
 
         // generate based on simplex noise
         const SCALE: f64 = 0.04;
-        let noise: Box<dyn NoiseFn<f64, 3> + Sync> = Box::new(Add::new(
+        let world_density: Box<dyn NoiseFn<f64, 3> + Sync> = Box::new(Add::new(
             Add::new(
                 ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE),
                 Multiply::new(
-                    ScalePoint::new(OpenSimplex::new(10))
-                        .set_scale(SCALE / 40.0),
+                    ScalePoint::new(OpenSimplex::new(10)).set_scale(SCALE / 40.0),
                     Constant::new(5.0),
                 ),
             ),
             Constant::new(-1.0),
         ));
-        let world_gen = WorldGen::new(noise);
+        let pillar_density: Box<dyn NoiseFn<f64, 3> + Sync> = Box::new(
+            ScalePoint::new(OpenSimplex::new(11))
+                .set_scale(SCALE * 1.5)
+                .set_y_scale(0.0),
+        );
+        let world_gen = WorldGen::new(world_density, pillar_density);
 
         let voxel_buffer = empty_grid(memory_allocator);
 
@@ -283,14 +287,17 @@ impl VoxelComputePipeline {
         let mut chunk_buffer = self.voxel_buffer.write().unwrap();
         for x_i in 0..RENDER_SIZE[0] {
             for y_i in 0..RENDER_SIZE[1] {
-                let chunks:Vec<Vec<[u32;2]>> = (0..RENDER_SIZE[2]).into_par_iter().map(|z_i| {
-                    let chunk_location = [
-                        sim_data.start_pos[0] + x_i as i32,
-                        sim_data.start_pos[1] + y_i as i32,
-                        sim_data.start_pos[2] + z_i as i32,
-                    ];
-                    self.world_gen.gen_chunk(chunk_location)
-                }).collect();
+                let chunks: Vec<Vec<[u32; 2]>> = (0..RENDER_SIZE[2])
+                    .into_par_iter()
+                    .map(|z_i| {
+                        let chunk_location = [
+                            sim_data.start_pos[0] + x_i as i32,
+                            sim_data.start_pos[1] + y_i as i32,
+                            sim_data.start_pos[2] + z_i as i32,
+                        ];
+                        self.world_gen.gen_chunk(chunk_location)
+                    })
+                    .collect();
                 for (z_i, chunk) in chunks.into_iter().enumerate() {
                     let chunk_location = [
                         sim_data.start_pos[0] + x_i as i32,

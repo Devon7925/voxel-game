@@ -1,8 +1,4 @@
 Tweaks
-    Worldgen
-        flatter terrain
-        better cover
-        more variation
     Movement
         faster - look into mc speed?
         increace gravity more
