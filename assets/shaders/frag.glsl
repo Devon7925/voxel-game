@@ -203,24 +203,24 @@ MaterialProperties material_props(uvec2 voxel_data, vec3 pos, vec3 in_normal) {
         return MaterialProperties(vec3(1.0, 0.0, 0.0), in_normal, 0.0, 0.0);
     } else if (voxel_data.x == MAT_STONE) {
         vec4 noise = voronoise(2.0*pos, 1.0, 1.0);
-        return MaterialProperties(mix(vec3(0.7, 0.7, 0.7), vec3(0.2, 0.2, 0.25), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.35 * noise.xyz), 0.35, 0.0);
+        return MaterialProperties(mix(vec3(0.7, 0.7, 0.7), vec3(0.2, 0.2, 0.25), noise.w) * (1.0 - float(voxel_data.y) / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.35 * noise.xyz), 0.35, 0.0);
     } else if (voxel_data.x == MAT_OOB) {
         // out of bounds: invalid state
         return MaterialProperties(vec3(0.0, 0.0, 1.0), in_normal, 0.0, 0.0);
     } else if (voxel_data.x == MAT_DIRT) {
         vec4 noise = voronoise(7.0*pos, 1.0, 1.0);
-        return MaterialProperties(mix(vec3(0.5, 0.25, 0.0), vec3(0.2, 0.2, 0.2), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.2 * noise.xyz), 0.25, 0.0);
+        return MaterialProperties(mix(vec3(0.5, 0.25, 0.0), vec3(0.2, 0.2, 0.2), noise.w) * (1.0 - float(voxel_data.y) / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.2 * noise.xyz), 0.25, 0.0);
     } else if (voxel_data.x == MAT_GRASS) {
         vec4 noise = voronoise(20.0*pos, 1.0, 1.0);
-        return MaterialProperties(mix(vec3(0.25, 0.8, 0.25), vec3(0.1, 0.3, 0.1), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.5 * noise.xyz), 0.1, 0.0);
+        return MaterialProperties(mix(vec3(0.25, 0.8, 0.25), vec3(0.1, 0.3, 0.1), noise.w) * (1.0 - float(voxel_data.y) / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.5 * noise.xyz), 0.1, 0.0);
     } else if (voxel_data.x == MAT_PROJECTILE) {
         return MaterialProperties(vec3(1.0, 0.3, 0.3), in_normal, 0.0, 0.5);
     } else if (voxel_data.x == MAT_ICE) {
         vec4 noise = voronoise(2.0*pos, 1.0, 1.0);
-        return MaterialProperties(mix(vec3(0.75, 0.75, 1.0), vec3(0.65, 0.65, 0.65), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.1 * noise.xyz), 0.35, 0.3);
+        return MaterialProperties(mix(vec3(0.75, 0.75, 1.0), vec3(0.65, 0.65, 0.65), noise.w) * (1.0 - float(voxel_data.y) / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.1 * noise.xyz), 0.35, 0.3);
     } else if (voxel_data.x == MAT_GLASS) {
         vec4 noise = voronoise(4.0*pos, 1.0, 1.0);
-        return MaterialProperties(mix(vec3(0.7, 0.7, 0.7), vec3(0.7, 0.7, 0.7), noise.w) * (1.0 - voxel_data.y / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.35 * noise.xyz), 0.35, 0.7);
+        return MaterialProperties(mix(vec3(0.7, 0.7, 0.7), vec3(0.7, 0.7, 0.7), noise.w) * (1.0 - float(voxel_data.y) / material_damage_threshhold[voxel_data.x]), normalize(in_normal + 0.35 * noise.xyz), 0.35, 0.7);
     } else if (voxel_data.x == MAT_PLAYER) {
         return MaterialProperties(vec3(0.8, 0.8, 0.8), in_normal, 0.2, 0.0);
     }

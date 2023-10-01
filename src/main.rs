@@ -373,6 +373,7 @@ fn handle_events(
                                                 .clone();
                                         println!("cam_pos: {:?}", cam_player.pos);
                                         println!("cam_dir: {:?}", cam_player.dir);
+                                        println!("cam_vel: {:?}", cam_player.vel);
                                     }
                                 }
                                 _ => (),
