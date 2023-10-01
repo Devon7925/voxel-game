@@ -8,7 +8,7 @@
 // according to those terms.
 use cgmath::{Matrix4, SquareMatrix};
 use egui_winit_vulkano::{
-    egui::{self, emath, epaint, pos2, Align2, Color32, Rect, Rounding, Stroke, Vec2, RichText},
+    egui::{self, emath, epaint, pos2, Align2, Color32, Rect, Rounding, Stroke, Vec2, RichText, Layout, LayerId, Id},
     Gui, GuiConfig,
 };
 use std::sync::Arc;
@@ -31,7 +31,7 @@ use vulkano::{
 };
 use winit::event_loop::EventLoop;
 
-use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData};
+use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData, GuiState};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -499,6 +499,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
         voxels: Subbuffer<[[u32; 2]]>,
         rollback_manager: &RollbackData,
         sim_data: &mut SimData,
+        gui_state: &mut GuiState,
     ) {
         let command_buffer = {
             self.frame.system.ambient_lighting_system.draw(
@@ -600,7 +601,6 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                         Vec2::new(corner_offset, corner_offset),
                     )
                     .show(&ctx, |ui| {
-
                         ui.label(RichText::new("You have died").color(Color32::WHITE)); 
                         ui.label(RichText::new(format!("Respawn in {}", respawn_time)).color(Color32::WHITE)); 
                     });
@@ -616,6 +616,36 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                         ui.label(RichText::new(if ability.cooldown > 0.0 {format!("{}", ability.cooldown.ceil() as i32)} else {"".to_string()}).color(Color32::WHITE).size(36.0));
                     }
                 });
+            if gui_state.menu_open {
+                egui::Area::new("menu")
+                .anchor(
+                    Align2::LEFT_TOP,
+                    Vec2::new(0.0, 0.0),
+                )
+                .show(&ctx, |ui| {
+                    ui.painter().rect_filled(
+                        ui.available_rect_before_wrap(),
+                        0.0,
+                        Color32::BLACK.gamma_multiply(0.5),
+                    );
+
+                    let menu_size = Rect::from_center_size(ui.available_rect_before_wrap().center(), egui::vec2(300.0, 300.0));
+                    
+                    ui.allocate_ui_at_rect(menu_size, |ui| {
+                        ui.painter().rect_filled(
+                            ui.available_rect_before_wrap(),
+                            0.0,
+                            Color32::BLACK,
+                        );
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                            ui.label(RichText::new("Menu").color(Color32::WHITE)); 
+                            if ui.button("Close").clicked() {
+                                gui_state.menu_open = false;
+                            }
+                        });
+                    });
+                });
+            }
         });
         let cb = self
             .frame

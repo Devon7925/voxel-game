@@ -1,3 +1,2 @@
 Tweaks
-    esc removes mouse override until click
     balance 1 shots

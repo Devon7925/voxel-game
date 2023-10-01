@@ -63,6 +63,10 @@ struct WindowProperties {
     pub fullscreen: bool,
 }
 
+pub struct GuiState {
+    pub menu_open: bool,
+}
+
 pub const FIRST_START_POS: [i32; 3] = [100, 105, 100];
 pub const SPAWN_LOCATION: Point3<f32> = Point3::new(
     ((FIRST_START_POS[0] + (RENDER_SIZE[0] as i32) / 2) * CHUNK_SIZE as i32) as f32,
@@ -142,6 +146,8 @@ fn main() {
         fullscreen: false,
     };
 
+    let mut gui_state = GuiState { menu_open: false };
+
     const TIME_STEP: f32 = 1.0 / 30.0;
 
     loop {
@@ -152,6 +158,7 @@ fn main() {
             &mut sim_settings,
             &mut player_action,
             &mut window_props,
+            &mut gui_state,
         );
         // Event handling.
         if !should_continue {
@@ -178,6 +185,7 @@ fn main() {
                     &mut sim_data,
                     &mut recreate_swapchain,
                     &mut previous_frame_end,
+                    &mut gui_state,
                     player_action.clone(),
                     TIME_STEP,
                 );
@@ -222,6 +230,7 @@ fn handle_events(
     sim_settings: &mut SimSettings,
     controls: &mut PlayerAction,
     window_props: &mut WindowProperties,
+    gui_state: &mut GuiState,
 ) -> bool {
     let mut is_running = true;
 
@@ -241,30 +250,32 @@ fn handle_events(
                     }
                     // Handle mouse position events.
                     WindowEvent::CursorMoved { position, .. } => {
-                        let window = app
-                            .vulkano_interface
-                            .surface
-                            .object()
-                            .unwrap()
-                            .downcast_ref::<Window>()
-                            .unwrap();
-                        
-                        window
-                            .set_cursor_position(PhysicalPosition::new(
-                                (window_props.width / 2) as f64,
-                                (window_props.height / 2) as f64,
-                            ))
-                            .unwrap_or_else(|_| println!("Failed to set cursor position"));
-                        // turn camera
-                        let delta = app.settings.movement_controls.sensitivity
-                            * (Vector2::new(position.x as f32, position.y as f32)
-                                - Vector2::new(
-                                    (window_props.width / 2) as f32,
-                                    (window_props.height / 2) as f32,
-                                ));
-                        controls.aim[0] += delta.x;
-                        controls.aim[1] += delta.y;
-                        *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
+                        if !gui_state.menu_open {
+                            let window = app
+                                .vulkano_interface
+                                .surface
+                                .object()
+                                .unwrap()
+                                .downcast_ref::<Window>()
+                                .unwrap();
+                            
+                            window
+                                .set_cursor_position(PhysicalPosition::new(
+                                    (window_props.width / 2) as f64,
+                                    (window_props.height / 2) as f64,
+                                ))
+                                .unwrap_or_else(|_| println!("Failed to set cursor position"));
+                            // turn camera
+                            let delta = app.settings.movement_controls.sensitivity
+                                * (Vector2::new(position.x as f32, position.y as f32)
+                                    - Vector2::new(
+                                        (window_props.width / 2) as f32,
+                                        (window_props.height / 2) as f32,
+                                    ));
+                            controls.aim[0] += delta.x;
+                            controls.aim[1] += delta.y;
+                            *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
+                        }
                     }
                     // Handle mouse button events.
                     WindowEvent::MouseInput { state, button, .. } => {
@@ -346,7 +357,17 @@ fn handle_events(
                             }
                             match key {
                                 winit::event::VirtualKeyCode::Escape => {
-                                    is_running = false;
+                                    if input.state == ElementState::Released {
+                                        gui_state.menu_open = !gui_state.menu_open;
+                                        let window = app
+                                            .vulkano_interface
+                                            .surface
+                                            .object()
+                                            .unwrap()
+                                            .downcast_ref::<Window>()
+                                            .unwrap();
+                                        window.set_cursor_visible(gui_state.menu_open);
+                                    }
                                 }
                                 winit::event::VirtualKeyCode::Up => {
                                     if input.state == ElementState::Released {
@@ -388,7 +409,7 @@ fn handle_events(
                             .unwrap()
                             .downcast_ref::<Window>()
                             .unwrap();
-                        window.set_cursor_visible(false);
+                        window.set_cursor_visible(gui_state.menu_open);
                     }
                     _ => (),
                 }
@@ -407,6 +428,7 @@ fn compute_then_render(
     sim_data: &mut SimData,
     recreate_swapchain: &mut bool,
     previous_frame_end: &mut Option<Box<dyn GpuFuture>>,
+    gui_state: &mut GuiState,
     action: PlayerAction,
     time_step: f32,
 ) {
@@ -548,6 +570,7 @@ fn compute_then_render(
                     voxels,
                     &pipeline.rollback_data,
                     sim_data,
+                    gui_state,
                 );
             }
             Pass::Finished(af) => {
