@@ -18,6 +18,8 @@ pub enum ProjectileModifier {
     Lifetime(i32),
     Gravity(i32),
     Health(i32),
+    NoFriendlyFire,
+    NoEnemyFire,
     OnHit(BaseCard),
 }
 
@@ -67,14 +69,18 @@ impl BaseCard {
                 let mut lifetime = 0;
                 let mut gravity = 0;
                 let mut health = 0;
+                let mut friendly_fire = true;
+                let mut enemy_fire = true;
                 for modifier in modifiers {
                     match modifier {
-                        ProjectileModifier::Damage(d) => hit_value += *d as f32,
+                        ProjectileModifier::Damage(d) => hit_value += (*d as f32).abs(),
                         ProjectileModifier::Speed(s) => speed += s,
                         ProjectileModifier::Size(s) => size += s,
                         ProjectileModifier::Lifetime(l) => lifetime += l,
                         ProjectileModifier::Gravity(g) => gravity += g,
                         ProjectileModifier::Health(g) => health += g,
+                        ProjectileModifier::NoFriendlyFire => friendly_fire = false,
+                        ProjectileModifier::NoEnemyFire => enemy_fire = false,
                         ProjectileModifier::OnHit(card) => hit_value += card.evaluate_value(),
                     }
                 }
@@ -87,6 +93,7 @@ impl BaseCard {
                     * 1.5f32.powi(lifetime)
                     * (1.0 + 1.25f32.powi(size))
                     * (1.0 + 1.25f32.powi(health))
+                    * if friendly_fire {1.0} else {2.0}
             }
             BaseCard::MultiCast(cards) => {
                 cards.iter().map(|card| card.evaluate_value()).sum::<f32>()
@@ -140,6 +147,8 @@ pub struct ReferencedProjectile {
     pub lifetime: i32,
     pub gravity: i32,
     pub health: i32,
+    pub no_friendly_fire: bool,
+    pub no_enemy_fire: bool,
     pub on_hit: Vec<ReferencedBaseCard>,
 }
 
@@ -174,6 +183,8 @@ impl CardManager {
                 let mut lifetime = 0;
                 let mut gravity = 0;
                 let mut health = 0;
+                let mut no_friendly_fire = false;
+                let mut no_enemy_fire = false;
                 let mut on_hit = Vec::new();
                 for modifier in modifiers {
                     match modifier {
@@ -183,6 +194,8 @@ impl CardManager {
                         ProjectileModifier::Lifetime(l) => lifetime += l,
                         ProjectileModifier::Gravity(g) => gravity += g,
                         ProjectileModifier::Health(g) => health += g,
+                        ProjectileModifier::NoFriendlyFire => no_friendly_fire = true,
+                        ProjectileModifier::NoEnemyFire => no_enemy_fire = true,
                         ProjectileModifier::OnHit(card) => {
                             on_hit.push(self.register_base_card(card))
                         }
@@ -195,6 +208,8 @@ impl CardManager {
                     lifetime,
                     gravity,
                     health,
+                    no_friendly_fire,
+                    no_enemy_fire,
                     on_hit,
                 });
 

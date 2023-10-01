@@ -340,6 +340,7 @@ impl WorldState {
         let mut collision_pairs = Vec::new();
         for i in 0..self.projectiles.len() {
             let proj1 = self.projectiles.get(i).unwrap();
+            let proj1_card = card_manager.get_referenced_proj(proj1.proj_card_idx as usize);
             let projectile_1_rot =
                 Quaternion::new(proj1.dir[3], proj1.dir[0], proj1.dir[1], proj1.dir[2]);
             let projectile_1_vectors = [
@@ -370,6 +371,14 @@ impl WorldState {
             .collect::<Vec<_>>();
             'second_proj_loop: for j in i + 1..self.projectiles.len() {
                 let proj2 = self.projectiles.get(j).unwrap();
+                let proj2_card = card_manager.get_referenced_proj(proj2.proj_card_idx as usize);
+
+                if (proj1_card.no_friendly_fire || proj2_card.no_friendly_fire) && proj1.owner == proj2.owner {
+                    continue;
+                }
+                if (proj1_card.no_enemy_fire || proj2_card.no_enemy_fire) && proj1.owner != proj2.owner {
+                    continue;
+                }
 
                 let projectile_2_rot =
                     Quaternion::new(proj2.dir[3], proj2.dir[0], proj2.dir[1], proj2.dir[2]);
@@ -434,7 +443,6 @@ impl WorldState {
         }
 
         for (i, j) in collision_pairs {
-            println!("collision detected between {} and {}", i, j);
             let damage_1 = self.projectiles.get(i).unwrap().damage;
             let damage_2 = self.projectiles.get(j).unwrap().damage;
             {
@@ -557,6 +565,15 @@ impl WorldState {
                 if player_idx as u32 == proj.owner && proj.lifetime < 1.0 {
                     continue;
                 }
+                let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
+
+                if proj_card.no_friendly_fire && proj.owner == player_idx as u32 {
+                    continue;
+                }
+                if proj_card.no_enemy_fire && proj.owner != player_idx as u32 {
+                    continue;
+                }
+
                 let projectile_rot =
                     Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
                 let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));

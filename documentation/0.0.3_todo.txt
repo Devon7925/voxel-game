@@ -1,5 +1,4 @@
 more cards
-    friendly fire
     shape control
 Tweaks
     Worldgen
