@@ -4,3 +4,20 @@ more cards
     effects
         Damage
         Knockback
+Gui
+    better cooldown ui
+    Card editor
+
+bug fixes
+    fix menu close shoot bug
+    fix low fps desync
+        basic graphics settings
+        allow multiple physics updates per frame
+        deltatime setting
+    look into recording replay to detect desync
+    fix stuck bug
+
+increace bullet speed more
+avoid face flash shoot
+add body hitbox
+prevent overly large numbers for cards

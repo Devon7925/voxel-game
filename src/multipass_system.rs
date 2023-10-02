@@ -8,7 +8,7 @@
 // according to those terms.
 use cgmath::{Matrix4, SquareMatrix};
 use egui_winit_vulkano::{
-    egui::{self, emath, epaint, pos2, Align2, Color32, Rect, Rounding, Stroke, Vec2, RichText, Layout, LayerId, Id},
+    egui::{self, emath, epaint, pos2, Align2, Color32, Rect, Rounding, Stroke, Vec2, RichText},
     Gui, GuiConfig,
 };
 use std::sync::Arc;
@@ -213,8 +213,8 @@ impl FrameSystem {
             surface.clone(),
             gfx_queue.clone(),
             lighting_subpass,
+            Format::B8G8R8A8_UNORM,
             GuiConfig {
-                preferred_format: Some(Format::B8G8R8A8_UNORM),
                 is_overlay: true,
                 ..Default::default()
             },
