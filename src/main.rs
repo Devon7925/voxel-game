@@ -138,8 +138,6 @@ fn main() {
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(app.vulkano_interface.device.clone()).boxed());
 
-    let mut did_render = false;
-
     let mut window_props = WindowProperties {
         width: WINDOW_WIDTH as u32,
         height: WINDOW_HEIGHT as u32,
@@ -189,17 +187,14 @@ fn main() {
                     player_action.clone(),
                     TIME_STEP,
                 );
-                if !did_render {
-                    let window = app
-                        .vulkano_interface
-                        .surface
-                        .object()
-                        .unwrap()
-                        .downcast_ref::<Window>()
-                        .unwrap();
-                    window.set_cursor_visible(false);
-                    did_render = true;
-                }
+                let window = app
+                    .vulkano_interface
+                    .surface
+                    .object()
+                    .unwrap()
+                    .downcast_ref::<Window>()
+                    .unwrap();
+                window.set_cursor_visible(gui_state.menu_open);
             }
             player_action.aim = [0.0, 0.0];
         }
@@ -362,14 +357,6 @@ fn handle_events(
                                 winit::event::VirtualKeyCode::Escape => {
                                     if input.state == ElementState::Released {
                                         gui_state.menu_open = !gui_state.menu_open;
-                                        let window = app
-                                            .vulkano_interface
-                                            .surface
-                                            .object()
-                                            .unwrap()
-                                            .downcast_ref::<Window>()
-                                            .unwrap();
-                                        window.set_cursor_visible(gui_state.menu_open);
                                     }
                                 }
                                 winit::event::VirtualKeyCode::Up => {
@@ -403,16 +390,6 @@ fn handle_events(
                                 _ => (),
                             }
                         });
-                    }
-                    WindowEvent::Focused(true) => {
-                        let window = app
-                            .vulkano_interface
-                            .surface
-                            .object()
-                            .unwrap()
-                            .downcast_ref::<Window>()
-                            .unwrap();
-                        window.set_cursor_visible(gui_state.menu_open);
                     }
                     _ => (),
                 }
