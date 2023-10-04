@@ -17,7 +17,6 @@ bug fixes
     look into recording replay to detect desync
     fix stuck bug
 
-increace bullet speed more
 avoid face flash shoot
 add body hitbox
 prevent overly large numbers for cards

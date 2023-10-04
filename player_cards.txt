@@ -1,5 +1,5 @@
 [
     Projectile([Damage(5),Speed(5),Width(-5),Height(-5),Length(-1),Gravity(5)]),
     Projectile([Speed(7),Width(-10),Height(-10),Length(-10),Lifetime(-3),OnHit(CreateMaterial(Ice))]),
-    Projectile([Speed(-1),Width(2),Height(1),Length(-5),Lifetime(4),Health(5),NoFriendlyFire]),
+    Projectile([Speed(-3),Width(2),Height(1),Length(-5),Lifetime(4),Health(5),NoFriendlyFire]),
 ]

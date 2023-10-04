@@ -303,7 +303,7 @@ impl CardManager {
                     let proj_length = 1.25f32.powi(proj_stats.length);
                     let proj_width = 1.25f32.powi(proj_stats.width);
                     let proj_height = 1.25f32.powi(proj_stats.height);
-                    let proj_speed = 12.0 * 1.5f32.powi(proj_stats.speed);
+                    let proj_speed = 24.0 * 1.5f32.powi(proj_stats.speed);
                     let proj_health = 10.0 * 1.5f32.powi(proj_stats.health);
                     let proj_damage = proj_stats.damage as f32;
                     projectiles.push(Projectile {
