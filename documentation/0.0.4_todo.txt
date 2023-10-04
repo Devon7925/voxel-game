@@ -6,10 +6,10 @@ more cards
         Knockback
 Gui
     better cooldown ui
+    add close window button
     Card editor
 
 bug fixes
-    fix menu close shoot bug
     fix low fps desync
         basic graphics settings
         allow multiple physics updates per frame

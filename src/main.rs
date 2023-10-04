@@ -238,7 +238,10 @@ fn handle_events(
         *control_flow = ControlFlow::Poll;
         match &event {
             Event::WindowEvent { event, .. } => {
-                app.vulkano_interface.frame_system.gui.update(&event);
+                let gui_event = app.vulkano_interface.frame_system.gui.update(&event);
+                if gui_event {
+                    return;
+                }
                 match event {
                     WindowEvent::CloseRequested => {
                         is_running = false;
