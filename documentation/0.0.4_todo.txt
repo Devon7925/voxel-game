@@ -6,7 +6,6 @@ more cards
         Knockback
 Gui
     better cooldown ui
-    add close window button
     Card editor
 
 bug fixes

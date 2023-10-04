@@ -639,6 +639,9 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                         );
                         ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                             ui.label(RichText::new("Menu").color(Color32::WHITE)); 
+                            if ui.button("Exit to Desktop").clicked() {
+                                gui_state.should_exit = true;
+                            }
                             if ui.button("Close").clicked() {
                                 gui_state.menu_open = false;
                             }

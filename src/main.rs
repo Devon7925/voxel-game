@@ -65,6 +65,7 @@ struct WindowProperties {
 
 pub struct GuiState {
     pub menu_open: bool,
+    pub should_exit: bool,
 }
 
 pub const FIRST_START_POS: [i32; 3] = [100, 105, 100];
@@ -144,7 +145,7 @@ fn main() {
         fullscreen: false,
     };
 
-    let mut gui_state = GuiState { menu_open: false };
+    let mut gui_state = GuiState { menu_open: false, should_exit: false };
 
     const TIME_STEP: f32 = 1.0 / 30.0;
 
@@ -234,6 +235,9 @@ fn handle_events(
         match &event {
             Event::WindowEvent { event, .. } => {
                 let gui_event = app.vulkano_interface.frame_system.gui.update(&event);
+                if gui_state.should_exit {
+                    is_running = false;
+                }
                 if gui_event {
                     return;
                 }
