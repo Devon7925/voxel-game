@@ -3,3 +3,6 @@ add close window button
 better cooldown ui
 basic graphics settings
 on expiry card
+effects
+    Damage
+    Knockback

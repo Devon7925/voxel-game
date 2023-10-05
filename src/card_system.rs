@@ -1,4 +1,4 @@
-use cgmath::{Quaternion, Point3};
+use cgmath::{Point3, Quaternion};
 use serde::{Deserialize, Serialize};
 
 use crate::projectile_sim_manager::Projectile;
@@ -8,11 +8,11 @@ pub enum BaseCard {
     Projectile(Vec<ProjectileModifier>),
     MultiCast(Vec<BaseCard>),
     CreateMaterial(VoxelMaterial),
+    Effect(Effect),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum ProjectileModifier {
-    Damage(i32),
     Speed(i32),
     Length(i32),
     Width(i32),
@@ -34,6 +34,12 @@ pub enum VoxelMaterial {
     Air,
     Ice,
     Glass,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum Effect {
+    Damage(i32),
+    Knockback(u32),
 }
 
 impl VoxelMaterial {
@@ -78,7 +84,6 @@ impl BaseCard {
                 let mut enemy_fire = true;
                 for modifier in modifiers {
                     match modifier {
-                        ProjectileModifier::Damage(d) => hit_value += (*d as f32).abs(),
                         ProjectileModifier::Speed(s) => speed += s,
                         ProjectileModifier::Length(s) => length += s,
                         ProjectileModifier::Width(s) => width += s,
@@ -97,11 +102,11 @@ impl BaseCard {
                     * (1.0 + 1.5f32.powi(speed) * 1.5f32.powi(lifetime))
                     * (1.0 + 1.25f32.powi(width) * 1.25f32.powi(height) + 1.25f32.powi(length))
                     * (1.0 + 1.25f32.powi(health))
-                + 0.02
-                    * 1.5f32.powi(lifetime)
-                    * (1.0 + 1.25f32.powi(width) * 1.25f32.powi(height) + 1.25f32.powi(length))
-                    * (1.0 + 1.25f32.powi(health))
-                    * if friendly_fire {1.0} else {2.0}
+                    + 0.02
+                        * 1.5f32.powi(lifetime)
+                        * (1.0 + 1.25f32.powi(width) * 1.25f32.powi(height) + 1.25f32.powi(length))
+                        * (1.0 + 1.25f32.powi(health))
+                        * if friendly_fire { 1.0 } else { 2.0 }
             }
             BaseCard::MultiCast(cards) => {
                 cards.iter().map(|card| card.evaluate_value()).sum::<f32>()
@@ -114,6 +119,10 @@ impl BaseCard {
                 VoxelMaterial::Ice => 20.0,
                 VoxelMaterial::Glass => 15.0,
             },
+            BaseCard::Effect(effect) => match effect {
+                Effect::Damage(damage) => (*damage as f32).abs(),
+                Effect::Knockback(knockback) => 0.1 * 1.5f32.powi(*knockback as i32),
+            },
         }
     }
 }
@@ -124,18 +133,19 @@ impl Default for BaseCard {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum ReferencedBaseCardType {
     Projectile,
     MultiCast,
     CreateMaterial,
+    Effect,
     None,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ReferencedBaseCard {
-    card_type: ReferencedBaseCardType,
-    card_idx: usize,
+    pub card_type: ReferencedBaseCardType,
+    pub card_idx: usize,
 }
 
 impl Default for ReferencedBaseCard {
@@ -172,6 +182,7 @@ pub struct CardManager {
     pub referenced_multicasts: Vec<ReferencedMulticast>,
     pub referenced_projs: Vec<ReferencedProjectile>,
     pub referenced_material_creators: Vec<VoxelMaterial>,
+    pub referenced_effects: Vec<Effect>,
 }
 
 impl Default for CardManager {
@@ -180,6 +191,7 @@ impl Default for CardManager {
             referenced_multicasts: vec![],
             referenced_projs: vec![],
             referenced_material_creators: vec![],
+            referenced_effects: vec![],
         }
     }
 }
@@ -202,7 +214,6 @@ impl CardManager {
                 let mut on_expiry = Vec::new();
                 for modifier in modifiers {
                     match modifier {
-                        ProjectileModifier::Damage(d) => damage += d,
                         ProjectileModifier::Speed(s) => speed += s,
                         ProjectileModifier::Length(s) => length += s,
                         ProjectileModifier::Width(s) => width += s,
@@ -213,9 +224,15 @@ impl CardManager {
                         ProjectileModifier::NoFriendlyFire => no_friendly_fire = true,
                         ProjectileModifier::NoEnemyFire => no_enemy_fire = true,
                         ProjectileModifier::OnHit(card) => {
+                            if let BaseCard::Effect(Effect::Damage(proj_damage)) = card {
+                                damage += proj_damage;
+                            }
                             on_hit.push(self.register_base_card(card))
                         }
                         ProjectileModifier::OnExpiry(card) => {
+                            if let BaseCard::Effect(Effect::Damage(proj_damage)) = card {
+                                damage += proj_damage;
+                            }
                             on_expiry.push(self.register_base_card(card))
                         }
                     }
@@ -263,6 +280,13 @@ impl CardManager {
                     card_idx: self.referenced_material_creators.len() - 1,
                 }
             }
+            BaseCard::Effect(effect) => {
+                self.referenced_effects.push(effect);
+                ReferencedBaseCard {
+                    card_type: ReferencedBaseCardType::Effect,
+                    card_idx: self.referenced_effects.len() - 1,
+                }
+            }
         }
     }
 
@@ -297,9 +321,14 @@ impl CardManager {
         pos: &Point3<f32>,
         rot: &Quaternion<f32>,
         player_idx: u32,
-    ) -> (Vec<Projectile>, Vec<(Point3<i32>, VoxelMaterial)>) {
+    ) -> (
+        Vec<Projectile>,
+        Vec<(Point3<i32>, VoxelMaterial)>,
+        Vec<Effect>,
+    ) {
         let mut projectiles = vec![];
         let mut new_voxels = vec![];
+        let mut effects = vec![];
         for reference in self.get_single_refs_from_basecard(card) {
             match reference {
                 ReferencedBaseCard {
@@ -337,10 +366,18 @@ impl CardManager {
                     let material = &self.referenced_material_creators[card_idx];
                     new_voxels.push((pos.cast::<i32>().unwrap(), material.clone()));
                 }
-                _ => panic!("Invalid state")
+                ReferencedBaseCard {
+                    card_type: ReferencedBaseCardType::Effect,
+                    card_idx,
+                    ..
+                } => {
+                    let effect = &self.referenced_effects[card_idx];
+                    effects.push(effect.clone());
+                }
+                _ => panic!("Invalid state"),
             }
         }
-        (projectiles, new_voxels)
+        (projectiles, new_voxels, effects)
     }
 
     pub fn get_referenced_proj(&self, idx: usize) -> &ReferencedProjectile {

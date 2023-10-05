@@ -1,8 +1,6 @@
 more cards
     shotgun spread multicast thing
-    effects
-        Damage
-        Knockback
+    
 Gui
     Card editor
 
@@ -11,7 +9,6 @@ bug fixes
         allow multiple physics updates per frame
         deltatime setting
     look into recording replay to detect desync
-    fix stuck bug
 
 avoid face flash shoot
 add body hitbox

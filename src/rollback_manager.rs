@@ -11,7 +11,7 @@ use vulkano::{
 };
 
 use crate::{
-    card_system::{CardManager, ReferencedBaseCard, VoxelMaterial},
+    card_system::{CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, VoxelMaterial},
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     voxel_sim_manager::VoxelComputePipeline,
     CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, SPAWN_LOCATION,
@@ -340,12 +340,8 @@ impl WorldState {
                     .clone()
                 {
                     let proj_rot = proj.dir;
-                    let proj_rot = Quaternion::new(
-                        proj_rot[3],
-                        proj_rot[0],
-                        proj_rot[1],
-                        proj_rot[2],
-                    );
+                    let proj_rot =
+                        Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
                     let effects = card_manager.get_effects_from_base_card(
                         &card_ref,
                         &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
@@ -356,9 +352,7 @@ impl WorldState {
                     if is_real_update && effects.1.len() > 0 {
                         let mut writer = voxels.write().unwrap();
                         for (pos, material) in effects.1 {
-                            vox_compute.queue_update_from_voxel_pos(&[
-                                pos.x, pos.y, pos.z,
-                            ]);
+                            vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
                             writer[get_index(pos) as usize] = material.to_memory();
                         }
                     }
@@ -402,10 +396,14 @@ impl WorldState {
                 let proj2 = self.projectiles.get(j).unwrap();
                 let proj2_card = card_manager.get_referenced_proj(proj2.proj_card_idx as usize);
 
-                if (proj1_card.no_friendly_fire || proj2_card.no_friendly_fire) && proj1.owner == proj2.owner {
+                if (proj1_card.no_friendly_fire || proj2_card.no_friendly_fire)
+                    && proj1.owner == proj2.owner
+                {
                     continue;
                 }
-                if (proj1_card.no_enemy_fire || proj2_card.no_enemy_fire) && proj1.owner != proj2.owner {
+                if (proj1_card.no_enemy_fire || proj2_card.no_enemy_fire)
+                    && proj1.owner != proj2.owner
+                {
                     continue;
                 }
 
@@ -447,8 +445,12 @@ impl WorldState {
                         .fold((f32::INFINITY, f32::NEG_INFINITY), |acc, x| {
                             (acc.0.min(x), acc.1.max(x))
                         });
-                    if min_proj_2 > projectile_1_pos.to_vec().dot(projectile_1_vectors[i]) + projectile_1_size[i]
-                        || max_proj_2 < projectile_1_pos.to_vec().dot(projectile_1_vectors[i]) - projectile_1_size[i]
+                    if min_proj_2
+                        > projectile_1_pos.to_vec().dot(projectile_1_vectors[i])
+                            + projectile_1_size[i]
+                        || max_proj_2
+                            < projectile_1_pos.to_vec().dot(projectile_1_vectors[i])
+                                - projectile_1_size[i]
                     {
                         continue 'second_proj_loop;
                     }
@@ -460,8 +462,12 @@ impl WorldState {
                         .fold((f32::INFINITY, f32::NEG_INFINITY), |acc, x| {
                             (acc.0.min(x), acc.1.max(x))
                         });
-                    if min_proj_1 > projectile_2_pos.to_vec().dot(projectile_2_vectors[i]) + projectile_2_size[i]
-                        || max_proj_1 < projectile_2_pos.to_vec().dot(projectile_2_vectors[i]) - projectile_2_size[i]
+                    if min_proj_1
+                        > projectile_2_pos.to_vec().dot(projectile_2_vectors[i])
+                            + projectile_2_size[i]
+                        || max_proj_1
+                            < projectile_2_pos.to_vec().dot(projectile_2_vectors[i])
+                                - projectile_2_size[i]
                     {
                         continue 'second_proj_loop;
                     }
@@ -512,12 +518,14 @@ impl WorldState {
                             Vector3::new(1.0, 0.0, 0.0),
                             Rad(-player.facing[1]),
                         );
+                let horizontal_rot =
+                    Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]));
                 player.dir = player.rot * Vector3::new(0.0, 0.0, 1.0);
                 player.right = player.rot * Vector3::new(-1.0, 0.0, 0.0);
                 player.up = player.right.cross(player.dir).normalize();
                 let mut move_vec = Vector3::new(0.0, 0.0, 0.0);
-                let player_forward = Vector3::new(player.dir.x, 0.0, player.dir.z).normalize();
-                let player_right = Vector3::new(player.right.x, 0.0, player.right.z).normalize();
+                let player_forward = horizontal_rot * Vector3::new(0.0, 0.0, 1.0);
+                let player_right = horizontal_rot * Vector3::new(-1.0, 0.0, 0.0);
                 if action.forward {
                     move_vec += player_forward;
                 }
@@ -591,7 +599,15 @@ impl WorldState {
             collide_player(player, time_step, &voxel_reader, prev_collision_vec);
             // check for collision with projectiles
             for proj in self.projectiles.iter_mut() {
-                if player_idx as u32 == proj.owner && proj.lifetime < 1.0 {
+                if player_idx as u32 == proj.owner
+                    && proj.lifetime < 1.0
+                    && player
+                        .abilities
+                        .iter()
+                        .map(|a| &a.ability)
+                        .filter(|a| a.card_type == ReferencedBaseCardType::Projectile)
+                        .any(|a| a.card_idx as u32 == proj.proj_card_idx)
+                {
                     continue;
                 }
                 let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
@@ -629,7 +645,6 @@ impl WorldState {
                                 + grid_dist.z * grid_iter_z as f32 * projectile_dir;
                             let dist = (player.pos - pos).magnitude();
                             if dist < player.size {
-                                player.health -= proj.damage;
                                 proj.health = 0.0;
                                 for card_ref in card_manager
                                     .get_referenced_proj(proj.proj_card_idx as usize)
@@ -643,20 +658,38 @@ impl WorldState {
                                         proj_rot[1],
                                         proj_rot[2],
                                     );
-                                    let effects = card_manager.get_effects_from_base_card(
-                                        &card_ref,
-                                        &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
-                                        &proj_rot,
-                                        proj.owner,
-                                    );
-                                    new_projectiles.extend(effects.0);
-                                    if is_real_update && effects.1.len() > 0 {
+                                    let (on_hit_projectiles, on_hit_voxels, effects) = card_manager
+                                        .get_effects_from_base_card(
+                                            &card_ref,
+                                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                                            &proj_rot,
+                                            proj.owner,
+                                        );
+                                    new_projectiles.extend(on_hit_projectiles);
+                                    if is_real_update && on_hit_voxels.len() > 0 {
                                         let mut writer = voxels.write().unwrap();
-                                        for (pos, material) in effects.1 {
+                                        for (pos, material) in on_hit_voxels {
                                             vox_compute.queue_update_from_voxel_pos(&[
                                                 pos.x, pos.y, pos.z,
                                             ]);
                                             writer[get_index(pos) as usize] = material.to_memory();
+                                        }
+                                    }
+                                    for effect in effects {
+                                        match effect {
+                                            Effect::Damage(damage) => {
+                                                player.health -= damage as f32;
+                                            }
+                                            Effect::Knockback(knockback) => {
+                                                let knockback = 1.5f32.powi(knockback as i32);
+                                                let knockback_dir = player.pos - projectile_pos;
+                                                if knockback_dir.magnitude() > 0.0 {
+                                                    player.vel +=
+                                                        knockback * (knockback_dir).normalize();
+                                                } else {
+                                                    player.vel.y += knockback;
+                                                }
+                                            }
                                         }
                                     }
                                 }
