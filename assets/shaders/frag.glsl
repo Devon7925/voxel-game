@@ -24,6 +24,11 @@ layout(push_constant) uniform PushConstants {
     // The `screen_to_world` parameter of the `draw` method.
     mat4 screen_to_world;
     float aspect_ratio;
+    uint primary_ray_dist;
+    uint transparency_ray_dist;
+    uint shadow_ray_dist;
+    uint transparent_shadow_ray_dist;
+    uint ao_ray_dist;
 } push_constants;
 
 layout(location = 0) in vec2 v_screen_coords;
@@ -241,14 +246,14 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
         MaterialProperties mat_props = material_props(primary_ray.voxel_data, primary_ray.pos, primary_ray.normal);
         color += (1 - mat_props.transparency) * multiplier * 0.15 * mat_props.color;
 
-        RaycastResult shade_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, -light_dir, 100, true, 0.0);
+        RaycastResult shade_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, -light_dir, push_constants.shadow_ray_dist, true, 0.0);
         MaterialProperties shade_mat_props = material_props(shade_check.voxel_data, shade_check.pos, shade_check.normal);
         if (shade_mat_props.transparency > 0.0) {
             vec3 v_min = floor(shade_check.pos);
             vec3 v_max = floor(shade_check.pos) + vec3(1);
             vec3 delta = RayBoxDist(shade_check.pos, -light_dir, v_min, v_max);
             float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
-            shade_check = raycast(shade_check.pos - dist_diff * light_dir, -light_dir, 100, false, 0.0);
+            shade_check = raycast(shade_check.pos - dist_diff * light_dir, -light_dir, push_constants.transparent_shadow_ray_dist, false, 0.0);
             if (!shade_check.hit || shade_check.voxel_data.x == MAT_OOB) {
                 float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
                 vec3 reflected = reflect(-ray, mat_props.normal);
@@ -261,7 +266,7 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
             color += (1 - mat_props.transparency) * multiplier * (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
         }
-        RaycastResult ao_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, mat_props.normal, 50, false, 0.0);
+        RaycastResult ao_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, mat_props.normal, push_constants.ao_ray_dist, false, 0.0);
         if (!ao_check.hit || ao_check.voxel_data.x == MAT_OOB) {
             vec3 reflected = reflect(-ray, mat_props.normal);
             float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
@@ -274,7 +279,7 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
         vec3 v_max = floor(primary_ray.pos) + vec3(1);
         vec3 delta = RayBoxDist(primary_ray.pos, ray, v_min, v_max);
         float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
-        primary_ray = raycast(primary_ray.pos+dist_diff*ray, ray, 100, true, 0.0);
+        primary_ray = raycast(primary_ray.pos+dist_diff*ray, ray, push_constants.transparency_ray_dist, true, 0.0);
         if (!primary_ray.hit) {
             color += multiplier * vec3(1.0, 0.0, 0.0);
             break;
@@ -302,7 +307,7 @@ void main() {
 
     vec3 pos = cam_data.pos.xyz;
 
-    RaycastResult primary_ray = raycast(pos, ray, 100, false, max_depth);
+    RaycastResult primary_ray = raycast(pos, ray, push_constants.primary_ray_dist, false, max_depth);
     
     if (!primary_ray.hit) {
         if (in_depth >= 1.0) {

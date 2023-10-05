@@ -23,9 +23,7 @@ use vulkano::{
     },
     device::Queue,
     image::ImageViewAbstract,
-    memory::allocator::{
-        AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator,
-    },
+    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
@@ -39,9 +37,8 @@ use vulkano::{
 };
 
 use crate::{
-    multipass_system::LightingVertex,
-    rollback_manager::RollbackData,
-    SimData,
+    multipass_system::LightingVertex, rollback_manager::RollbackData,
+    settings_manager::GraphicsSettings, SimData,
 };
 
 pub struct PointLightingSystem {
@@ -144,7 +141,8 @@ impl PointLightingSystem {
         let sim_uniform_buffer_subbuffer = {
             let uniform_data = fs::SimData {
                 render_size: sim_data.render_size.into(),
-                projectile_count: (rollback_manager.cached_current_state.projectiles.len() as u32).into(),
+                projectile_count: (rollback_manager.cached_current_state.projectiles.len() as u32)
+                    .into(),
                 max_dist: sim_data.max_dist.into(),
                 start_pos: sim_data.start_pos.into(),
             };
@@ -206,10 +204,16 @@ impl PointLightingSystem {
         voxels: Subbuffer<[[u32; 2]]>,
         rollback_manager: &RollbackData,
         sim_data: &mut SimData,
+        graphics_settings: &GraphicsSettings,
     ) -> SecondaryAutoCommandBuffer {
         let push_constants = fs::PushConstants {
             screen_to_world: screen_to_world.into(),
             aspect_ratio: viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32,
+            primary_ray_dist: graphics_settings.primary_ray_dist.into(),
+            transparency_ray_dist: graphics_settings.transparency_ray_dist.into(),
+            shadow_ray_dist: graphics_settings.shadow_ray_dist.into(),
+            transparent_shadow_ray_dist: graphics_settings.transparent_shadow_ray_dist.into(),
+            ao_ray_dist: graphics_settings.ao_ray_dist.into(),
         };
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();

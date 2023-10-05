@@ -16,3 +16,9 @@ ability_controls:
 - !Mouse Left
 - !Mouse Right
 - !Key E
+graphics_settings:
+  primary_ray_dist: 100
+  transparency_ray_dist: 75
+  shadow_ray_dist: 50
+  transparent_shadow_ray_dist: 50
+  ao_ray_dist: 40

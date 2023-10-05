@@ -9,7 +9,6 @@ Gui
 
 bug fixes
     fix low fps desync
-        basic graphics settings
         allow multiple physics updates per frame
         deltatime setting
     look into recording replay to detect desync

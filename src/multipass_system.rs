@@ -512,6 +512,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                 voxels,
                 rollback_manager,
                 sim_data,
+                &settings.graphics_settings
             )
         };
 

@@ -11,6 +11,7 @@ pub struct Settings {
     pub player_count: u32,
     pub fullscreen_toggle: VirtualKeyCode,
     pub movement_controls: ControlSettings,
+    pub graphics_settings: GraphicsSettings,
     pub ability_controls: Vec<Control>,
 }
 
@@ -52,4 +53,13 @@ pub struct ControlSettings {
     pub crouch: Control,
     pub sprint: Control,
     pub sensitivity: f32,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GraphicsSettings {
+    pub primary_ray_dist: u32,
+    pub transparency_ray_dist: u32,
+    pub shadow_ray_dist: u32,
+    pub transparent_shadow_ray_dist: u32,
+    pub ao_ray_dist: u32,
 }
