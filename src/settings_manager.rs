@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 use winit::event::{MouseButton, VirtualKeyCode};
 
@@ -16,6 +18,18 @@ pub struct Settings {
 pub enum Control {
     Key(VirtualKeyCode),
     Mouse(MouseButton),
+}
+
+impl Display for Control {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Control::Key(key) => write!(f, "{:?}", key),
+            Control::Mouse(MouseButton::Left) => write!(f, "↖"),
+            Control::Mouse(MouseButton::Middle) => write!(f, "⬆"),
+            Control::Mouse(MouseButton::Right) => write!(f, "↗"),
+            Control::Mouse(button) => write!(f, "{:?}", button),
+        }
+    }
 }
 
 impl Settings {

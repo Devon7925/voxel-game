@@ -5,7 +5,6 @@ more cards
         Damage
         Knockback
 Gui
-    better cooldown ui
     Card editor
 
 bug fixes

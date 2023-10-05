@@ -10,6 +10,7 @@ mod settings_manager;
 mod utils;
 mod voxel_sim_manager;
 mod world_gen;
+mod gui;
 
 use crate::{
     app::RenderPipeline, card_system::BaseCard, rollback_manager::PlayerAbility,
@@ -555,6 +556,7 @@ fn compute_then_render(
                     &pipeline.rollback_data,
                     sim_data,
                     gui_state,
+                    &pipeline.settings,
                 );
             }
             Pass::Finished(af) => {

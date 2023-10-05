@@ -31,7 +31,7 @@ use vulkano::{
 };
 use winit::event_loop::EventLoop;
 
-use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData, GuiState};
+use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData, GuiState, settings_manager::Settings, gui::cooldown};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -500,6 +500,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
         rollback_manager: &RollbackData,
         sim_data: &mut SimData,
         gui_state: &mut GuiState,
+        settings: &Settings,
     ) {
         let command_buffer = {
             self.frame.system.ambient_lighting_system.draw(
@@ -612,8 +613,8 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                     Vec2::new(-corner_offset, -corner_offset),
                 )
                 .show(&ctx, |ui| {
-                    for ability in rollback_manager.cached_current_state.players[0].abilities.iter() {
-                        ui.label(RichText::new(if ability.cooldown > 0.0 {format!("{}", ability.cooldown.ceil() as i32)} else {"".to_string()}).color(Color32::WHITE).size(36.0));
+                    for (ability_idx, ability) in rollback_manager.cached_current_state.players[0].abilities.iter().enumerate() {
+                        ui.add(cooldown(format!("{}", settings.ability_controls[ability_idx]).as_str(), ability));
                     }
                 });
             if gui_state.menu_open {
