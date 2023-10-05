@@ -334,6 +334,35 @@ impl WorldState {
             proj.lifetime += time_step;
             if proj.lifetime >= 3.0 * 1.5f32.powi(proj_card.lifetime) {
                 proj.health = 0.0;
+                for card_ref in card_manager
+                    .get_referenced_proj(proj.proj_card_idx as usize)
+                    .on_expiry
+                    .clone()
+                {
+                    let proj_rot = proj.dir;
+                    let proj_rot = Quaternion::new(
+                        proj_rot[3],
+                        proj_rot[0],
+                        proj_rot[1],
+                        proj_rot[2],
+                    );
+                    let effects = card_manager.get_effects_from_base_card(
+                        &card_ref,
+                        &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                        &proj_rot,
+                        proj.owner,
+                    );
+                    new_projectiles.extend(effects.0);
+                    if is_real_update && effects.1.len() > 0 {
+                        let mut writer = voxels.write().unwrap();
+                        for (pos, material) in effects.1 {
+                            vox_compute.queue_update_from_voxel_pos(&[
+                                pos.x, pos.y, pos.z,
+                            ]);
+                            writer[get_index(pos) as usize] = material.to_memory();
+                        }
+                    }
+                }
             }
         }
         //collide projectiles <-> projectiles

@@ -23,6 +23,7 @@ pub enum ProjectileModifier {
     NoFriendlyFire,
     NoEnemyFire,
     OnHit(BaseCard),
+    OnExpiry(BaseCard),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -88,6 +89,7 @@ impl BaseCard {
                         ProjectileModifier::NoFriendlyFire => friendly_fire = false,
                         ProjectileModifier::NoEnemyFire => enemy_fire = false,
                         ProjectileModifier::OnHit(card) => hit_value += card.evaluate_value(),
+                        ProjectileModifier::OnExpiry(card) => hit_value += card.evaluate_value(),
                     }
                 }
                 0.002
@@ -158,6 +160,7 @@ pub struct ReferencedProjectile {
     pub no_friendly_fire: bool,
     pub no_enemy_fire: bool,
     pub on_hit: Vec<ReferencedBaseCard>,
+    pub on_expiry: Vec<ReferencedBaseCard>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -196,6 +199,7 @@ impl CardManager {
                 let mut no_friendly_fire = false;
                 let mut no_enemy_fire = false;
                 let mut on_hit = Vec::new();
+                let mut on_expiry = Vec::new();
                 for modifier in modifiers {
                     match modifier {
                         ProjectileModifier::Damage(d) => damage += d,
@@ -211,6 +215,9 @@ impl CardManager {
                         ProjectileModifier::OnHit(card) => {
                             on_hit.push(self.register_base_card(card))
                         }
+                        ProjectileModifier::OnExpiry(card) => {
+                            on_expiry.push(self.register_base_card(card))
+                        }
                     }
                 }
                 self.referenced_projs.push(ReferencedProjectile {
@@ -225,6 +232,7 @@ impl CardManager {
                     no_friendly_fire,
                     no_enemy_fire,
                     on_hit,
+                    on_expiry,
                 });
 
                 ReferencedBaseCard {

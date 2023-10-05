@@ -2,3 +2,4 @@ increace base projectile speed
 add close window button
 better cooldown ui
 basic graphics settings
+on expiry card
