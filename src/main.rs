@@ -64,8 +64,13 @@ struct WindowProperties {
     pub fullscreen: bool,
 }
 
+pub enum GuiElement {
+    MainMenu,
+    CardEditor
+}
+
 pub struct GuiState {
-    pub menu_open: bool,
+    pub menu_stack: Vec<GuiElement>,
     pub should_exit: bool,
 }
 
@@ -146,7 +151,7 @@ fn main() {
         fullscreen: false,
     };
 
-    let mut gui_state = GuiState { menu_open: false, should_exit: false };
+    let mut gui_state = GuiState { menu_stack: vec![], should_exit: false };
 
     const TIME_STEP: f32 = 1.0 / 30.0;
 
@@ -196,7 +201,7 @@ fn main() {
                     .unwrap()
                     .downcast_ref::<Window>()
                     .unwrap();
-                window.set_cursor_visible(gui_state.menu_open);
+                window.set_cursor_visible(gui_state.menu_stack.len() > 0);
             }
             player_action.aim = [0.0, 0.0];
         }
@@ -253,7 +258,7 @@ fn handle_events(
                     }
                     // Handle mouse position events.
                     WindowEvent::CursorMoved { position, .. } => {
-                        if !gui_state.menu_open {
+                        if gui_state.menu_stack.len() == 0 {
                             let window = app
                                 .vulkano_interface
                                 .surface
@@ -361,7 +366,11 @@ fn handle_events(
                             match key {
                                 winit::event::VirtualKeyCode::Escape => {
                                     if input.state == ElementState::Released {
-                                        gui_state.menu_open = !gui_state.menu_open;
+                                        if gui_state.menu_stack.len() > 0 {
+                                            gui_state.menu_stack.pop();
+                                        } else {
+                                            gui_state.menu_stack.push(GuiElement::MainMenu);
+                                        }
                                     }
                                 }
                                 winit::event::VirtualKeyCode::Up => {

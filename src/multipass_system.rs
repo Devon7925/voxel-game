@@ -31,7 +31,7 @@ use vulkano::{
 };
 use winit::event_loop::EventLoop;
 
-use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData, GuiState, settings_manager::Settings, gui::cooldown};
+use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData, GuiState, settings_manager::Settings, gui::cooldown, GuiElement};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -617,38 +617,72 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                         ui.add(cooldown(format!("{}", settings.ability_controls[ability_idx]).as_str(), ability));
                     }
                 });
-            if gui_state.menu_open {
-                egui::Area::new("menu")
-                .anchor(
-                    Align2::LEFT_TOP,
-                    Vec2::new(0.0, 0.0),
-                )
-                .show(&ctx, |ui| {
-                    ui.painter().rect_filled(
-                        ui.available_rect_before_wrap(),
-                        0.0,
-                        Color32::BLACK.gamma_multiply(0.5),
-                    );
-
-                    let menu_size = Rect::from_center_size(ui.available_rect_before_wrap().center(), egui::vec2(300.0, 300.0));
-                    
-                    ui.allocate_ui_at_rect(menu_size, |ui| {
+            match gui_state.menu_stack.last() {
+                Some(&GuiElement::MainMenu) => {
+                    egui::Area::new("menu")
+                    .anchor(
+                        Align2::LEFT_TOP,
+                        Vec2::new(0.0, 0.0),
+                    )
+                    .show(&ctx, |ui| {
                         ui.painter().rect_filled(
                             ui.available_rect_before_wrap(),
                             0.0,
-                            Color32::BLACK,
+                            Color32::BLACK.gamma_multiply(0.5),
                         );
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                            ui.label(RichText::new("Menu").color(Color32::WHITE)); 
-                            if ui.button("Exit to Desktop").clicked() {
-                                gui_state.should_exit = true;
-                            }
-                            if ui.button("Close").clicked() {
-                                gui_state.menu_open = false;
-                            }
+
+                        let menu_size = Rect::from_center_size(ui.available_rect_before_wrap().center(), egui::vec2(300.0, 300.0));
+                        
+                        ui.allocate_ui_at_rect(menu_size, |ui| {
+                            ui.painter().rect_filled(
+                                ui.available_rect_before_wrap(),
+                                0.0,
+                                Color32::BLACK,
+                            );
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                ui.label(RichText::new("Menu").color(Color32::WHITE)); 
+                                if ui.button("Card Editor").clicked() {
+                                    gui_state.menu_stack.push(GuiElement::CardEditor);
+                                }
+                                if ui.button("Exit to Desktop").clicked() {
+                                    gui_state.should_exit = true;
+                                }
+                                if ui.button("Close").clicked() {
+                                    gui_state.menu_stack.pop();
+                                }
+                            });
                         });
                     });
-                });
+                }
+                Some(&GuiElement::CardEditor) => {
+                    egui::Area::new("card editor")
+                    .anchor(
+                        Align2::LEFT_TOP,
+                        Vec2::new(0.0, 0.0),
+                    )
+                    .show(&ctx, |ui| {
+                        ui.painter().rect_filled(
+                            ui.available_rect_before_wrap(),
+                            0.0,
+                            Color32::BLACK.gamma_multiply(0.5),
+                        );
+
+                        let menu_size = Rect::from_center_size(ui.available_rect_before_wrap().center(), egui::vec2(300.0, 300.0));
+                        
+                        ui.allocate_ui_at_rect(menu_size, |ui| {
+                            ui.painter().rect_filled(
+                                ui.available_rect_before_wrap(),
+                                0.0,
+                                Color32::BLACK,
+                            );
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                ui.label(RichText::new("Card Editor").color(Color32::WHITE));
+                                
+                            });
+                        });
+                    });
+                }
+                None => {}
             }
         });
         let cb = self
