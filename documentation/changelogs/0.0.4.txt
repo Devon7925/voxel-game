@@ -6,3 +6,4 @@ on expiry card
 effects
     Damage
     Knockback
+add body hitbox

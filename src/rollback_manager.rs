@@ -643,8 +643,10 @@ impl WorldState {
                                 + grid_dist.x * grid_iter_x as f32 * projectile_right
                                 + grid_dist.y * grid_iter_y as f32 * projectile_up
                                 + grid_dist.z * grid_iter_z as f32 * projectile_dir;
-                            let dist = (player.pos - pos).magnitude();
-                            if dist < player.size {
+                            let head_dist = (player.pos - pos).magnitude();
+                            let body_dist = (player.pos - player.size*Vector3::new(0.0, 1.9, 0.0) - pos).magnitude();
+                            let feet_dist = (player.pos - player.size*Vector3::new(0.0, 3.3, 0.0) - pos).magnitude();
+                            if head_dist < 0.6*player.size || body_dist < 1.5*player.size || feet_dist < 0.7*player.size {
                                 proj.health = 0.0;
                                 for card_ref in card_manager
                                     .get_referenced_proj(proj.proj_card_idx as usize)
