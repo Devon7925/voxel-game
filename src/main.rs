@@ -14,7 +14,7 @@ mod gui;
 
 use crate::{
     app::RenderPipeline, card_system::BaseCard, rollback_manager::PlayerAbility,
-    settings_manager::Settings,
+    settings_manager::Settings, gui::{GuiState, GuiElement},
 };
 use cgmath::{Matrix4, Point3, SquareMatrix, Vector2, Vector3, Rad, EuclideanSpace};
 use multipass_system::Pass;
@@ -62,16 +62,6 @@ struct WindowProperties {
     pub width: u32,
     pub height: u32,
     pub fullscreen: bool,
-}
-
-pub enum GuiElement {
-    MainMenu,
-    CardEditor
-}
-
-pub struct GuiState {
-    pub menu_stack: Vec<GuiElement>,
-    pub should_exit: bool,
 }
 
 pub const FIRST_START_POS: [i32; 3] = [100, 105, 100];
@@ -151,7 +141,7 @@ fn main() {
         fullscreen: false,
     };
 
-    let mut gui_state = GuiState { menu_stack: vec![], should_exit: false };
+    let mut gui_state = GuiState { menu_stack: vec![], should_exit: false, gui_cards: player_deck.clone() };
 
     const TIME_STEP: f32 = 1.0 / 30.0;
 

@@ -1,8 +1,5 @@
 more cards
     shotgun spread multicast thing
-    
-Gui
-    Card editor
 
 bug fixes
     fix low fps desync

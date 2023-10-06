@@ -7,3 +7,4 @@ effects
     Damage
     Knockback
 add body hitbox
+Card editor display

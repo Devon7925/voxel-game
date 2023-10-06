@@ -1,3 +1,4 @@
 Tweaks
     balance 1 shots
 Look into not triggering anti virus
+Interactivity for card editor

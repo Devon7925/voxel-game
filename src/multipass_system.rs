@@ -31,7 +31,7 @@ use vulkano::{
 };
 use winit::event_loop::EventLoop;
 
-use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData, GuiState, settings_manager::Settings, gui::cooldown, GuiElement};
+use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData, GuiState, settings_manager::Settings, gui::{cooldown, drop_target, drag_source, GuiElement, draw_base_card}};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -668,7 +668,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                             Color32::BLACK.gamma_multiply(0.5),
                         );
 
-                        let menu_size = Rect::from_center_size(ui.available_rect_before_wrap().center(), egui::vec2(300.0, 300.0));
+                        let menu_size = Rect::from_center_size(ui.available_rect_before_wrap().center(), ui.available_rect_before_wrap().size() * egui::vec2(0.75, 0.75));
                         
                         ui.allocate_ui_at_rect(menu_size, |ui| {
                             ui.painter().rect_filled(
@@ -676,9 +676,63 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 0.0,
                                 Color32::BLACK,
                             );
-                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                                 ui.label(RichText::new("Card Editor").color(Color32::WHITE));
                                 
+                                let id_source = "my_drag_and_drop_demo";
+                                // let mut source_path = None;
+                                // let mut drop_path = None;
+
+                                for (ability_idx, card) in gui_state.gui_cards.iter().enumerate() {
+                                    ui.horizontal_top(|ui| {
+                                        {
+                                            let desired_size = ui.spacing().interact_size.y * egui::vec2(3.0, 3.0);
+                                            let (rect, _response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+                                            let font = egui::FontId::proportional(24.0);
+                                            ui.painter().rect_filled(rect, 0.0, Color32::LIGHT_GRAY);
+                                            ui.painter().text(
+                                                rect.center(),
+                                                Align2::CENTER_CENTER,
+                                                format!("{}", settings.ability_controls[ability_idx]).as_str(),
+                                                font,
+                                                Color32::BLACK,
+                                            );
+                                        }
+                                        draw_base_card(ui, &card);
+                                    });
+                                }
+                                // for card in gui_state.gui_cards.iter() {
+                                //     let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
+                                //     let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
+                                //         ui.set_min_size(egui::vec2(64.0, 100.0));
+                                //         for (row_idx, item) in column.iter().enumerate() {
+                                //             let item_id = egui::Id::new(id_source).with(col_idx).with(row_idx);
+                                //             drag_source(ui, item_id, |ui| {
+                                //                 ui.add(Label::new(item).sense(Sense::click()));
+                                //             });
+
+                                //             if ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                                //                 source_col_row = Some((col_idx, row_idx));
+                                //             }
+                                //         }
+                                //     })
+                                //     .response;
+
+                                //     let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
+                                //     if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
+                                //         drop_col = Some(col_idx);
+                                //     }
+                                // }
+
+                                // if let Some((source_col, source_row)) = source_col_row {
+                                //     if let Some(drop_col) = drop_col {
+                                //         if ui.input(|i| i.pointer.any_released()) {
+                                //             // do the drop:
+                                //             let item = columns[source_col].remove(source_row);
+                                //             columns[drop_col].push(item);
+                                //         }
+                                //     }
+                                // }
                             });
                         });
                     });
