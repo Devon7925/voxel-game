@@ -125,6 +125,70 @@ impl BaseCard {
             },
         }
     }
+
+    pub fn is_reasonable(&self) -> bool {
+        match self {
+            BaseCard::Projectile(modifiers) => {
+                for modifier in modifiers {
+                    match modifier {
+                        ProjectileModifier::Speed(s) => {
+                            if *s > 15 {
+                                return false;
+                            }
+                        }
+                        ProjectileModifier::Length(s) => {
+                            if *s > 15 {
+                                return false;
+                            }
+                        }
+                        ProjectileModifier::Width(s) => {
+                            if *s > 15 {
+                                return false;
+                            }
+                        }
+                        ProjectileModifier::Height(s) => {
+                            if *s > 15 {
+                                return false;
+                            }
+                        }
+                        ProjectileModifier::Gravity(g) => {
+                            if *g > 15 {
+                                return false;
+                            }
+                        }
+                        ProjectileModifier::OnHit(card) => {
+                            if !card.is_reasonable() {
+                                return false;
+                            }
+                        }
+                        ProjectileModifier::OnExpiry(card) => {
+                            if !card.is_reasonable() {
+                                return false;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            BaseCard::MultiCast(cards) => {
+                cards.iter().all(|card| card.is_reasonable());
+            }
+            BaseCard::CreateMaterial(_) => {}
+            BaseCard::Effect(effect) => match effect {
+                Effect::Damage(damage) => {
+                    if damage.abs() >= 1024 {
+                        return false;
+                    }
+                }
+                Effect::Knockback(knockback) => {
+                    if *knockback > 15 {
+                        return false;
+                    }
+                }
+            },
+        }
+        return true;
+    }
 }
 
 impl Default for BaseCard {

@@ -1,5 +1,6 @@
 mod app;
 mod card_system;
+mod gui;
 mod multipass_system;
 mod networking;
 mod projectile_sim_manager;
@@ -10,13 +11,15 @@ mod settings_manager;
 mod utils;
 mod voxel_sim_manager;
 mod world_gen;
-mod gui;
 
 use crate::{
-    app::RenderPipeline, card_system::BaseCard, rollback_manager::PlayerAbility,
-    settings_manager::Settings, gui::{GuiState, GuiElement},
+    app::RenderPipeline,
+    card_system::BaseCard,
+    gui::{GuiElement, GuiState},
+    rollback_manager::PlayerAbility,
+    settings_manager::Settings,
 };
-use cgmath::{Matrix4, Point3, SquareMatrix, Vector2, Vector3, Rad, EuclideanSpace};
+use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector2, Vector3};
 use multipass_system::Pass;
 use networking::NetworkConnection;
 use rollback_manager::{Player, PlayerAction};
@@ -101,6 +104,8 @@ fn main() {
     let player_deck =
         BaseCard::vec_from_string(fs::read_to_string("player_cards.txt").unwrap().as_str());
 
+    assert!(player_deck.iter().all(|card| card.is_reasonable()));
+
     app.rollback_data.player_join(Player {
         pos: SPAWN_LOCATION,
         abilities: player_deck
@@ -141,7 +146,11 @@ fn main() {
         fullscreen: false,
     };
 
-    let mut gui_state = GuiState { menu_stack: vec![], should_exit: false, gui_cards: player_deck.clone() };
+    let mut gui_state = GuiState {
+        menu_stack: vec![],
+        should_exit: false,
+        gui_cards: player_deck.clone(),
+    };
 
     const TIME_STEP: f32 = 1.0 / 30.0;
 
@@ -256,7 +265,7 @@ fn handle_events(
                                 .unwrap()
                                 .downcast_ref::<Window>()
                                 .unwrap();
-                            
+
                             window
                                 .set_cursor_position(PhysicalPosition::new(
                                     (window_props.width / 2) as f64,
@@ -315,10 +324,14 @@ fn handle_events(
                                 .unwrap()
                                 .downcast_ref::<Window>()
                                 .unwrap();
-                            if key == app.settings.fullscreen_toggle && input.state == ElementState::Pressed {
+                            if key == app.settings.fullscreen_toggle
+                                && input.state == ElementState::Pressed
+                            {
                                 window_props.fullscreen = !window_props.fullscreen;
                                 if window_props.fullscreen {
-                                    window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+                                    window.set_fullscreen(Some(
+                                        winit::window::Fullscreen::Borderless(None),
+                                    ));
                                 } else {
                                     window.set_fullscreen(None);
                                 }
@@ -469,19 +482,15 @@ fn compute_then_render(
 
     let view_matrix = if pipeline.rollback_data.cached_current_state.players.len() > 0 {
         let cam_player = pipeline.rollback_data.cached_current_state.players[0].clone();
-        (Matrix4::from_translation(cam_player.pos.to_vec()) * Matrix4::from(cam_player.rot)).invert().unwrap()
+        (Matrix4::from_translation(cam_player.pos.to_vec()) * Matrix4::from(cam_player.rot))
+            .invert()
+            .unwrap()
     } else {
         println!("no players");
         Matrix4::identity()
     };
-    let aspect_ratio =
-        dimensions.width as f32 / dimensions.height as f32;
-    let proj = cgmath::perspective(
-        Rad(std::f32::consts::FRAC_PI_2),
-        aspect_ratio,
-        0.1,
-        100.0,
-    );
+    let aspect_ratio = dimensions.width as f32 / dimensions.height as f32;
+    let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), aspect_ratio, 0.1, 100.0);
     // Start the frame.
     let mut frame = if sim_settings.do_compute {
         sim_data.max_dist = sim_settings.max_dist;
@@ -524,13 +533,13 @@ fn compute_then_render(
         pipeline.vulkano_interface.frame_system.frame(
             after_compute,
             pipeline.vulkano_interface.images[image_index as usize].clone(),
-            proj*view_matrix,
+            proj * view_matrix,
         )
     } else {
         pipeline.vulkano_interface.frame_system.frame(
             future,
             pipeline.vulkano_interface.images[image_index as usize].clone(),
-            proj*view_matrix,
+            proj * view_matrix,
         )
     };
     // Render.
@@ -540,7 +549,10 @@ fn compute_then_render(
         match pass {
             Pass::Deferred(mut draw_pass) => {
                 let cam_player = pipeline.rollback_data.cached_current_state.players[0].clone();
-                let view_matrix = (Matrix4::from_translation(-cam_player.pos.to_vec()) * Matrix4::from(cam_player.rot)).invert().unwrap();
+                let view_matrix = (Matrix4::from_translation(-cam_player.pos.to_vec())
+                    * Matrix4::from(cam_player.rot))
+                .invert()
+                .unwrap();
                 let cb = pipeline.vulkano_interface.rasterizer_system.draw(
                     draw_pass.viewport_dimensions(),
                     view_matrix,

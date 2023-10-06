@@ -8,4 +8,3 @@ bug fixes
     look into recording replay to detect desync
 
 avoid face flash shoot
-prevent overly large numbers for cards
