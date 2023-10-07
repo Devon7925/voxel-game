@@ -1,5 +1,4 @@
 bug fixes
     fix low fps desync
-        allow multiple physics updates per frame
         deltatime setting
     look into recording replay to detect desync

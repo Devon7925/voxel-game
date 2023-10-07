@@ -170,7 +170,7 @@ fn main() {
         }
 
         // Compute voxels & render 60fps.
-        if (Instant::now() - time).as_secs_f32() > TIME_STEP {
+        if (Instant::now() - time).as_secs_f32() > 0.0 {
             previous_frame_end.as_mut().unwrap().cleanup_finished();
             if app.settings.player_count > 1 {
                 network_connection.network_update(
@@ -180,7 +180,8 @@ fn main() {
                     &mut app.rollback_data,
                 );
             }
-            time += std::time::Duration::from_secs_f64(1.0 / 30.0);
+            time += std::time::Duration::from_secs_f32(TIME_STEP);
+            let skip_render = (Instant::now() - time).as_secs_f32() > 0.0;
             if app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize
             {
                 compute_then_render(
@@ -191,6 +192,7 @@ fn main() {
                     &mut previous_frame_end,
                     &mut gui_state,
                     player_action.clone(),
+                    skip_render,
                     TIME_STEP,
                 );
                 let window = app
@@ -427,6 +429,7 @@ fn compute_then_render(
     previous_frame_end: &mut Option<Box<dyn GpuFuture>>,
     gui_state: &mut GuiState,
     action: PlayerAction,
+    skip_render: bool,
     time_step: f32,
 ) {
     let window = pipeline
@@ -438,6 +441,68 @@ fn compute_then_render(
         .unwrap();
     let dimensions = window.inner_size();
     if dimensions.width == 0 || dimensions.height == 0 {
+        return;
+    }
+    
+    if skip_render {
+        sim_data.max_dist = sim_settings.max_dist;
+        pipeline
+            .voxel_compute
+            .push_updates_from_changed(sim_data.start_pos);
+
+        for player in pipeline.rollback_data.cached_current_state.players.iter() {
+            pipeline.voxel_compute.queue_update_from_world_pos(&[
+                player.pos.x,
+                player.pos.y,
+                player.pos.z,
+            ]);
+        }
+
+        // Compute.
+        pipeline.rollback_data.download_projectiles(
+            &pipeline.card_manager,
+            &pipeline.projectile_compute,
+            &mut pipeline.voxel_compute,
+        );
+        pipeline
+            .rollback_data
+            .send_action(action, 0, pipeline.rollback_data.current_time);
+        pipeline.rollback_data.step(
+            &pipeline.card_manager,
+            time_step,
+            &mut pipeline.voxel_compute,
+        );
+        pipeline
+            .projectile_compute
+            .upload(&pipeline.rollback_data.rollback_state.projectiles);
+        let after_proj_compute = pipeline.projectile_compute.compute(
+            previous_frame_end.take().unwrap(),
+            &pipeline.voxel_compute,
+            sim_data,
+            time_step,
+        );
+        let after_compute = pipeline.voxel_compute.compute(after_proj_compute, sim_data).then_signal_fence_and_flush();
+
+        match after_compute {
+            Ok(future) => {
+                match future.wait(None) {
+                    Ok(x) => x,
+                    Err(e) => println!("{e}"),
+                }
+    
+                *previous_frame_end = Some(future.boxed());
+            }
+            Err(FlushError::OutOfDate) => {
+                *recreate_swapchain = true;
+                *previous_frame_end =
+                    Some(sync::now(pipeline.vulkano_interface.device.clone()).boxed());
+            }
+            Err(e) => {
+                println!("failed to flush future: {e}");
+                *previous_frame_end =
+                    Some(sync::now(pipeline.vulkano_interface.device.clone()).boxed());
+            }
+        }
         return;
     }
 

@@ -14,7 +14,7 @@
             Lifetime(-10),
             Health(-10),
             NoFriendlyFire,
-            OnHit(Effect(Damage(40))),
+            OnHit(Effect(Damage(20))),
         ])),
         OnHit(Projectile([
             Speed(-10),
