@@ -1,6 +1,6 @@
 use std::{sync::Arc, fs::File, io::BufReader};
 use bytemuck::{Zeroable, Pod};
-use cgmath::{Rad, Matrix4, Quaternion, Vector3, Rotation3};
+use cgmath::{Rad, Matrix4, Quaternion, Vector3, Rotation3, Point3, InnerSpace};
 use obj::{Obj, load_obj};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer, allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}},
@@ -209,7 +209,11 @@ impl RasterizerSystem {
         };
 
         let mut projectile_writer = self.proj_instance_data.write().unwrap();
-        for (i, projectile) in world_state.projectiles.iter().enumerate() {
+        for (i, projectile) in world_state.projectiles.iter().filter(|proj| {
+            let proj_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
+            let proj_max_size = proj.size.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+            proj.owner > 0 || proj.lifetime > 0.3 || (proj_pos - world_state.players[0].pos).magnitude() > 0.5 + proj_max_size
+        }).enumerate() {
             projectile_writer[i].instance_position = [projectile.pos[0], projectile.pos[1], projectile.pos[2]];
             projectile_writer[i].instance_rotation = projectile.dir;
             projectile_writer[i].instance_scale = [projectile.size[0], projectile.size[1], projectile.size[2]];
