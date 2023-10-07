@@ -1,16 +1,18 @@
 [
     Projectile([
-        OnHit(Effect(Damage(40))),
-        Speed(0),
         Width(-5),
         Height(-5),
         Length(-1),
         Gravity(5),
+        Health(-10),
+        OnHit(Effect(Damage(40))),
         OnHit(Projectile([
             Speed(-10),
             Width(1),
             Height(1),
             Length(1),
+            Lifetime(-10),
+            Health(-10),
             NoFriendlyFire,
             OnHit(Effect(Damage(40))),
         ])),
@@ -19,9 +21,26 @@
             Width(1),
             Height(1),
             Length(1),
-            OnHit(Effect(Knockback(8))),
+            Lifetime(-10),
+            Health(-10),
+            OnHit(Effect(Knockback(10))),
         ])),
     ]),
-    Projectile([Speed(7),Width(-10),Height(-10),Length(-10),Lifetime(-10),OnHit(CreateMaterial(Ice)),OnExpiry(CreateMaterial(Ice))]),
+    Projectile([
+        Lifetime(-5),
+        OnExpiry(MultiCast([
+            Projectile([
+                Width(-5),
+                Height(-5),
+                Length(-5),
+                Gravity(10),
+                NoFriendlyFire,
+                OnHit(CreateMaterial(Ice)),
+            ]),
+        ],[
+            Spread(10),
+            Duplication(5),
+        ])),
+    ]),
     Projectile([Speed(-3),Width(2),Height(1),Length(-5),Lifetime(4),Health(5),NoFriendlyFire]),
 ]

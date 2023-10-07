@@ -4,7 +4,7 @@ use egui_winit_vulkano::egui::{
 };
 
 use crate::{
-    card_system::{BaseCard, Effect, ProjectileModifier},
+    card_system::{BaseCard, Effect, ProjectileModifier, MultiCastModifier},
     rollback_manager::PlayerAbility,
 };
 
@@ -196,8 +196,22 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard) {
                         Stroke::new(1.0, Color32::WHITE),
                     );
                 }
-                BaseCard::MultiCast(cards) => {
-                    ui.label("Multi");
+                BaseCard::MultiCast(cards, modifiers) => {
+                    ui.horizontal(|ui| {
+                        ui.add_space(CARD_UI_SPACING);
+                        ui.label("Multi");
+                        for modifier in modifiers {
+                            match modifier {
+                                MultiCastModifier::Spread(v) => {
+                                    add_basic_modifer(ui, "Spread", *v)
+                                }
+                                MultiCastModifier::Duplication(v) => {
+                                    add_basic_modifer(ui, "Duplication", *v)
+                                }
+                            }
+                        }
+                        ui.add_space(CARD_UI_SPACING);
+                    });
                     for card in cards {
                         draw_base_card(ui, card);
                     }

@@ -106,7 +106,7 @@ impl NetworkConnection {
                 NetworkPacket::DeckUpdate(cards) => {
                     rollback_manager.rollback_state.players[player_idx].abilities = cards.into_iter().map(|card| {
                         PlayerAbility {
-                            value: card.evaluate_value(),
+                            value: card.evaluate_value(true),
                             ability: card_system.register_base_card(card),
                             cooldown: 0.0,
                         }

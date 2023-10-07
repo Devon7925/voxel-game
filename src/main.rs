@@ -111,7 +111,7 @@ fn main() {
         abilities: player_deck
             .iter()
             .map(|card| PlayerAbility {
-                value: card.evaluate_value(),
+                value: card.evaluate_value(true),
                 ability: app.card_manager.register_base_card(card.clone()),
                 cooldown: 0.0,
             })
@@ -542,8 +542,7 @@ fn compute_then_render(
             proj * view_matrix,
         )
     };
-    // Render.
-
+    
     let mut after_future = None;
     while let Some(pass) = frame.next_pass() {
         match pass {

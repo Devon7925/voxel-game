@@ -1,4 +1,4 @@
-use cgmath::{Point3, Quaternion};
+use cgmath::{Point3, Quaternion, Rotation3, Rad};
 use serde::{Deserialize, Serialize};
 
 use crate::projectile_sim_manager::Projectile;
@@ -6,7 +6,7 @@ use crate::projectile_sim_manager::Projectile;
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum BaseCard {
     Projectile(Vec<ProjectileModifier>),
-    MultiCast(Vec<BaseCard>),
+    MultiCast(Vec<BaseCard>, Vec<MultiCastModifier>),
     CreateMaterial(VoxelMaterial),
     Effect(Effect),
 }
@@ -24,6 +24,12 @@ pub enum ProjectileModifier {
     NoEnemyFire,
     OnHit(BaseCard),
     OnExpiry(BaseCard),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum MultiCastModifier {
+    Spread(u32),
+    Duplication(u32),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -69,7 +75,7 @@ impl BaseCard {
         ron::to_string(self).unwrap()
     }
 
-    pub fn evaluate_value(&self) -> f32 {
+    pub fn evaluate_value(&self, consider_hit_probability: bool) -> f32 {
         match self {
             BaseCard::Projectile(modifiers) => {
                 let mut hit_value = 0.0;
@@ -93,23 +99,44 @@ impl BaseCard {
                         ProjectileModifier::Health(g) => health += g,
                         ProjectileModifier::NoFriendlyFire => friendly_fire = false,
                         ProjectileModifier::NoEnemyFire => enemy_fire = false,
-                        ProjectileModifier::OnHit(card) => hit_value += card.evaluate_value(),
-                        ProjectileModifier::OnExpiry(card) => hit_value += card.evaluate_value(),
+                        ProjectileModifier::OnHit(card) => hit_value += card.evaluate_value(false),
+                        ProjectileModifier::OnExpiry(card) => hit_value += card.evaluate_value(false),
                     }
                 }
-                0.002
-                    * hit_value
-                    * (1.0 + 1.5f32.powi(speed) * 1.5f32.powi(lifetime))
-                    * (1.0 + 1.25f32.powi(width) * 1.25f32.powi(height) + 1.25f32.powi(length))
+                if consider_hit_probability {
+                    0.002
+                        * hit_value
+                        * (1.0 + 1.5f32.powi(speed) * 1.5f32.powi(lifetime))
+                        * (1.0 + 1.25f32.powi(width) * 1.25f32.powi(height) + 1.25f32.powi(length))
+                        * (1.0 + 1.25f32.powi(health))
+                    + 0.02
+                        * 1.5f32.powi(lifetime)
+                        * (1.0 + 1.25f32.powi(width) * 1.25f32.powi(height) + 1.25f32.powi(length))
+                        * (1.0 + 1.25f32.powi(health))
+                        * if friendly_fire { 1.0 } else { 2.0 }
+                } else {
+                    hit_value
                     * (1.0 + 1.25f32.powi(health))
                     + 0.02
                         * 1.5f32.powi(lifetime)
                         * (1.0 + 1.25f32.powi(width) * 1.25f32.powi(height) + 1.25f32.powi(length))
                         * (1.0 + 1.25f32.powi(health))
                         * if friendly_fire { 1.0 } else { 2.0 }
+                }
             }
-            BaseCard::MultiCast(cards) => {
-                cards.iter().map(|card| card.evaluate_value()).sum::<f32>()
+            BaseCard::MultiCast(cards, modifiers) => {
+                let mut value = cards.iter().map(|card| card.evaluate_value(consider_hit_probability)).sum::<f32>();
+                for modifier in modifiers.iter() {
+                    match modifier {
+                        MultiCastModifier::Duplication(duplication) => {
+                            value *= 2f32.powi(*duplication as i32);
+                        }
+                        MultiCastModifier::Spread(spread) => {
+                            value *= 0.5 + 0.5f32.powi(*spread as i32);
+                        }
+                    }
+                }
+                value
             }
             BaseCard::CreateMaterial(material) => match material {
                 VoxelMaterial::Air => 0.0,
@@ -170,8 +197,20 @@ impl BaseCard {
                     }
                 }
             }
-            BaseCard::MultiCast(cards) => {
-                cards.iter().all(|card| card.is_reasonable());
+            BaseCard::MultiCast(cards, modifiers) => {
+                if !cards.iter().all(|card| card.is_reasonable()) {
+                    return false;
+                }
+                for modifier in modifiers.iter() {
+                    match modifier {
+                        MultiCastModifier::Duplication(duplication) => {
+                            if *duplication > 12 {
+                                return false;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
             BaseCard::CreateMaterial(_) => {}
             BaseCard::Effect(effect) => match effect {
@@ -193,11 +232,11 @@ impl BaseCard {
 
 impl Default for BaseCard {
     fn default() -> Self {
-        BaseCard::MultiCast(vec![])
+        BaseCard::MultiCast(vec![], vec![])
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
 pub enum ReferencedBaseCardType {
     Projectile,
     MultiCast,
@@ -206,7 +245,7 @@ pub enum ReferencedBaseCardType {
     None,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
 pub struct ReferencedBaseCard {
     pub card_type: ReferencedBaseCardType,
     pub card_idx: usize,
@@ -240,6 +279,8 @@ pub struct ReferencedProjectile {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReferencedMulticast {
     pub sub_cards: Vec<ReferencedBaseCard>,
+    pub spread: u32,
+    pub duplication: u32,
 }
 
 pub struct CardManager {
@@ -321,9 +362,19 @@ impl CardManager {
                     card_idx: self.referenced_projs.len() - 1,
                 }
             }
-            BaseCard::MultiCast(cards) => {
+            BaseCard::MultiCast(cards, modifiers) => {
+                let mut spread = 0;
+                let mut duplication = 0;
+                for modifier in modifiers {
+                    match modifier {
+                        MultiCastModifier::Spread(s) => spread += s,
+                        MultiCastModifier::Duplication(d) => duplication += d,
+                    }
+                }
                 let mut referenced_multicast = ReferencedMulticast {
                     sub_cards: Vec::new(),
+                    spread,
+                    duplication,
                 };
                 for card in cards {
                     referenced_multicast
@@ -354,34 +405,9 @@ impl CardManager {
         }
     }
 
-    pub fn get_single_refs_from_basecard(
-        &self,
-        reference: &ReferencedBaseCard,
-    ) -> Vec<ReferencedBaseCard> {
-        match reference {
-            ReferencedBaseCard {
-                card_type: ReferencedBaseCardType::MultiCast,
-                card_idx,
-                ..
-            } => self.referenced_multicasts[*card_idx]
-                .sub_cards
-                .iter()
-                .map(|card| self.get_single_refs_from_basecard(card))
-                .flatten()
-                .collect(),
-            ReferencedBaseCard {
-                card_type: ReferencedBaseCardType::None,
-                ..
-            } => {
-                panic!("Cannot get projs from None card")
-            }
-            card_reference => vec![card_reference.clone()],
-        }
-    }
-
     pub fn get_effects_from_base_card(
         &self,
-        card: &ReferencedBaseCard,
+        card: ReferencedBaseCard,
         pos: &Point3<f32>,
         rot: &Quaternion<f32>,
         player_idx: u32,
@@ -393,53 +419,88 @@ impl CardManager {
         let mut projectiles = vec![];
         let mut new_voxels = vec![];
         let mut effects = vec![];
-        for reference in self.get_single_refs_from_basecard(card) {
-            match reference {
-                ReferencedBaseCard {
-                    card_type: ReferencedBaseCardType::Projectile,
-                    card_idx,
-                    ..
-                } => {
-                    let proj_stats = self.get_referenced_proj(card_idx);
-                    let proj_length = 1.25f32.powi(proj_stats.length);
-                    let proj_width = 1.25f32.powi(proj_stats.width);
-                    let proj_height = 1.25f32.powi(proj_stats.height);
-                    let proj_speed = 24.0 * 1.5f32.powi(proj_stats.speed);
-                    let proj_health = 10.0 * 1.5f32.powi(proj_stats.health);
-                    let proj_damage = proj_stats.damage as f32;
-                    projectiles.push(Projectile {
-                        pos: [pos.x, pos.y, pos.z, 1.0],
-                        chunk_update_pos: [0, 0, 0, 0],
-                        dir: [rot.v[0], rot.v[1], rot.v[2], rot.s],
-                        size: [proj_width, proj_height, proj_length, 1.0],
-                        vel: proj_speed,
-                        health: proj_health,
-                        lifetime: 0.0,
-                        owner: player_idx,
-                        damage: proj_damage,
-                        proj_card_idx: card_idx as u32,
-                        _filler2: 0.0,
-                        _filler3: 0.0,
-                    });
-                }
-                ReferencedBaseCard {
-                    card_type: ReferencedBaseCardType::CreateMaterial,
-                    card_idx,
-                    ..
-                } => {
-                    let material = &self.referenced_material_creators[card_idx];
-                    new_voxels.push((pos.cast::<i32>().unwrap(), material.clone()));
-                }
-                ReferencedBaseCard {
-                    card_type: ReferencedBaseCardType::Effect,
-                    card_idx,
-                    ..
-                } => {
-                    let effect = &self.referenced_effects[card_idx];
-                    effects.push(effect.clone());
-                }
-                _ => panic!("Invalid state"),
+        match card {
+            ReferencedBaseCard {
+                card_type: ReferencedBaseCardType::Projectile,
+                card_idx,
+                ..
+            } => {
+                let proj_stats = self.get_referenced_proj(card_idx);
+                let proj_length = 1.25f32.powi(proj_stats.length);
+                let proj_width = 1.25f32.powi(proj_stats.width);
+                let proj_height = 1.25f32.powi(proj_stats.height);
+                let proj_speed = 24.0 * 1.5f32.powi(proj_stats.speed);
+                let proj_health = 10.0 * 1.5f32.powi(proj_stats.health);
+                let proj_damage = proj_stats.damage as f32;
+                projectiles.push(Projectile {
+                    pos: [pos.x, pos.y, pos.z, 1.0],
+                    chunk_update_pos: [0, 0, 0, 0],
+                    dir: [rot.v[0], rot.v[1], rot.v[2], rot.s],
+                    size: [proj_width, proj_height, proj_length, 1.0],
+                    vel: proj_speed,
+                    health: proj_health,
+                    lifetime: 0.0,
+                    owner: player_idx,
+                    damage: proj_damage,
+                    proj_card_idx: card_idx as u32,
+                    _filler2: 0.0,
+                    _filler3: 0.0,
+                });
             }
+            ReferencedBaseCard {
+                card_type: ReferencedBaseCardType::MultiCast,
+                card_idx,
+                ..
+            } => {
+                let multicast = &self.referenced_multicasts[card_idx];
+                let mut individual_sub_projectiles = vec![];
+                let mut sub_projectiles = vec![];
+                let mut sub_voxels = vec![];
+                let mut sub_effects = vec![];
+                for sub_card in multicast.sub_cards.iter() {
+                    let (sub_sub_projectiles, sub_sub_voxels, sub_sub_effects) =
+                        self.get_effects_from_base_card(*sub_card, pos, rot, player_idx);
+                    individual_sub_projectiles.extend(sub_sub_projectiles);
+                    sub_voxels.extend(sub_sub_voxels);
+                    sub_effects.extend(sub_sub_effects);
+                }
+                let spread:f32 = multicast.spread as f32 / 15.0;
+                let count = 2u32.pow(multicast.duplication);
+                let rotation_factor = 2.4;
+                for i in 0..count {
+                    for sub_projectile in individual_sub_projectiles.iter() {
+                        let mut new_sub_projectile = sub_projectile.clone();
+                        let x_rot = spread*(i as f32 / count as f32).sqrt()*(rotation_factor*(i as f32)).cos();
+                        let y_rot = spread*(i as f32 / count as f32).sqrt()*(rotation_factor*(i as f32)).sin();
+                        let new_rot = rot
+                            * Quaternion::from_axis_angle([0.0, 1.0, 0.0].into(), Rad(x_rot))
+                            * Quaternion::from_axis_angle([1.0, 0.0, 0.0].into(), Rad(y_rot));
+                        
+                        new_sub_projectile.dir = [new_rot.v[0], new_rot.v[1], new_rot.v[2], new_rot.s];
+                        sub_projectiles.push(new_sub_projectile);
+                    }
+                }
+                projectiles.extend(sub_projectiles);
+                new_voxels.extend(sub_voxels);
+                effects.extend(sub_effects);
+            }
+            ReferencedBaseCard {
+                card_type: ReferencedBaseCardType::CreateMaterial,
+                card_idx,
+                ..
+            } => {
+                let material = &self.referenced_material_creators[card_idx];
+                new_voxels.push((pos.cast::<i32>().unwrap(), material.clone()));
+            }
+            ReferencedBaseCard {
+                card_type: ReferencedBaseCardType::Effect,
+                card_idx,
+                ..
+            } => {
+                let effect = &self.referenced_effects[card_idx];
+                effects.push(effect.clone());
+            }
+            _ => panic!("Invalid state"),
         }
         (projectiles, new_voxels, effects)
     }

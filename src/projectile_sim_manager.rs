@@ -229,7 +229,7 @@ impl ProjectileComputePipeline {
                     let proj_rot =
                         Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
                     let effects = card_manager.get_effects_from_base_card(
-                        &card_ref,
+                        card_ref,
                         &Point3::new(projectile.pos[0], projectile.pos[1], projectile.pos[2]),
                         &proj_rot,
                         projectile.owner,

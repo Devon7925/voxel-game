@@ -1,6 +1,3 @@
-more cards
-    shotgun spread multicast thing
-
 bug fixes
     fix low fps desync
         allow multiple physics updates per frame

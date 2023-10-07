@@ -8,3 +8,6 @@ effects
     Knockback
 add body hitbox
 Card editor display
+multicast modifiers
+    spread
+    duplication

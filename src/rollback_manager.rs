@@ -343,7 +343,7 @@ impl WorldState {
                     let proj_rot =
                         Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
                     let effects = card_manager.get_effects_from_base_card(
-                        &card_ref,
+                        card_ref,
                         &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
                         &proj_rot,
                         proj.owner,
@@ -568,7 +568,7 @@ impl WorldState {
                     {
                         ability.cooldown = ability.value;
                         let effects = card_manager.get_effects_from_base_card(
-                            &ability.ability,
+                            ability.ability,
                             &player.pos,
                             &player.rot,
                             player_idx as u32,
@@ -662,7 +662,7 @@ impl WorldState {
                                     );
                                     let (on_hit_projectiles, on_hit_voxels, effects) = card_manager
                                         .get_effects_from_base_card(
-                                            &card_ref,
+                                            card_ref,
                                             &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
                                             &proj_rot,
                                             proj.owner,
