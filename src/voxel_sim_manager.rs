@@ -73,22 +73,6 @@ fn empty_grid(memory_allocator: &impl MemoryAllocator) -> Subbuffer<[[u32; 2]]> 
     .unwrap()
 }
 
-fn empty_chunk_grid(memory_allocator: &impl MemoryAllocator) -> Subbuffer<[u32]> {
-    Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
-            usage: BufferUsage::STORAGE_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            usage: MemoryUsage::Upload,
-            ..Default::default()
-        },
-        vec![0; (RENDER_SIZE[0] * RENDER_SIZE[1] * RENDER_SIZE[2]) as usize],
-    )
-    .unwrap()
-}
-
 impl VoxelComputePipeline {
     pub fn new(app: &VulkanoInterface, compute_queue: Arc<Queue>) -> VoxelComputePipeline {
         let memory_allocator = &app.memory_allocator;

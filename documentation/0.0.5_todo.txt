@@ -1,7 +1,26 @@
 Tweaks
     balance 1 shots
 Look into not triggering anti virus
-Interactivity for card editor
 Profiling
     add puffin profiling
     profile and optimize
+Replay player
+Gui
+    Main menu
+    Interactivity for card editor
+Consider headshots
+Cards
+    Trail
+    Effects
+        Player Projectile Modifier
+        Damage Taken
+        Damage over time
+        Speed
+        negative knockback for suck
+        immobile
+        teleport owner
+        cleanse
+    Projectile Modifiers
+        Lock to Player
+        Player piercing
+        Terrain bounce
