@@ -1,2 +1,0 @@
-bug fixes
-    look into recording replay to detect desync

@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, f32::consts::PI, sync::Arc};
+use std::{collections::VecDeque, f32::consts::PI, fs::File, io::Write, sync::Arc};
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{
@@ -13,6 +13,7 @@ use vulkano::{
 use crate::{
     card_system::{CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, VoxelMaterial},
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
+    settings_manager::Settings,
     voxel_sim_manager::VoxelComputePipeline,
     CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, SPAWN_LOCATION,
 };
@@ -23,7 +24,7 @@ pub struct WorldState {
     pub projectiles: Vec<Projectile>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct RollbackData {
     pub current_time: u64,
     pub rollback_time: u64,
@@ -34,6 +35,7 @@ pub struct RollbackData {
     pub meta_actions: VecDeque<Vec<Option<MetaAction>>>,
     pub projectile_buffer: Subbuffer<[Projectile; 1024]>,
     pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
+    replay_file: Option<File>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -107,9 +109,7 @@ impl Default for PlayerAction {
 
 impl Default for MetaAction {
     fn default() -> Self {
-        MetaAction {
-            adjust_dt: None,
-        }
+        MetaAction { adjust_dt: None }
     }
 }
 
@@ -133,7 +133,7 @@ impl Default for Player {
 }
 
 impl RollbackData {
-    pub fn new(memory_allocator: &Arc<StandardMemoryAllocator>, delta_time: f32) -> Self {
+    pub fn new(memory_allocator: &Arc<StandardMemoryAllocator>, settings: &Settings) -> Self {
         let projectile_buffer = Buffer::new_sized(
             memory_allocator,
             BufferCreateInfo {
@@ -160,13 +160,18 @@ impl RollbackData {
         )
         .unwrap();
 
+        let replay_file = settings
+            .replay_settings
+            .record_replay
+            .then(|| std::fs::File::create(settings.replay_settings.replay_file.clone()).unwrap());
+
         let current_time: u64 = 5;
         let rollback_time: u64 = 0;
 
         RollbackData {
             current_time,
             rollback_time,
-            delta_time,
+            delta_time: settings.delta_time,
             rollback_state: WorldState::new(),
             cached_current_state: WorldState::new(),
             actions: VecDeque::from(vec![
@@ -179,6 +184,7 @@ impl RollbackData {
             ]),
             player_buffer,
             projectile_buffer,
+            replay_file,
         }
     }
 
@@ -200,12 +206,15 @@ impl RollbackData {
         }
         let time_idx = time_stamp - self.rollback_time;
         let meta_actions_len = self.meta_actions.len();
-        let meta_action_frame = self.meta_actions.get_mut(time_idx as usize).unwrap_or_else(|| {
-            panic!(
+        let meta_action_frame = self
+            .meta_actions
+            .get_mut(time_idx as usize)
+            .unwrap_or_else(|| {
+                panic!(
                 "cannot access index {} in action deque of length {} on sending with timestamp {}",
                 time_idx, meta_actions_len, time_stamp
             )
-        });
+            });
         if meta_action_frame[player_idx].is_none() {
             meta_action_frame[player_idx] = Some(MetaAction {
                 adjust_dt: Some(delta_time),
@@ -271,8 +280,17 @@ impl RollbackData {
         {
             let player_actions = self.actions.pop_front().unwrap();
             assert!(player_actions.iter().all(|x| x.is_some()));
-            self.rollback_state
-                .step_sim(&player_actions, true, card_manager, time_step, vox_compute);
+            if let Some(replay_file) = self.replay_file.as_mut() {
+                replay_file.write_all(b"\n").unwrap();
+                ron::ser::to_writer(replay_file, &player_actions).unwrap();
+            }
+            self.rollback_state.step_sim(
+                &player_actions,
+                true,
+                card_manager,
+                time_step,
+                vox_compute,
+            );
         }
     }
 
@@ -555,7 +573,7 @@ impl WorldState {
                 proj2_mut.health -= damage_2;
             }
         }
-        let mut voxels_to_write: Vec<(i32, [u32;2])> = Vec::new();
+        let mut voxels_to_write: Vec<(i32, [u32; 2])> = Vec::new();
         {
             let voxel_reader = voxels.read().unwrap();
             for (player_idx, (player, action)) in self
@@ -577,14 +595,17 @@ impl WorldState {
                     player.facing[1] = (player.facing[1] - action.aim[1])
                         .min(PI / 2.0)
                         .max(-PI / 2.0);
-                    player.rot =
-                        Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]))
-                            * Quaternion::from_axis_angle(
-                                Vector3::new(1.0, 0.0, 0.0),
-                                Rad(-player.facing[1]),
-                            );
-                    let horizontal_rot =
-                        Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]));
+                    player.rot = Quaternion::from_axis_angle(
+                        Vector3::new(0.0, 1.0, 0.0),
+                        Rad(player.facing[0]),
+                    ) * Quaternion::from_axis_angle(
+                        Vector3::new(1.0, 0.0, 0.0),
+                        Rad(-player.facing[1]),
+                    );
+                    let horizontal_rot = Quaternion::from_axis_angle(
+                        Vector3::new(0.0, 1.0, 0.0),
+                        Rad(player.facing[0]),
+                    );
                     player.dir = player.rot * Vector3::new(0.0, 0.0, 1.0);
                     player.right = player.rot * Vector3::new(-1.0, 0.0, 0.0);
                     player.up = player.right.cross(player.dir).normalize();
@@ -687,7 +708,8 @@ impl WorldState {
                     let projectile_rot =
                         Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
                     let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
-                    let projectile_right = projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
+                    let projectile_right =
+                        projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
                     let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
                     let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
                     let projectile_size = Vector3::new(proj.size[0], proj.size[1], proj.size[2]);
@@ -709,9 +731,16 @@ impl WorldState {
                                     + grid_dist.y * grid_iter_y as f32 * projectile_up
                                     + grid_dist.z * grid_iter_z as f32 * projectile_dir;
                                 let head_dist = (player.pos - pos).magnitude();
-                                let body_dist = (player.pos - player.size*Vector3::new(0.0, 1.9, 0.0) - pos).magnitude();
-                                let feet_dist = (player.pos - player.size*Vector3::new(0.0, 3.3, 0.0) - pos).magnitude();
-                                if head_dist < 0.6*player.size || body_dist < 1.5*player.size || feet_dist < 0.7*player.size {
+                                let body_dist =
+                                    (player.pos - player.size * Vector3::new(0.0, 1.9, 0.0) - pos)
+                                        .magnitude();
+                                let feet_dist =
+                                    (player.pos - player.size * Vector3::new(0.0, 3.3, 0.0) - pos)
+                                        .magnitude();
+                                if head_dist < 0.6 * player.size
+                                    || body_dist < 1.5 * player.size
+                                    || feet_dist < 0.7 * player.size
+                                {
                                     proj.health = 0.0;
                                     for card_ref in card_manager
                                         .get_referenced_proj(proj.proj_card_idx as usize)
@@ -725,8 +754,8 @@ impl WorldState {
                                             proj_rot[1],
                                             proj_rot[2],
                                         );
-                                        let (on_hit_projectiles, on_hit_voxels, effects) = card_manager
-                                            .get_effects_from_base_card(
+                                        let (on_hit_projectiles, on_hit_voxels, effects) =
+                                            card_manager.get_effects_from_base_card(
                                                 card_ref,
                                                 &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
                                                 &proj_rot,
@@ -738,7 +767,8 @@ impl WorldState {
                                                 vox_compute.queue_update_from_voxel_pos(&[
                                                     pos.x, pos.y, pos.z,
                                                 ]);
-                                                voxels_to_write.push((get_index(pos), material.to_memory()));
+                                                voxels_to_write
+                                                    .push((get_index(pos), material.to_memory()));
                                             }
                                         }
                                         for effect in effects {

@@ -191,7 +191,7 @@ impl RenderPipeline {
 
         let compute_queue: Arc<Queue> = queue.clone();
 
-        let rollback_data = RollbackData::new(&memory_allocator, settings.delta_time);
+        let rollback_data = RollbackData::new(&memory_allocator, &settings);
 
         let vulkano_interface = VulkanoInterface {
             memory_allocator,

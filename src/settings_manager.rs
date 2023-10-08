@@ -12,6 +12,7 @@ pub struct Settings {
     pub fullscreen_toggle: VirtualKeyCode,
     pub movement_controls: ControlSettings,
     pub graphics_settings: GraphicsSettings,
+    pub replay_settings: ReplaySettings,
     pub ability_controls: Vec<Control>,
     pub delta_time: f32,
 }
@@ -63,4 +64,10 @@ pub struct GraphicsSettings {
     pub shadow_ray_dist: u32,
     pub transparent_shadow_ray_dist: u32,
     pub ao_ray_dist: u32,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ReplaySettings {
+    pub replay_file: String,
+    pub record_replay: bool,
 }
