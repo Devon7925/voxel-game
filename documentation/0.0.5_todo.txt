@@ -1,14 +1,26 @@
-Tweaks
-    balance 1 shots
-Look into not triggering anti virus
 Profiling
     add puffin profiling
     profile and optimize
-Replay player
+Replays
+    Add recording for meta packets 
+    Add playback
 Gui
     Main menu
-    Interactivity for card editor
+    Card editor
+        Interactivity
+        Hover for modifiers
+        Change name of health
+Tuning
+    balance 1 shots
+    Add player velocity to bullet initial velocity
+    Increase gravity more
+    change knockback direction to not just based on head
+    Adjust on hit material
+Add visible errors
+Look into not triggering anti virus
 Consider headshots
+Card file setting
+Release script
 Cards
     Trail
     Effects
