@@ -330,7 +330,7 @@ impl VoxelComputePipeline {
 
     // chunks are represented as u32 with a 1 representing a changed chunk
     // this function will get the locations of those and push updates and then clear the buffer
-    pub fn push_updates_from_changed(&mut self, start_pos: [i32; 3]) {
+    pub fn push_updates_from_changed(&mut self) {
         let reader = self.chunk_updates.read().unwrap();
         // last component of 1 means the chunk was changed and therefore means it and surrounding chunks need to be updated
         for i in 0..self.last_update_count {

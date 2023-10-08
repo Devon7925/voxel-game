@@ -134,9 +134,6 @@ fn main() {
     app.voxel_compute.load_chunks(&mut sim_data);
 
     let mut network_connection = NetworkConnection::new(&app.settings);
-    let mut time = Instant::now();
-    let mut chunk_time = Instant::now();
-
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(app.vulkano_interface.device.clone()).boxed());
 
@@ -151,9 +148,9 @@ fn main() {
         should_exit: false,
         gui_cards: player_deck.clone(),
     };
-
-    const TIME_STEP: f32 = 1.0 / 30.0;
-
+    
+    let mut time = Instant::now();
+    let mut chunk_time = Instant::now();
     loop {
         let should_continue = handle_events(
             &mut event_loop,
@@ -180,7 +177,7 @@ fn main() {
                     &mut app.rollback_data,
                 );
             }
-            time += std::time::Duration::from_secs_f32(TIME_STEP);
+            time += std::time::Duration::from_secs_f32(app.rollback_data.delta_time);
             let skip_render = (Instant::now() - time).as_secs_f32() > 0.0;
             if app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize
             {
@@ -193,7 +190,6 @@ fn main() {
                     &mut gui_state,
                     player_action.clone(),
                     skip_render,
-                    TIME_STEP,
                 );
                 let window = app
                     .vulkano_interface
@@ -430,7 +426,6 @@ fn compute_then_render(
     gui_state: &mut GuiState,
     action: PlayerAction,
     skip_render: bool,
-    time_step: f32,
 ) {
     let window = pipeline
         .vulkano_interface
@@ -443,12 +438,14 @@ fn compute_then_render(
     if dimensions.width == 0 || dimensions.height == 0 {
         return;
     }
+    let time_step = pipeline.rollback_data.delta_time;
     
     if skip_render {
+        println!("skipping render");
         sim_data.max_dist = sim_settings.max_dist;
         pipeline
             .voxel_compute
-            .push_updates_from_changed(sim_data.start_pos);
+            .push_updates_from_changed();
 
         for player in pipeline.rollback_data.cached_current_state.players.iter() {
             pipeline.voxel_compute.queue_update_from_world_pos(&[
@@ -561,7 +558,7 @@ fn compute_then_render(
         sim_data.max_dist = sim_settings.max_dist;
         pipeline
             .voxel_compute
-            .push_updates_from_changed(sim_data.start_pos);
+            .push_updates_from_changed();
 
         for player in pipeline.rollback_data.cached_current_state.players.iter() {
             pipeline.voxel_compute.queue_update_from_world_pos(&[

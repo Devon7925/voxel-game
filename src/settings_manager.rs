@@ -13,6 +13,7 @@ pub struct Settings {
     pub movement_controls: ControlSettings,
     pub graphics_settings: GraphicsSettings,
     pub ability_controls: Vec<Control>,
+    pub delta_time: f32,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

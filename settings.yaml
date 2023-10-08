@@ -22,3 +22,4 @@ graphics_settings:
   shadow_ray_dist: 50
   transparent_shadow_ray_dist: 50
   ao_ray_dist: 40
+delta_time: 0.03333333

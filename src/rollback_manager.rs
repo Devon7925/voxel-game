@@ -27,9 +27,11 @@ pub struct WorldState {
 pub struct RollbackData {
     pub current_time: u64,
     pub rollback_time: u64,
+    pub delta_time: f32,
     pub rollback_state: WorldState,
     pub cached_current_state: WorldState,
     pub actions: VecDeque<Vec<Option<PlayerAction>>>,
+    pub meta_actions: VecDeque<Vec<Option<MetaAction>>>,
     pub projectile_buffer: Subbuffer<[Projectile; 1024]>,
     pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
 }
@@ -45,6 +47,11 @@ pub struct PlayerAction {
     pub crouch: bool,
     pub sprint: bool,
     pub activate_ability: Vec<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MetaAction {
+    pub adjust_dt: Option<f32>,
 }
 
 #[derive(Clone, Debug)]
@@ -98,6 +105,14 @@ impl Default for PlayerAction {
     }
 }
 
+impl Default for MetaAction {
+    fn default() -> Self {
+        MetaAction {
+            adjust_dt: None,
+        }
+    }
+}
+
 impl Default for Player {
     fn default() -> Self {
         Player {
@@ -118,7 +133,7 @@ impl Default for Player {
 }
 
 impl RollbackData {
-    pub fn new(memory_allocator: &Arc<StandardMemoryAllocator>) -> Self {
+    pub fn new(memory_allocator: &Arc<StandardMemoryAllocator>, delta_time: f32) -> Self {
         let projectile_buffer = Buffer::new_sized(
             memory_allocator,
             BufferCreateInfo {
@@ -151,11 +166,16 @@ impl RollbackData {
         RollbackData {
             current_time,
             rollback_time,
+            delta_time,
             rollback_state: WorldState::new(),
             cached_current_state: WorldState::new(),
             actions: VecDeque::from(vec![
                 Vec::new();
-                (current_time - rollback_time + 10) as usize
+                (current_time - rollback_time + 15) as usize
+            ]),
+            meta_actions: VecDeque::from(vec![
+                Vec::new();
+                (current_time - rollback_time + 15) as usize
             ]),
             player_buffer,
             projectile_buffer,
@@ -168,6 +188,31 @@ impl RollbackData {
 
     pub fn players(&self) -> Subbuffer<[UploadPlayer; 128]> {
         self.player_buffer.clone()
+    }
+
+    pub fn send_dt_update(&mut self, delta_time: f32, player_idx: usize, time_stamp: u64) {
+        if time_stamp < self.rollback_time {
+            println!(
+                "cannot send dt update with timestamp {} when rollback time is {}",
+                time_stamp, self.rollback_time
+            );
+            return;
+        }
+        let time_idx = time_stamp - self.rollback_time;
+        let meta_actions_len = self.meta_actions.len();
+        let meta_action_frame = self.meta_actions.get_mut(time_idx as usize).unwrap_or_else(|| {
+            panic!(
+                "cannot access index {} in action deque of length {} on sending with timestamp {}",
+                time_idx, meta_actions_len, time_stamp
+            )
+        });
+        if meta_action_frame[player_idx].is_none() {
+            meta_action_frame[player_idx] = Some(MetaAction {
+                adjust_dt: Some(delta_time),
+            });
+        } else {
+            meta_action_frame[player_idx].as_mut().unwrap().adjust_dt = Some(delta_time);
+        }
     }
 
     pub fn send_action(&mut self, action: PlayerAction, player_idx: usize, time_stamp: u64) {
@@ -196,6 +241,11 @@ impl RollbackData {
                 ..Default::default()
             }))
         });
+        self.meta_actions.iter_mut().for_each(|x| {
+            x.push(Some(MetaAction {
+                ..Default::default()
+            }))
+        });
     }
 
     fn update_rollback_state(
@@ -205,13 +255,25 @@ impl RollbackData {
         vox_compute: &mut VoxelComputePipeline,
     ) {
         self.rollback_time += 1;
+        {
+            let meta_actions = self.meta_actions.pop_front().unwrap();
+            for meta_action in meta_actions.iter() {
+                if let Some(meta_action) = meta_action {
+                    if let Some(adjust_dt) = meta_action.adjust_dt {
+                        self.delta_time = self.delta_time.max(adjust_dt);
+                    }
+                }
+            }
+        }
         if self.rollback_time < 50 {
             return;
         }
-        let player_actions = self.actions.pop_front().unwrap();
-        assert!(player_actions.iter().all(|x| x.is_some()));
-        self.rollback_state
-            .step_sim(&player_actions, true, card_manager, time_step, vox_compute);
+        {
+            let player_actions = self.actions.pop_front().unwrap();
+            assert!(player_actions.iter().all(|x| x.is_some()));
+            self.rollback_state
+                .step_sim(&player_actions, true, card_manager, time_step, vox_compute);
+        }
     }
 
     fn get_current_state(
@@ -246,6 +308,8 @@ impl RollbackData {
         self.update_rollback_state(card_manager, time_step, vox_compute);
         self.current_time += 1;
         self.actions
+            .push_back(vec![None; self.rollback_state.players.len()]);
+        self.meta_actions
             .push_back(vec![None; self.rollback_state.players.len()]);
         self.cached_current_state = self.get_current_state(card_manager, time_step, vox_compute);
         //send projectiles
@@ -491,223 +555,230 @@ impl WorldState {
                 proj2_mut.health -= damage_2;
             }
         }
-
-        let voxel_reader = voxels.read().unwrap();
-        for (player_idx, (player, action)) in self
-            .players
-            .iter_mut()
-            .zip(player_actions.iter())
-            .enumerate()
+        let mut voxels_to_write: Vec<(i32, [u32;2])> = Vec::new();
         {
-            if player.respawn_timer > 0.0 {
-                player.respawn_timer -= time_step;
-                if player.respawn_timer <= 0.0 {
-                    player.pos = SPAWN_LOCATION;
-                    player.health = 100.0;
+            let voxel_reader = voxels.read().unwrap();
+            for (player_idx, (player, action)) in self
+                .players
+                .iter_mut()
+                .zip(player_actions.iter())
+                .enumerate()
+            {
+                if player.respawn_timer > 0.0 {
+                    player.respawn_timer -= time_step;
+                    if player.respawn_timer <= 0.0 {
+                        player.pos = SPAWN_LOCATION;
+                        player.health = 100.0;
+                    }
+                    continue;
                 }
-                continue;
-            }
-            if let Some(action) = action {
-                player.facing[0] = (player.facing[0] - action.aim[0] + 2.0 * PI) % (2.0 * PI);
-                player.facing[1] = (player.facing[1] - action.aim[1])
-                    .min(PI / 2.0)
-                    .max(-PI / 2.0);
-                player.rot =
-                    Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]))
-                        * Quaternion::from_axis_angle(
-                            Vector3::new(1.0, 0.0, 0.0),
-                            Rad(-player.facing[1]),
-                        );
-                let horizontal_rot =
-                    Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]));
-                player.dir = player.rot * Vector3::new(0.0, 0.0, 1.0);
-                player.right = player.rot * Vector3::new(-1.0, 0.0, 0.0);
-                player.up = player.right.cross(player.dir).normalize();
-                let mut move_vec = Vector3::new(0.0, 0.0, 0.0);
-                let player_forward = horizontal_rot * Vector3::new(0.0, 0.0, 1.0);
-                let player_right = horizontal_rot * Vector3::new(-1.0, 0.0, 0.0);
-                if action.forward {
-                    move_vec += player_forward;
-                }
-                if action.backward {
-                    move_vec -= player_forward;
-                }
-                if action.left {
-                    move_vec -= player_right;
-                }
-                if action.right {
-                    move_vec += player_right;
-                }
-                if action.jump {
-                    move_vec += Vector3::new(0.0, 0.5, 0.0);
-                }
-                if action.crouch {
-                    move_vec -= Vector3::new(0.0, 0.5, 0.0);
-                }
-                if move_vec.magnitude() > 0.0 {
-                    move_vec = move_vec.normalize();
-                }
-                let accel_speed = if action.sprint { 1.5 } else { 1.0 }
-                    * if player.collision_vec != Vector3::new(0, 0, 0) {
-                        28.0
-                    } else {
-                        9.0
-                    };
-                player.vel += accel_speed * move_vec * time_step;
+                if let Some(action) = action {
+                    player.facing[0] = (player.facing[0] - action.aim[0] + 2.0 * PI) % (2.0 * PI);
+                    player.facing[1] = (player.facing[1] - action.aim[1])
+                        .min(PI / 2.0)
+                        .max(-PI / 2.0);
+                    player.rot =
+                        Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]))
+                            * Quaternion::from_axis_angle(
+                                Vector3::new(1.0, 0.0, 0.0),
+                                Rad(-player.facing[1]),
+                            );
+                    let horizontal_rot =
+                        Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]));
+                    player.dir = player.rot * Vector3::new(0.0, 0.0, 1.0);
+                    player.right = player.rot * Vector3::new(-1.0, 0.0, 0.0);
+                    player.up = player.right.cross(player.dir).normalize();
+                    let mut move_vec = Vector3::new(0.0, 0.0, 0.0);
+                    let player_forward = horizontal_rot * Vector3::new(0.0, 0.0, 1.0);
+                    let player_right = horizontal_rot * Vector3::new(-1.0, 0.0, 0.0);
+                    if action.forward {
+                        move_vec += player_forward;
+                    }
+                    if action.backward {
+                        move_vec -= player_forward;
+                    }
+                    if action.left {
+                        move_vec -= player_right;
+                    }
+                    if action.right {
+                        move_vec += player_right;
+                    }
+                    if action.jump {
+                        move_vec += Vector3::new(0.0, 0.5, 0.0);
+                    }
+                    if action.crouch {
+                        move_vec -= Vector3::new(0.0, 0.5, 0.0);
+                    }
+                    if move_vec.magnitude() > 0.0 {
+                        move_vec = move_vec.normalize();
+                    }
+                    let accel_speed = if action.sprint { 1.5 } else { 1.0 }
+                        * if player.collision_vec != Vector3::new(0, 0, 0) {
+                            28.0
+                        } else {
+                            9.0
+                        };
+                    player.vel += accel_speed * move_vec * time_step;
 
-                if action.jump {
-                    player.vel += player
-                        .collision_vec
-                        .zip(Vector3::new(0.3, 13.0, 0.3), |c, m| c as f32 * m);
-                }
+                    if action.jump {
+                        player.vel += player
+                            .collision_vec
+                            .zip(Vector3::new(0.3, 13.0, 0.3), |c, m| c as f32 * m);
+                    }
 
-                for (ability_idx, ability) in player.abilities.iter_mut().enumerate() {
-                    if ability_idx < action.activate_ability.len()
-                        && action.activate_ability[ability_idx]
-                        && ability.cooldown <= 0.0
-                    {
-                        ability.cooldown = ability.value;
-                        let effects = card_manager.get_effects_from_base_card(
-                            ability.ability,
-                            &player.pos,
-                            &player.rot,
-                            player_idx as u32,
-                        );
-                        self.projectiles.extend(effects.0);
-                        if is_real_update && effects.1.len() > 0 {
-                            let mut writer = voxels.write().unwrap();
-                            for (pos, material) in effects.1 {
-                                vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
-                                writer[get_index(pos) as usize] = material.to_memory();
+                    for (ability_idx, ability) in player.abilities.iter_mut().enumerate() {
+                        if ability_idx < action.activate_ability.len()
+                            && action.activate_ability[ability_idx]
+                            && ability.cooldown <= 0.0
+                        {
+                            ability.cooldown = ability.value;
+                            let effects = card_manager.get_effects_from_base_card(
+                                ability.ability,
+                                &player.pos,
+                                &player.rot,
+                                player_idx as u32,
+                            );
+                            self.projectiles.extend(effects.0);
+                            if is_real_update && effects.1.len() > 0 {
+                                let mut writer = voxels.write().unwrap();
+                                for (pos, material) in effects.1 {
+                                    vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
+                                    writer[get_index(pos) as usize] = material.to_memory();
+                                }
                             }
                         }
                     }
                 }
-            }
-            for ability in player.abilities.iter_mut() {
-                ability.cooldown -= time_step;
-            }
-
-            player.vel.y -= 16.0 * time_step;
-            if player.vel.magnitude() > 0.0 {
-                player.vel -= 0.1 * player.vel * player.vel.magnitude() * time_step
-                    + 0.2 * player.vel.normalize() * time_step;
-            }
-
-            let prev_collision_vec = player.collision_vec.clone();
-            player.collision_vec = Vector3::new(0, 0, 0);
-            collide_player(player, time_step, &voxel_reader, prev_collision_vec);
-            // check for collision with projectiles
-            for proj in self.projectiles.iter_mut() {
-                if player_idx as u32 == proj.owner
-                    && proj.lifetime < 1.0
-                    && player
-                        .abilities
-                        .iter()
-                        .map(|a| &a.ability)
-                        .filter(|a| a.card_type == ReferencedBaseCardType::Projectile)
-                        .any(|a| a.card_idx as u32 == proj.proj_card_idx)
-                {
-                    continue;
-                }
-                let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
-
-                if proj_card.no_friendly_fire && proj.owner == player_idx as u32 {
-                    continue;
-                }
-                if proj_card.no_enemy_fire && proj.owner != player_idx as u32 {
-                    continue;
+                for ability in player.abilities.iter_mut() {
+                    ability.cooldown -= time_step;
                 }
 
-                let projectile_rot =
-                    Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
-                let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
-                let projectile_right = projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
-                let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
-                let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
-                let projectile_size = Vector3::new(proj.size[0], proj.size[1], proj.size[2]);
+                player.vel.y -= 16.0 * time_step;
+                if player.vel.magnitude() > 0.0 {
+                    player.vel -= 0.1 * player.vel * player.vel.magnitude() * time_step
+                        + 0.2 * player.vel.normalize() * time_step;
+                }
 
-                let grid_iteration_count =
-                    (2.0 * projectile_size * 2.0_f32.sqrt()).map(|c| c.ceil());
-                let grid_dist =
-                    2.0 * projectile_size.zip(grid_iteration_count, |size, count| size / count);
+                let prev_collision_vec = player.collision_vec.clone();
+                player.collision_vec = Vector3::new(0, 0, 0);
+                collide_player(player, time_step, &voxel_reader, prev_collision_vec);
+                // check for collision with projectiles
+                for proj in self.projectiles.iter_mut() {
+                    if player_idx as u32 == proj.owner
+                        && proj.lifetime < 1.0
+                        && player
+                            .abilities
+                            .iter()
+                            .map(|a| &a.ability)
+                            .filter(|a| a.card_type == ReferencedBaseCardType::Projectile)
+                            .any(|a| a.card_idx as u32 == proj.proj_card_idx)
+                    {
+                        continue;
+                    }
+                    let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
 
-                let start_pos = projectile_pos
-                    - projectile_size.x * projectile_right
-                    - projectile_size.y * projectile_up
-                    - projectile_size.z * projectile_dir;
-                'outer: for grid_iter_x in 0..=(grid_iteration_count.x as i32) {
-                    for grid_iter_y in 0..=(grid_iteration_count.y as i32) {
-                        for grid_iter_z in 0..=(grid_iteration_count.z as i32) {
-                            let pos = start_pos
-                                + grid_dist.x * grid_iter_x as f32 * projectile_right
-                                + grid_dist.y * grid_iter_y as f32 * projectile_up
-                                + grid_dist.z * grid_iter_z as f32 * projectile_dir;
-                            let head_dist = (player.pos - pos).magnitude();
-                            let body_dist = (player.pos - player.size*Vector3::new(0.0, 1.9, 0.0) - pos).magnitude();
-                            let feet_dist = (player.pos - player.size*Vector3::new(0.0, 3.3, 0.0) - pos).magnitude();
-                            if head_dist < 0.6*player.size || body_dist < 1.5*player.size || feet_dist < 0.7*player.size {
-                                proj.health = 0.0;
-                                for card_ref in card_manager
-                                    .get_referenced_proj(proj.proj_card_idx as usize)
-                                    .on_hit
-                                    .clone()
-                                {
-                                    let proj_rot = proj.dir;
-                                    let proj_rot = Quaternion::new(
-                                        proj_rot[3],
-                                        proj_rot[0],
-                                        proj_rot[1],
-                                        proj_rot[2],
-                                    );
-                                    let (on_hit_projectiles, on_hit_voxels, effects) = card_manager
-                                        .get_effects_from_base_card(
-                                            card_ref,
-                                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
-                                            &proj_rot,
-                                            proj.owner,
+                    if proj_card.no_friendly_fire && proj.owner == player_idx as u32 {
+                        continue;
+                    }
+                    if proj_card.no_enemy_fire && proj.owner != player_idx as u32 {
+                        continue;
+                    }
+
+                    let projectile_rot =
+                        Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
+                    let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+                    let projectile_right = projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
+                    let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
+                    let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
+                    let projectile_size = Vector3::new(proj.size[0], proj.size[1], proj.size[2]);
+
+                    let grid_iteration_count =
+                        (2.0 * projectile_size * 2.0_f32.sqrt()).map(|c| c.ceil());
+                    let grid_dist =
+                        2.0 * projectile_size.zip(grid_iteration_count, |size, count| size / count);
+
+                    let start_pos = projectile_pos
+                        - projectile_size.x * projectile_right
+                        - projectile_size.y * projectile_up
+                        - projectile_size.z * projectile_dir;
+                    'outer: for grid_iter_x in 0..=(grid_iteration_count.x as i32) {
+                        for grid_iter_y in 0..=(grid_iteration_count.y as i32) {
+                            for grid_iter_z in 0..=(grid_iteration_count.z as i32) {
+                                let pos = start_pos
+                                    + grid_dist.x * grid_iter_x as f32 * projectile_right
+                                    + grid_dist.y * grid_iter_y as f32 * projectile_up
+                                    + grid_dist.z * grid_iter_z as f32 * projectile_dir;
+                                let head_dist = (player.pos - pos).magnitude();
+                                let body_dist = (player.pos - player.size*Vector3::new(0.0, 1.9, 0.0) - pos).magnitude();
+                                let feet_dist = (player.pos - player.size*Vector3::new(0.0, 3.3, 0.0) - pos).magnitude();
+                                if head_dist < 0.6*player.size || body_dist < 1.5*player.size || feet_dist < 0.7*player.size {
+                                    proj.health = 0.0;
+                                    for card_ref in card_manager
+                                        .get_referenced_proj(proj.proj_card_idx as usize)
+                                        .on_hit
+                                        .clone()
+                                    {
+                                        let proj_rot = proj.dir;
+                                        let proj_rot = Quaternion::new(
+                                            proj_rot[3],
+                                            proj_rot[0],
+                                            proj_rot[1],
+                                            proj_rot[2],
                                         );
-                                    new_projectiles.extend(on_hit_projectiles);
-                                    if is_real_update && on_hit_voxels.len() > 0 {
-                                        let mut writer = voxels.write().unwrap();
-                                        for (pos, material) in on_hit_voxels {
-                                            vox_compute.queue_update_from_voxel_pos(&[
-                                                pos.x, pos.y, pos.z,
-                                            ]);
-                                            writer[get_index(pos) as usize] = material.to_memory();
-                                        }
-                                    }
-                                    for effect in effects {
-                                        match effect {
-                                            Effect::Damage(damage) => {
-                                                player.health -= damage as f32;
+                                        let (on_hit_projectiles, on_hit_voxels, effects) = card_manager
+                                            .get_effects_from_base_card(
+                                                card_ref,
+                                                &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                                                &proj_rot,
+                                                proj.owner,
+                                            );
+                                        new_projectiles.extend(on_hit_projectiles);
+                                        if is_real_update && on_hit_voxels.len() > 0 {
+                                            for (pos, material) in on_hit_voxels {
+                                                vox_compute.queue_update_from_voxel_pos(&[
+                                                    pos.x, pos.y, pos.z,
+                                                ]);
+                                                voxels_to_write.push((get_index(pos), material.to_memory()));
                                             }
-                                            Effect::Knockback(knockback) => {
-                                                let knockback = 1.5f32.powi(knockback as i32);
-                                                let knockback_dir = player.pos - projectile_pos;
-                                                if knockback_dir.magnitude() > 0.0 {
-                                                    player.vel +=
-                                                        knockback * (knockback_dir).normalize();
-                                                } else {
-                                                    player.vel.y += knockback;
+                                        }
+                                        for effect in effects {
+                                            match effect {
+                                                Effect::Damage(damage) => {
+                                                    player.health -= damage as f32;
+                                                }
+                                                Effect::Knockback(knockback) => {
+                                                    let knockback = 1.5f32.powi(knockback as i32);
+                                                    let knockback_dir = player.pos - projectile_pos;
+                                                    if knockback_dir.magnitude() > 0.0 {
+                                                        player.vel +=
+                                                            knockback * (knockback_dir).normalize();
+                                                    } else {
+                                                        player.vel.y += knockback;
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                    break 'outer;
                                 }
-                                break 'outer;
                             }
                         }
                     }
                 }
-            }
-            if player.health <= 0.0 {
-                player.respawn_timer = 5.0;
+                if player.health <= 0.0 {
+                    player.respawn_timer = 5.0;
+                }
             }
         }
         // remove dead projectiles
         self.projectiles.retain(|proj| proj.health > 0.0);
         self.projectiles.extend(new_projectiles);
+        {
+            let mut writer = voxels.write().unwrap();
+            for (index, material) in voxels_to_write {
+                writer[index as usize] = material;
+            }
+        }
     }
 }
 

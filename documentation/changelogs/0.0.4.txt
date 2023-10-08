@@ -11,3 +11,4 @@ Card editor display
 multicast modifiers
     spread
     duplication
+delta time setting

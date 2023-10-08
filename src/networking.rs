@@ -18,6 +18,7 @@ pub struct NetworkConnection {
 pub enum NetworkPacket {
     Action(u64, PlayerAction),
     DeckUpdate(Vec<BaseCard>),
+    DeltatimeUpdate(u64, f32),
 }
 
 impl NetworkConnection {
@@ -74,9 +75,16 @@ impl NetworkConnection {
                         ..Default::default()
                     });
 
-                    let deck_packet_data = NetworkPacket::DeckUpdate(player_cards.clone());
-                    let deck_packet = ron::to_string(&deck_packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
-                    self.socket.send(deck_packet.clone(), peer);
+                    {
+                        let deck_packet_data = NetworkPacket::DeckUpdate(player_cards.clone());
+                        let deck_packet = ron::to_string(&deck_packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
+                        self.socket.send(deck_packet.clone(), peer);
+                    }
+                    {
+                        let dt_packet_data = NetworkPacket::DeltatimeUpdate(rollback_manager.current_time, rollback_manager.delta_time);
+                        let dt_packet = ron::to_string(&dt_packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
+                        self.socket.send(dt_packet.clone(), peer);
+                    }
                 }
                 PeerState::Disconnected => {
                     println!("Peer left: {:?}", peer);
@@ -111,6 +119,9 @@ impl NetworkConnection {
                             cooldown: 0.0,
                         }
                     }).collect();
+                }
+                NetworkPacket::DeltatimeUpdate(time, delta_time) => {
+                    rollback_manager.send_dt_update(delta_time, player_idx, time);
                 }
             }
         }

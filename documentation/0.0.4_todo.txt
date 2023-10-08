@@ -1,4 +1,2 @@
 bug fixes
-    fix low fps desync
-        deltatime setting
     look into recording replay to detect desync
