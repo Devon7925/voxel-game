@@ -17,9 +17,7 @@ Tuning
     change knockback direction to not just based on head
     Adjust on hit material
 Add visible errors
-Look into not triggering anti virus
 Consider headshots
-Card file setting
 Release script
 Cards
     Trail

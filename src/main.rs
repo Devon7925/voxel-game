@@ -102,7 +102,7 @@ fn main() {
     };
 
     let player_deck =
-        BaseCard::vec_from_string(fs::read_to_string("player_cards.txt").unwrap().as_str());
+        BaseCard::vec_from_string(fs::read_to_string(&app.settings.card_file).unwrap().as_str());
 
     assert!(player_deck.iter().all(|card| card.is_reasonable()));
 
