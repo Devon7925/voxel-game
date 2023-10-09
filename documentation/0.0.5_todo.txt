@@ -26,7 +26,6 @@ Cards
         Damage Taken
         Damage over time
         Speed
-        negative knockback for suck
         immobile
         teleport owner
         cleanse

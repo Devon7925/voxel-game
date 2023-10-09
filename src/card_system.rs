@@ -45,7 +45,7 @@ pub enum VoxelMaterial {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum Effect {
     Damage(i32),
-    Knockback(u32),
+    Knockback(i32),
 }
 
 impl VoxelMaterial {
@@ -148,7 +148,7 @@ impl BaseCard {
             },
             BaseCard::Effect(effect) => match effect {
                 Effect::Damage(damage) => (*damage as f32).abs(),
-                Effect::Knockback(knockback) => 0.1 * 1.5f32.powi(*knockback as i32),
+                Effect::Knockback(knockback) => (*knockback as f32).abs(),
             },
         }
     }
@@ -220,7 +220,7 @@ impl BaseCard {
                     }
                 }
                 Effect::Knockback(knockback) => {
-                    if *knockback > 15 {
+                    if knockback.abs() > 20 {
                         return false;
                     }
                 }

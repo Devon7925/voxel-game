@@ -777,7 +777,7 @@ impl WorldState {
                                                     player.health -= damage as f32;
                                                 }
                                                 Effect::Knockback(knockback) => {
-                                                    let knockback = 1.5f32.powi(knockback as i32);
+                                                    let knockback = knockback as f32;
                                                     let knockback_dir = player.pos - projectile_pos;
                                                     if knockback_dir.magnitude() > 0.0 {
                                                         player.vel +=

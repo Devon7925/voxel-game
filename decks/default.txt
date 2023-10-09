@@ -23,7 +23,7 @@
             Length(1),
             Lifetime(-10),
             Health(-10),
-            OnHit(Effect(Knockback(10))),
+            OnHit(Effect(Knockback(-10))),
         ])),
     ]),
     Projectile([
