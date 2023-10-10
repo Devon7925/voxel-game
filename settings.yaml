@@ -27,3 +27,4 @@ replay_settings:
     replay_file: replay.txt
     record_replay: false
 do_profiling: false
+crash_log: crash_log.txt

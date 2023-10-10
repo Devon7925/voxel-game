@@ -8,7 +8,6 @@ Tuning
     balance 1 shots
     Add player velocity to bullet initial velocity
     Adjust on hit material
-Add visible errors
 Consider headshots
 Release script
 Cards

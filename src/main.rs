@@ -24,7 +24,8 @@ use multipass_system::Pass;
 use networking::NetworkConnection;
 use rollback_manager::{Player, PlayerAction};
 use settings_manager::Control;
-use std::{fs, time::Instant};
+use std::io::Write;
+use std::{fs, panic, time::Instant};
 use vulkano::{
     image::view::ImageView,
     swapchain::{
@@ -81,6 +82,17 @@ fn main() {
     let mut event_loop = EventLoop::new();
 
     let settings = Settings::from_string(fs::read_to_string("settings.yaml").unwrap().as_str());
+
+    panic::set_hook(Box::new(|panic_info| {
+        let settings = Settings::from_string(fs::read_to_string("settings.yaml").unwrap().as_str());
+        let mut crash_log = std::fs::File::create(settings.crash_log).unwrap();
+        if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            write!(crash_log, "panic occurred: {s:?}").unwrap();
+        } else {
+            write!(crash_log, "panic occurred").unwrap();
+        }
+        std::process::exit(1);
+    }));
 
     if settings.do_profiling {
         start_puffin_server();
@@ -148,7 +160,7 @@ fn main() {
         should_exit: false,
         gui_cards: player_deck.clone(),
     };
-    
+
     let mut time = Instant::now();
     let mut chunk_time = Instant::now();
     loop {
@@ -181,7 +193,10 @@ fn main() {
             time += std::time::Duration::from_secs_f32(app.rollback_data.delta_time);
             let skip_render = (Instant::now() - time).as_secs_f32() > 0.0;
             if skip_render {
-                println!("skipping render: behind by {}s", (Instant::now() - time).as_secs_f32());
+                println!(
+                    "skipping render: behind by {}s",
+                    (Instant::now() - time).as_secs_f32()
+                );
             }
             if app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize
             {
@@ -443,12 +458,10 @@ fn compute_then_render(
         return;
     }
     let time_step = pipeline.rollback_data.delta_time;
-    
+
     if skip_render {
         sim_data.max_dist = sim_settings.max_dist;
-        pipeline
-            .voxel_compute
-            .push_updates_from_changed();
+        pipeline.voxel_compute.push_updates_from_changed();
 
         for player in pipeline.rollback_data.cached_current_state.players.iter() {
             pipeline.voxel_compute.queue_update_from_world_pos(&[
@@ -481,7 +494,10 @@ fn compute_then_render(
             sim_data,
             time_step,
         );
-        let after_compute = pipeline.voxel_compute.compute(after_proj_compute, sim_data).then_signal_fence_and_flush();
+        let after_compute = pipeline
+            .voxel_compute
+            .compute(after_proj_compute, sim_data)
+            .then_signal_fence_and_flush();
 
         match after_compute {
             Ok(future) => {
@@ -489,7 +505,7 @@ fn compute_then_render(
                     Ok(x) => x,
                     Err(e) => println!("{e}"),
                 }
-    
+
                 *previous_frame_end = Some(future.boxed());
             }
             Err(FlushError::OutOfDate) => {
@@ -560,9 +576,7 @@ fn compute_then_render(
     let mut frame = if sim_settings.do_compute {
         puffin::profile_scope!("do compute");
         sim_data.max_dist = sim_settings.max_dist;
-        pipeline
-            .voxel_compute
-            .push_updates_from_changed();
+        pipeline.voxel_compute.push_updates_from_changed();
 
         // Compute.
         pipeline.rollback_data.download_projectiles(
@@ -600,7 +614,7 @@ fn compute_then_render(
             proj * view_matrix,
         )
     };
-    
+
     let mut after_future = None;
     while let Some(pass) = frame.next_pass() {
         match pass {

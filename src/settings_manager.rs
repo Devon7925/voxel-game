@@ -17,6 +17,7 @@ pub struct Settings {
     pub ability_controls: Vec<Control>,
     pub delta_time: f32,
     pub do_profiling: bool,
+    pub crash_log: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
