@@ -236,6 +236,40 @@ impl Default for BaseCard {
     }
 }
 
+impl ProjectileModifier {
+    pub fn get_hover_text(&self) -> String {
+        match self {
+            ProjectileModifier::Speed(_) => format!("Speed (+50% per) {}b/s", self.get_effect_value()),
+            ProjectileModifier::Length(_) => format!("Length (+25% per) {}", self.get_effect_value()),
+            ProjectileModifier::Width(_) => format!("Width (+25% per) {}", self.get_effect_value()),
+            ProjectileModifier::Height(_) => format!("Height (+25% per) {}", self.get_effect_value()),
+            ProjectileModifier::Lifetime(_) => format!("Lifetime (+50% per) {}s", self.get_effect_value()),
+            ProjectileModifier::Gravity(_) => format!("Gravity (+2 per) {}b/s/s", self.get_effect_value()),
+            ProjectileModifier::Health(_) => format!("Entity Health (+50% per) {}", self.get_effect_value()),
+            ProjectileModifier::NoFriendlyFire => format!("Prevents hitting friendly entities"),
+            ProjectileModifier::NoEnemyFire => format!("Prevents hitting enemy entities"),
+            ProjectileModifier::OnHit(card) => format!("On Hit {}", card.to_string()),
+            ProjectileModifier::OnExpiry(card) => format!("On Expiry {}", card.to_string()),
+        }
+    }
+
+    pub fn get_effect_value(&self) -> f32 {
+        match self {
+            ProjectileModifier::Speed(s) => 24.0 * 1.5f32.powi(*s),
+            ProjectileModifier::Length(s) => 1.25f32.powi(*s),
+            ProjectileModifier::Width(s) => 1.25f32.powi(*s),
+            ProjectileModifier::Height(s) => 1.25f32.powi(*s),
+            ProjectileModifier::Lifetime(s) => 3.0 * 1.5f32.powi(*s),
+            ProjectileModifier::Gravity(s) => 2.0 * (*s as f32),
+            ProjectileModifier::Health(s) => 10.0 * 1.5f32.powi(*s),
+            ProjectileModifier::NoFriendlyFire => panic!(),
+            ProjectileModifier::NoEnemyFire => panic!(),
+            ProjectileModifier::OnHit(_) => panic!(),
+            ProjectileModifier::OnExpiry(_) => panic!(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
 pub enum ReferencedBaseCardType {
     Projectile,
@@ -263,13 +297,13 @@ impl Default for ReferencedBaseCard {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReferencedProjectile {
     pub damage: i32,
-    pub speed: i32,
-    pub length: i32,
-    pub width: i32,
-    pub height: i32,
-    pub lifetime: i32,
-    pub gravity: i32,
-    pub health: i32,
+    pub speed: f32,
+    pub length: f32,
+    pub width: f32,
+    pub height: f32,
+    pub lifetime: f32,
+    pub gravity: f32,
+    pub health: f32,
     pub no_friendly_fire: bool,
     pub no_enemy_fire: bool,
     pub on_hit: Vec<ReferencedBaseCard>,
@@ -344,13 +378,13 @@ impl CardManager {
                 }
                 self.referenced_projs.push(ReferencedProjectile {
                     damage,
-                    speed,
-                    length,
-                    width,
-                    height,
-                    lifetime,
-                    gravity,
-                    health,
+                    speed: ProjectileModifier::Speed(speed).get_effect_value(),
+                    length: ProjectileModifier::Length(length).get_effect_value(),
+                    width: ProjectileModifier::Width(width).get_effect_value(),
+                    height: ProjectileModifier::Height(height).get_effect_value(),
+                    lifetime: ProjectileModifier::Lifetime(lifetime).get_effect_value(),
+                    gravity: ProjectileModifier::Gravity(gravity).get_effect_value(),
+                    health: ProjectileModifier::Health(health).get_effect_value(),
                     no_friendly_fire,
                     no_enemy_fire,
                     on_hit,
@@ -426,19 +460,14 @@ impl CardManager {
                 ..
             } => {
                 let proj_stats = self.get_referenced_proj(card_idx);
-                let proj_length = 1.25f32.powi(proj_stats.length);
-                let proj_width = 1.25f32.powi(proj_stats.width);
-                let proj_height = 1.25f32.powi(proj_stats.height);
-                let proj_speed = 24.0 * 1.5f32.powi(proj_stats.speed);
-                let proj_health = 10.0 * 1.5f32.powi(proj_stats.health);
                 let proj_damage = proj_stats.damage as f32;
                 projectiles.push(Projectile {
                     pos: [pos.x, pos.y, pos.z, 1.0],
                     chunk_update_pos: [0, 0, 0, 0],
                     dir: [rot.v[0], rot.v[1], rot.v[2], rot.s],
-                    size: [proj_width, proj_height, proj_length, 1.0],
-                    vel: proj_speed,
-                    health: proj_health,
+                    size: [proj_stats.width, proj_stats.height, proj_stats.length, 1.0],
+                    vel: proj_stats.speed,
+                    health: proj_stats.health,
                     lifetime: 0.0,
                     owner: player_idx,
                     damage: proj_damage,

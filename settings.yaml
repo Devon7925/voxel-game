@@ -27,4 +27,4 @@ delta_time: 0.03
 replay_settings:
     replay_file: replay.txt
     record_replay: false
-do_profiling: true
+do_profiling: false

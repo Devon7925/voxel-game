@@ -1,6 +1,6 @@
 use egui_winit_vulkano::egui::{
     self, epaint, Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse, LayerId, Order,
-    Rect, Sense, Shape, Stroke, TextFormat, Ui,
+    Rect, Sense, Shape, Stroke, TextFormat, Ui, text::LayoutJob,
 };
 
 use crate::{
@@ -144,29 +144,30 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard) {
                         for modifier in modifiers {
                             match modifier {
                                 ProjectileModifier::Gravity(v) => {
-                                    add_basic_modifer(ui, "Gravity", *v)
+                                    add_hoverable_basic_modifer(ui, "Gravity", *v, modifier.get_hover_text())
                                 }
                                 ProjectileModifier::Health(v) => {
-                                    add_basic_modifer(ui, "Health", *v)
+                                    add_hoverable_basic_modifer(ui, "Health", *v, modifier.get_hover_text())
                                 }
                                 ProjectileModifier::Height(v) => {
-                                    add_basic_modifer(ui, "Height", *v)
+                                    add_hoverable_basic_modifer(ui, "Height", *v, modifier.get_hover_text())
                                 }
                                 ProjectileModifier::Length(v) => {
-                                    add_basic_modifer(ui, "Length", *v)
+                                    add_hoverable_basic_modifer(ui, "Length", *v, modifier.get_hover_text())
                                 }
                                 ProjectileModifier::Lifetime(v) => {
-                                    add_basic_modifer(ui, "Lifetime", *v)
+                                    add_hoverable_basic_modifer(ui, "Lifetime", *v, modifier.get_hover_text())
                                 }
                                 ProjectileModifier::NoEnemyFire => {
-                                    ui.label("No Enemy Fire");
+                                    add_hoverable_basic_modifer(ui, "No Enemy Fire", "", modifier.get_hover_text())
                                 }
                                 ProjectileModifier::NoFriendlyFire => {
-                                    ui.label("No Friendly Fire");
+                                    add_hoverable_basic_modifer(ui, "No Friendly Fire", "", modifier.get_hover_text())
                                 }
-                                ProjectileModifier::Speed(v) => add_basic_modifer(ui, "Speed", *v),
-                                ProjectileModifier::Width(v) => add_basic_modifer(ui, "Width", *v),
-                                _ => {}
+                                ProjectileModifier::Speed(v) => add_hoverable_basic_modifer(ui, "Speed", *v, modifier.get_hover_text()),
+                                ProjectileModifier::Width(v) => add_hoverable_basic_modifer(ui, "Width", *v, modifier.get_hover_text()),
+                                ProjectileModifier::OnExpiry(_)
+                                | ProjectileModifier::OnHit(_) => {}
                             }
                         }
                         ui.add_space(CARD_UI_SPACING);
@@ -258,7 +259,6 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard) {
 }
 
 pub fn add_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display) {
-    use egui::text::LayoutJob;
     let mut job = LayoutJob::default();
     job.append(
         name,
@@ -277,4 +277,25 @@ pub fn add_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display)
         },
     );
     ui.label(job);
+}
+
+pub fn add_hoverable_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display, hover_text: String) {
+    let mut job = LayoutJob::default();
+    job.append(
+        name,
+        0.0,
+        TextFormat {
+            ..Default::default()
+        },
+    );
+    job.append(
+        format!("{}", count).as_str(),
+        0.0,
+        TextFormat {
+            font_id: FontId::proportional(7.0),
+            valign: Align::TOP,
+            ..Default::default()
+        },
+    );
+    ui.label(job).on_hover_text(hover_text);
 }

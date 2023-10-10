@@ -399,7 +399,7 @@ impl WorldState {
             let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
             let mut proj_vel = projectile_dir * proj.vel;
             let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
-            proj_vel.y -= 2.0 * (proj_card.gravity as f32) * time_step;
+            proj_vel.y -= proj_card.gravity * time_step;
             for i in 0..3 {
                 proj.pos[i] += proj_vel[i] * time_step;
             }
@@ -415,7 +415,7 @@ impl WorldState {
             proj.vel = proj_vel.magnitude();
 
             proj.lifetime += time_step;
-            if proj.lifetime >= 3.0 * 1.5f32.powi(proj_card.lifetime) {
+            if proj.lifetime >= proj_card.lifetime {
                 proj.health = 0.0;
                 for card_ref in card_manager
                     .get_referenced_proj(proj.proj_card_idx as usize)

@@ -5,8 +5,6 @@ Gui
     Main menu
     Card editor
         Interactivity
-        Hover for modifiers
-        Change name of health
 Tuning
     balance 1 shots
     Add player velocity to bullet initial velocity
