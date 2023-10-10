@@ -127,7 +127,6 @@ fn main() {
         right: false,
         jump: false,
         crouch: false,
-        sprint: false,
         activate_ability: vec![false; app.settings.ability_controls.len()],
         aim: [0.0, 0.0],
     };
@@ -307,7 +306,6 @@ fn handle_events(
                         mouse_match!(left);
                         mouse_match!(forward);
                         mouse_match!(backward);
-                        mouse_match!(sprint);
                         for (ability_idx, ability_key) in
                             app.settings.ability_controls.iter().enumerate()
                         {
@@ -359,7 +357,6 @@ fn handle_events(
                             key_match!(left);
                             key_match!(forward);
                             key_match!(backward);
-                            key_match!(sprint);
                             for (ability_idx, ability_key) in
                                 app.settings.ability_controls.iter().enumerate()
                             {

@@ -11,7 +11,9 @@ use vulkano::{
 };
 
 use crate::{
-    card_system::{CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, VoxelMaterial, BaseCard},
+    card_system::{
+        BaseCard, CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, VoxelMaterial,
+    },
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     settings_manager::Settings,
     voxel_sim_manager::VoxelComputePipeline,
@@ -47,7 +49,6 @@ pub struct PlayerAction {
     pub right: bool,
     pub jump: bool,
     pub crouch: bool,
-    pub sprint: bool,
     pub activate_ability: Vec<bool>,
 }
 
@@ -102,7 +103,6 @@ impl Default for PlayerAction {
             right: false,
             jump: false,
             crouch: false,
-            sprint: false,
             activate_ability: vec![],
         }
     }
@@ -137,7 +137,11 @@ impl Default for Player {
 }
 
 impl RollbackData {
-    pub fn new(memory_allocator: &Arc<StandardMemoryAllocator>, settings: &Settings, deck: &Vec<BaseCard>) -> Self {
+    pub fn new(
+        memory_allocator: &Arc<StandardMemoryAllocator>,
+        settings: &Settings,
+        deck: &Vec<BaseCard>,
+    ) -> Self {
         let projectile_buffer = Buffer::new_sized(
             memory_allocator,
             BufferCreateInfo {
@@ -238,7 +242,12 @@ impl RollbackData {
         }
     }
 
-    pub fn send_deck_update(&mut self, new_deck: Vec<BaseCard>, player_idx: usize, time_stamp: u64) {
+    pub fn send_deck_update(
+        &mut self,
+        new_deck: Vec<BaseCard>,
+        player_idx: usize,
+        time_stamp: u64,
+    ) {
         if time_stamp < self.rollback_time {
             println!(
                 "cannot send dt update with timestamp {} when rollback time is {}",
@@ -293,9 +302,7 @@ impl RollbackData {
                 ..Default::default()
             }))
         });
-        self.meta_actions.iter_mut().for_each(|x| {
-            x.push(None)
-        });
+        self.meta_actions.iter_mut().for_each(|x| x.push(None));
     }
 
     fn update_rollback_state(
@@ -318,18 +325,20 @@ impl RollbackData {
                 if let Some(MetaAction {
                     adjust_dt,
                     deck_update,
-                }) = meta_action {
+                }) = meta_action
+                {
                     if let Some(adjust_dt) = adjust_dt {
                         self.delta_time = self.delta_time.max(adjust_dt);
                     }
                     if let Some(new_deck) = deck_update {
-                        self.rollback_state.players[player_idx].abilities = new_deck.into_iter().map(|card| {
-                            PlayerAbility {
+                        self.rollback_state.players[player_idx].abilities = new_deck
+                            .into_iter()
+                            .map(|card| PlayerAbility {
                                 value: card.evaluate_value(true),
                                 ability: card_manager.register_base_card(card),
                                 cooldown: 0.0,
-                            }
-                        }).collect();
+                            })
+                            .collect();
                     }
                 }
             }
@@ -624,12 +633,12 @@ impl WorldState {
             let damage_1 = self.projectiles.get(i).unwrap().damage;
             let damage_2 = self.projectiles.get(j).unwrap().damage;
             {
-                let mut proj1_mut = self.projectiles.get_mut(j).unwrap();
+                let proj1_mut = self.projectiles.get_mut(j).unwrap();
                 proj1_mut.health -= damage_2;
                 proj1_mut.health -= damage_1;
             }
             {
-                let mut proj2_mut = self.projectiles.get_mut(i).unwrap();
+                let proj2_mut = self.projectiles.get_mut(i).unwrap();
                 proj2_mut.health -= damage_1;
                 proj2_mut.health -= damage_2;
             }
@@ -694,12 +703,11 @@ impl WorldState {
                     if move_vec.magnitude() > 0.0 {
                         move_vec = move_vec.normalize();
                     }
-                    let accel_speed = if action.sprint { 1.5 } else { 1.0 }
-                        * if player.collision_vec != Vector3::new(0, 0, 0) {
-                            28.0
-                        } else {
-                            9.0
-                        };
+                    let accel_speed = if player.collision_vec != Vector3::new(0, 0, 0) {
+                        42.0
+                    } else {
+                        18.0
+                    };
                     player.vel += accel_speed * move_vec * time_step;
 
                     if action.jump {
@@ -735,7 +743,7 @@ impl WorldState {
                     ability.cooldown -= time_step;
                 }
 
-                player.vel.y -= 16.0 * time_step;
+                player.vel.y -= 32.0 * time_step;
                 if player.vel.magnitude() > 0.0 {
                     player.vel -= 0.1 * player.vel * player.vel.magnitude() * time_step
                         + 0.2 * player.vel.normalize() * time_step;

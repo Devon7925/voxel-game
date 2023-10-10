@@ -55,7 +55,6 @@ pub struct ControlSettings {
     pub right: Control,
     pub jump: Control,
     pub crouch: Control,
-    pub sprint: Control,
     pub sensitivity: f32,
 }
 

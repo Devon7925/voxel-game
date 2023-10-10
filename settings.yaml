@@ -11,7 +11,6 @@ movement_controls:
   right: !Key D
   jump: !Key Space
   crouch: !Key LControl
-  sprint: !Key LShift
   sensitivity: 0.001
 ability_controls:
 - !Mouse Left
