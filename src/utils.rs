@@ -35,4 +35,8 @@ impl<T: Clone + Eq + PartialEq + Hash> QueueSet<T> {
             None
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
 }

@@ -43,7 +43,7 @@ pub struct VoxelComputePipeline {
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     voxel_buffer: Subbuffer<[[u32; 2]]>,
     chunk_update_queue: QueueSet<[i32; 3]>,
-    chunk_updates: Subbuffer<[[i32; 4]; 128]>,
+    chunk_updates: Subbuffer<[[i32; 4]; 256]>,
     uniform_buffer: SubbufferAllocator,
     world_gen: WorldGen,
     last_update_count: usize,
@@ -315,17 +315,19 @@ impl VoxelComputePipeline {
     // chunks are represented as u32 with a 1 representing a changed chunk
     // this function will get the locations of those and push updates and then clear the buffer
     pub fn push_updates_from_changed(&mut self) {
+        puffin::profile_function!();
         let reader = self.chunk_updates.read().unwrap();
         // last component of 1 means the chunk was changed and therefore means it and surrounding chunks need to be updated
         for i in 0..self.last_update_count {
-            if reader[i][3] == 1 {
+            let read_update = reader[i];
+            if read_update[3] == 1 {
                 for x_offset in -1..=1 {
                     for y_offset in -1..=1 {
                         for z_offset in -1..=1 {
                             self.chunk_update_queue.push([
-                                reader[i][0] + x_offset,
-                                reader[i][1] + y_offset,
-                                reader[i][2] + z_offset,
+                                read_update[0] + x_offset,
+                                read_update[1] + y_offset,
+                                read_update[2] + z_offset,
                             ]);
                         }
                     }
@@ -351,6 +353,10 @@ impl VoxelComputePipeline {
     where
         F: GpuFuture + 'static,
     {
+        puffin::profile_function!();
+        if self.chunk_update_queue.is_empty() {
+            return before_future.boxed();
+        }
         let mut builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
             self.compute_queue.queue_family_index(),
@@ -418,7 +424,7 @@ impl VoxelComputePipeline {
                 {
                     chunk_updates_buffer[chunk_update_count] = [loc[0], loc[1], loc[2], 0];
                     chunk_update_count += 1;
-                    if chunk_update_count >= 128 {
+                    if chunk_update_count >= 256 {
                         break;
                     }
                 }

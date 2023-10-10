@@ -26,3 +26,5 @@ serde_yaml = "0.9.25"
 serde = { version = "1", features = ["derive"] }
 rayon = "1.8"
 egui_winit_vulkano = "0.25.0"
+puffin = "0.17"
+puffin_http = "0.14"

@@ -131,6 +131,10 @@ impl ProjectileComputePipeline {
     where
         F: GpuFuture + 'static,
     {
+        puffin::profile_function!();
+        if self.upload_projectile_count == 0 {
+            return before_future.boxed();
+        }
         let mut builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
             self.compute_queue.queue_family_index(),

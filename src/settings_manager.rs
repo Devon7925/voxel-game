@@ -16,6 +16,7 @@ pub struct Settings {
     pub replay_settings: ReplaySettings,
     pub ability_controls: Vec<Control>,
     pub delta_time: f32,
+    pub do_profiling: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

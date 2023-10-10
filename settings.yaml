@@ -20,10 +20,11 @@ ability_controls:
 graphics_settings:
   primary_ray_dist: 100
   transparency_ray_dist: 75
-  shadow_ray_dist: 50
-  transparent_shadow_ray_dist: 50
-  ao_ray_dist: 40
-delta_time: 0.03333333
+  shadow_ray_dist: 40
+  transparent_shadow_ray_dist: 40
+  ao_ray_dist: 25
+delta_time: 0.03
 replay_settings:
     replay_file: replay.txt
     record_replay: false
+do_profiling: true

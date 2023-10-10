@@ -46,9 +46,6 @@ pub const WINDOW_HEIGHT: f32 = 1024.0;
 pub const RENDER_SIZE: [u32; 3] = [16, 16, 16];
 pub const CHUNK_SIZE: u32 = 16;
 const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
-pub const TOTAL_VOXEL_COUNT: usize =
-    (RENDER_SIZE[0] * RENDER_SIZE[1] * RENDER_SIZE[2] * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE)
-        as usize;
 
 struct SimSettings {
     pub max_dist: u32,
@@ -84,6 +81,10 @@ fn main() {
     let mut event_loop = EventLoop::new();
 
     let settings = Settings::from_string(fs::read_to_string("settings.yaml").unwrap().as_str());
+
+    if settings.do_profiling {
+        start_puffin_server();
+    }
 
     // Create app with vulkano context.
     let mut app = RenderPipeline::new(&event_loop, settings);
@@ -168,6 +169,7 @@ fn main() {
 
         // Compute voxels & render 60fps.
         if (Instant::now() - time).as_secs_f32() > 0.0 {
+            puffin::GlobalProfiler::lock().new_frame();
             previous_frame_end.as_mut().unwrap().cleanup_finished();
             if app.settings.player_count > 1 {
                 network_connection.network_update(
@@ -179,6 +181,9 @@ fn main() {
             }
             time += std::time::Duration::from_secs_f32(app.rollback_data.delta_time);
             let skip_render = (Instant::now() - time).as_secs_f32() > 0.0;
+            if skip_render {
+                println!("skipping render: behind by {}s", (Instant::now() - time).as_secs_f32());
+            }
             if app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize
             {
                 compute_then_render(
@@ -198,7 +203,7 @@ fn main() {
                     .unwrap()
                     .downcast_ref::<Window>()
                     .unwrap();
-                window.set_cursor_visible(gui_state.menu_stack.len() > 0);
+                window.set_cursor_visible(gui_state.menu_stack.len() > 0 && window.has_focus());
             }
             player_action.aim = [0.0, 0.0];
         }
@@ -263,23 +268,24 @@ fn handle_events(
                                 .unwrap()
                                 .downcast_ref::<Window>()
                                 .unwrap();
-
-                            window
-                                .set_cursor_position(PhysicalPosition::new(
-                                    (window_props.width / 2) as f64,
-                                    (window_props.height / 2) as f64,
-                                ))
-                                .unwrap_or_else(|_| println!("Failed to set cursor position"));
-                            // turn camera
-                            let delta = app.settings.movement_controls.sensitivity
-                                * (Vector2::new(position.x as f32, position.y as f32)
-                                    - Vector2::new(
-                                        (window_props.width / 2) as f32,
-                                        (window_props.height / 2) as f32,
-                                    ));
-                            controls.aim[0] += delta.x;
-                            controls.aim[1] += delta.y;
-                            *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
+                            if window.has_focus() {
+                                window
+                                    .set_cursor_position(PhysicalPosition::new(
+                                        (window_props.width / 2) as f64,
+                                        (window_props.height / 2) as f64,
+                                    ))
+                                    .unwrap_or_else(|_| println!("Failed to set cursor position"));
+                                // turn camera
+                                let delta = app.settings.movement_controls.sensitivity
+                                    * (Vector2::new(position.x as f32, position.y as f32)
+                                        - Vector2::new(
+                                            (window_props.width / 2) as f32,
+                                            (window_props.height / 2) as f32,
+                                        ));
+                                controls.aim[0] += delta.x;
+                                controls.aim[1] += delta.y;
+                                *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
+                            }
                         }
                     }
                     // Handle mouse button events.
@@ -427,6 +433,7 @@ fn compute_then_render(
     action: PlayerAction,
     skip_render: bool,
 ) {
+    puffin::profile_function!();
     let window = pipeline
         .vulkano_interface
         .surface
@@ -441,7 +448,6 @@ fn compute_then_render(
     let time_step = pipeline.rollback_data.delta_time;
     
     if skip_render {
-        println!("skipping render");
         sim_data.max_dist = sim_settings.max_dist;
         pipeline
             .voxel_compute
@@ -555,18 +561,11 @@ fn compute_then_render(
     let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), aspect_ratio, 0.1, 100.0);
     // Start the frame.
     let mut frame = if sim_settings.do_compute {
+        puffin::profile_scope!("do compute");
         sim_data.max_dist = sim_settings.max_dist;
         pipeline
             .voxel_compute
             .push_updates_from_changed();
-
-        for player in pipeline.rollback_data.cached_current_state.players.iter() {
-            pipeline.voxel_compute.queue_update_from_world_pos(&[
-                player.pos.x,
-                player.pos.y,
-                player.pos.z,
-            ]);
-        }
 
         // Compute.
         pipeline.rollback_data.download_projectiles(
@@ -609,6 +608,7 @@ fn compute_then_render(
     while let Some(pass) = frame.next_pass() {
         match pass {
             Pass::Deferred(mut draw_pass) => {
+                puffin::profile_scope!("rasterize");
                 let cam_player = pipeline.rollback_data.cached_current_state.players[0].clone();
                 let view_matrix = (Matrix4::from_translation(-cam_player.pos.to_vec())
                     * Matrix4::from(cam_player.rot))
@@ -622,6 +622,7 @@ fn compute_then_render(
                 draw_pass.execute(cb);
             }
             Pass::Lighting(mut lighting) => {
+                puffin::profile_scope!("raytrace and gui");
                 let voxels = pipeline.voxel_compute.voxels();
                 lighting.raytrace(
                     voxels,
@@ -637,19 +638,23 @@ fn compute_then_render(
         }
     }
 
-    let future = after_future
-        .unwrap()
-        .then_swapchain_present(
-            pipeline.vulkano_interface.queue.clone(),
-            SwapchainPresentInfo::swapchain_image_index(
-                pipeline.vulkano_interface.swapchain.clone(),
-                image_index,
-            ),
-        )
-        .then_signal_fence_and_flush();
+    let future = {
+        puffin::profile_scope!("fence and flush");
+        after_future
+            .unwrap()
+            .then_swapchain_present(
+                pipeline.vulkano_interface.queue.clone(),
+                SwapchainPresentInfo::swapchain_image_index(
+                    pipeline.vulkano_interface.swapchain.clone(),
+                    image_index,
+                ),
+            )
+            .then_signal_fence_and_flush()
+    };
 
     match future {
         Ok(future) => {
+            puffin::profile_scope!("wait for gpu resources");
             match future.wait(None) {
                 Ok(x) => x,
                 Err(e) => println!("{e}"),
@@ -668,4 +673,26 @@ fn compute_then_render(
                 Some(sync::now(pipeline.vulkano_interface.device.clone()).boxed());
         }
     }
+}
+
+fn start_puffin_server() {
+    puffin::set_scopes_on(true); // tell puffin to collect data
+
+    match puffin_http::Server::new("0.0.0.0:8585") {
+        Ok(puffin_server) => {
+            std::process::Command::new("puffin_viewer")
+                .arg("--url")
+                .arg("127.0.0.1:8585")
+                .spawn()
+                .ok();
+
+            // We can store the server if we want, but in this case we just want
+            // it to keep running. Dropping it closes the server, so let's not drop it!
+            #[allow(clippy::mem_forget)]
+            std::mem::forget(puffin_server);
+        }
+        Err(err) => {
+            eprintln!("Failed to start puffin server: {err}");
+        }
+    };
 }

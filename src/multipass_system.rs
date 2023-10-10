@@ -260,6 +260,7 @@ impl FrameSystem {
     where
         F: GpuFuture + 'static,
     {
+        puffin::profile_function!();
         // First of all we recreate `self.diffuse_buffer`, `self.normals_buffer` and
         // `self.depth_buffer` if their dimensions doesn't match the dimensions of the final image.
         let img_dims = final_image.image().dimensions().width_height();
