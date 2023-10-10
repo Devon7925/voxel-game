@@ -799,16 +799,16 @@ impl WorldState {
                                     + grid_dist.x * grid_iter_x as f32 * projectile_right
                                     + grid_dist.y * grid_iter_y as f32 * projectile_up
                                     + grid_dist.z * grid_iter_z as f32 * projectile_dir;
-                                let head_dist = (player.pos - pos).magnitude();
-                                let body_dist =
-                                    (player.pos - player.size * Vector3::new(0.0, 1.9, 0.0) - pos)
-                                        .magnitude();
-                                let feet_dist =
-                                    (player.pos - player.size * Vector3::new(0.0, 3.3, 0.0) - pos)
-                                        .magnitude();
-                                if head_dist < 0.6 * player.size
-                                    || body_dist < 1.5 * player.size
-                                    || feet_dist < 0.7 * player.size
+                                let hitspheres = [
+                                    (Vector3::new(0.0, 0.0, 0.0), 0.6),
+                                    (Vector3::new(0.0, -1.9, 0.0), 1.5),
+                                    (Vector3::new(0.0, -3.3, 0.0), 0.7),
+                                ];
+                                let likely_hit = hitspheres
+                                    .iter()
+                                    .min_by(|(offset_a, _), (offset_b, _)| (player.pos + player.size * offset_a - pos).magnitude().total_cmp(&(player.pos + player.size * offset_b - pos).magnitude()))
+                                    .unwrap();
+                                if (player.pos + player.size * likely_hit.0 - pos).magnitude() < likely_hit.1 * player.size
                                 {
                                     proj.health = 0.0;
                                     for card_ref in card_manager
@@ -847,7 +847,7 @@ impl WorldState {
                                                 }
                                                 Effect::Knockback(knockback) => {
                                                     let knockback = 10.0 * knockback as f32;
-                                                    let knockback_dir = player.pos - projectile_pos;
+                                                    let knockback_dir = player.pos + player.size * likely_hit.0 - projectile_pos;
                                                     if knockback_dir.magnitude() > 0.0 {
                                                         player.vel +=
                                                             knockback * (knockback_dir).normalize();

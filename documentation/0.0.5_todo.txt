@@ -7,7 +7,6 @@ Gui
 Tuning
     balance 1 shots
     Add player velocity to bullet initial velocity
-    change knockback direction to not just based on head
     Adjust on hit material
 Add visible errors
 Consider headshots
