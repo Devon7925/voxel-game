@@ -8,7 +8,7 @@
 // according to those terms.
 use cgmath::{Matrix4, SquareMatrix};
 use egui_winit_vulkano::{
-    egui::{self, emath, epaint, pos2, Align2, Color32, Rect, Rounding, Stroke, Vec2, RichText},
+    egui::{self, emath, epaint, pos2, Align2, Color32, Rect, RichText, Rounding, Stroke, Vec2},
     Gui, GuiConfig,
 };
 use std::sync::Arc;
@@ -31,7 +31,13 @@ use vulkano::{
 };
 use winit::event_loop::EventLoop;
 
-use crate::{raytracer::PointLightingSystem, rollback_manager::RollbackData, SimData, GuiState, settings_manager::Settings, gui::{cooldown, drop_target, drag_source, GuiElement, draw_base_card}};
+use crate::{
+    gui::{cooldown, drag_source, draw_base_card, drop_target, GuiElement},
+    raytracer::PointLightingSystem,
+    rollback_manager::RollbackData,
+    settings_manager::Settings,
+    GuiState, SimData, voxel_sim_manager::VoxelComputePipeline,
+};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -500,9 +506,9 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
         voxels: Subbuffer<[[u32; 2]]>,
         rollback_manager: &RollbackData,
         sim_data: &mut SimData,
-        gui_state: &mut GuiState,
         settings: &Settings,
     ) {
+        puffin::profile_function!();
         let command_buffer = {
             self.frame.system.ambient_lighting_system.draw(
                 self.frame.framebuffer.extent(),
@@ -513,7 +519,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                 voxels,
                 rollback_manager,
                 sim_data,
-                &settings.graphics_settings
+                &settings.graphics_settings,
             )
         };
 
@@ -523,220 +529,282 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
             .unwrap()
             .execute_commands(command_buffer)
             .unwrap();
+    }
+
+    pub fn gui(
+        &mut self,
+        voxel_compute: &mut VoxelComputePipeline,
+        rollback_manager: &RollbackData,
+        gui_state: &mut GuiState,
+        sim_data: &mut SimData,
+        settings: &Settings,
+    ) {
+        puffin::profile_function!();
         self.frame.system.gui.immediate_ui(|gui| {
             let ctx = gui.context();
             let screen_size = ctx.screen_rect().size();
             // Fill egui UI layout here
-            egui::Area::new("crosshair").show(&ctx, |ui| {
-                let center = screen_size / 2.0;
-                let thickness = 1.0;
-                let color = Color32::from_additive_luminance(255);
-                let crosshair_size = 10.0;
-
-                ui.painter().add(epaint::Shape::line_segment(
-                    [
-                        pos2(-crosshair_size, 0.0) + center,
-                        pos2(crosshair_size, 0.0) + center,
-                    ],
-                    Stroke::new(thickness, color),
-                ));
-                ui.painter().add(epaint::Shape::line_segment(
-                    [
-                        pos2(0.0, -crosshair_size) + center,
-                        pos2(0.0, crosshair_size) + center,
-                    ],
-                    Stroke::new(thickness, color),
-                ));
-            });
-
-            let corner_offset = 10.0;
-            egui::Area::new("healthbar")
-                .anchor(
-                    Align2::LEFT_BOTTOM,
-                    Vec2::new(corner_offset, -corner_offset),
-                )
-                .show(&ctx, |ui| {
+            if gui_state.in_game {
+                egui::Area::new("crosshair").show(&ctx, |ui| {
+                    let center = screen_size / 2.0;
                     let thickness = 1.0;
                     let color = Color32::from_additive_luminance(255);
-                    let player_health =
-                        rollback_manager.cached_current_state.players[0].health as f32;
-                    let player_max_health = 100.0;
+                    let crosshair_size = 10.0;
 
-                    ui.label(RichText::new(format!("{} / {}", player_health, player_max_health)).color(Color32::WHITE));
-                    let desired_size = egui::vec2(200.0, 30.0);
-                    let (_id, rect) = ui.allocate_space(desired_size);
-
-                    let to_screen = emath::RectTransform::from_to(
-                        Rect::from_x_y_ranges(0.0..=1.0, 0.0..=1.0),
-                        rect,
-                    );
-
-                    let healthbar_size = Rect::from_min_max(
-                        to_screen * pos2(0.0, 0.0),
-                        to_screen * pos2(1.0, 1.0),
-                    );
-                    let health_size = Rect::from_min_max(
-                        to_screen * pos2(0.0, 0.0),
-                        to_screen * pos2(
-                            player_health / player_max_health,
-                            1.0,
-                        ),
-                    );
-
-                    ui.painter().add(epaint::Shape::rect_stroke(
-                        healthbar_size,
-                        Rounding::none(),
+                    ui.painter().add(epaint::Shape::line_segment(
+                        [
+                            pos2(-crosshair_size, 0.0) + center,
+                            pos2(crosshair_size, 0.0) + center,
+                        ],
                         Stroke::new(thickness, color),
                     ));
-                    ui.painter().add(epaint::Shape::rect_filled(
-                        health_size,
-                        Rounding::none(),
-                        color,
+                    ui.painter().add(epaint::Shape::line_segment(
+                        [
+                            pos2(0.0, -crosshair_size) + center,
+                            pos2(0.0, crosshair_size) + center,
+                        ],
+                        Stroke::new(thickness, color),
                     ));
                 });
-            
-            let respawn_time =
-                rollback_manager.cached_current_state.players[0].respawn_timer;
-            if respawn_time > 0.0 {
-                egui::Area::new("respawn")
-                    .anchor(
-                        Align2::LEFT_TOP,
-                        Vec2::new(corner_offset, corner_offset),
-                    )
-                    .show(&ctx, |ui| {
-                        ui.label(RichText::new("You have died").color(Color32::WHITE)); 
-                        ui.label(RichText::new(format!("Respawn in {}", respawn_time)).color(Color32::WHITE)); 
-                    });
-            }
 
-            egui::Area::new("cooldowns")
-                .anchor(
-                    Align2::RIGHT_BOTTOM,
-                    Vec2::new(-corner_offset, -corner_offset),
-                )
-                .show(&ctx, |ui| {
-                    for (ability_idx, ability) in rollback_manager.cached_current_state.players[0].abilities.iter().enumerate() {
-                        ui.add(cooldown(format!("{}", settings.ability_controls[ability_idx]).as_str(), ability));
-                    }
-                });
-            match gui_state.menu_stack.last() {
-                Some(&GuiElement::MainMenu) => {
-                    egui::Area::new("menu")
+                let corner_offset = 10.0;
+                egui::Area::new("healthbar")
                     .anchor(
-                        Align2::LEFT_TOP,
-                        Vec2::new(0.0, 0.0),
+                        Align2::LEFT_BOTTOM,
+                        Vec2::new(corner_offset, -corner_offset),
                     )
                     .show(&ctx, |ui| {
-                        ui.painter().rect_filled(
-                            ui.available_rect_before_wrap(),
-                            0.0,
-                            Color32::BLACK.gamma_multiply(0.5),
+                        let thickness = 1.0;
+                        let color = Color32::from_additive_luminance(255);
+                        let player_health =
+                            rollback_manager.cached_current_state.players[0].health as f32;
+                        let player_max_health = 100.0;
+
+                        ui.label(
+                            RichText::new(format!("{} / {}", player_health, player_max_health))
+                                .color(Color32::WHITE),
+                        );
+                        let desired_size = egui::vec2(200.0, 30.0);
+                        let (_id, rect) = ui.allocate_space(desired_size);
+
+                        let to_screen = emath::RectTransform::from_to(
+                            Rect::from_x_y_ranges(0.0..=1.0, 0.0..=1.0),
+                            rect,
                         );
 
-                        let menu_size = Rect::from_center_size(ui.available_rect_before_wrap().center(), egui::vec2(300.0, 300.0));
-                        
-                        ui.allocate_ui_at_rect(menu_size, |ui| {
+                        let healthbar_size =
+                            Rect::from_min_max(to_screen * pos2(0.0, 0.0), to_screen * pos2(1.0, 1.0));
+                        let health_size = Rect::from_min_max(
+                            to_screen * pos2(0.0, 0.0),
+                            to_screen * pos2(player_health / player_max_health, 1.0),
+                        );
+
+                        ui.painter().add(epaint::Shape::rect_stroke(
+                            healthbar_size,
+                            Rounding::none(),
+                            Stroke::new(thickness, color),
+                        ));
+                        ui.painter().add(epaint::Shape::rect_filled(
+                            health_size,
+                            Rounding::none(),
+                            color,
+                        ));
+                    });
+
+                let respawn_time = rollback_manager.cached_current_state.players[0].respawn_timer;
+                if respawn_time > 0.0 {
+                    egui::Area::new("respawn")
+                        .anchor(Align2::LEFT_TOP, Vec2::new(corner_offset, corner_offset))
+                        .show(&ctx, |ui| {
+                            ui.label(RichText::new("You have died").color(Color32::WHITE));
+                            ui.label(
+                                RichText::new(format!("Respawn in {}", respawn_time))
+                                    .color(Color32::WHITE),
+                            );
+                        });
+                }
+
+                egui::Area::new("cooldowns")
+                    .anchor(
+                        Align2::RIGHT_BOTTOM,
+                        Vec2::new(-corner_offset, -corner_offset),
+                    )
+                    .show(&ctx, |ui| {
+                        for (ability_idx, ability) in rollback_manager.cached_current_state.players[0]
+                            .abilities
+                            .iter()
+                            .enumerate()
+                        {
+                            ui.add(cooldown(
+                                format!("{}", settings.ability_controls[ability_idx]).as_str(),
+                                ability,
+                            ));
+                        }
+                    });
+            }
+            match gui_state.menu_stack.last() {
+                Some(&GuiElement::MainMenu) => {
+                    egui::Area::new("main menu")
+                        .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
+                        .show(&ctx, |ui| {
+                            let menu_size = Rect::from_center_size(
+                                ui.available_rect_before_wrap().center(),
+                                ui.available_rect_before_wrap().size(),
+                            );
+
+                            ui.allocate_ui_at_rect(menu_size, |ui| {
+                                ui.painter().rect_filled(
+                                    ui.available_rect_before_wrap(),
+                                    0.0,
+                                    Color32::BLACK,
+                                );
+                                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                    if ui.button("Play").clicked() {
+                                        gui_state.menu_stack.pop();
+                                        voxel_compute.load_chunks(sim_data);
+                                        gui_state.in_game = true;
+                                    }
+                                    if ui.button("Card Editor").clicked() {
+                                        gui_state.menu_stack.push(GuiElement::CardEditor);
+                                    }
+                                    if ui.button("Exit to Desktop").clicked() {
+                                        gui_state.should_exit = true;
+                                    }
+                                });
+                            });
+                        });
+                }
+                Some(&GuiElement::EscMenu) => {
+                    egui::Area::new("menu")
+                        .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
+                        .show(&ctx, |ui| {
                             ui.painter().rect_filled(
                                 ui.available_rect_before_wrap(),
                                 0.0,
-                                Color32::BLACK,
+                                Color32::BLACK.gamma_multiply(0.5),
                             );
-                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                                ui.label(RichText::new("Menu").color(Color32::WHITE)); 
-                                if ui.button("Card Editor").clicked() {
-                                    gui_state.menu_stack.push(GuiElement::CardEditor);
-                                }
-                                if ui.button("Exit to Desktop").clicked() {
-                                    gui_state.should_exit = true;
-                                }
-                                if ui.button("Close").clicked() {
-                                    gui_state.menu_stack.pop();
-                                }
+
+                            let menu_size = Rect::from_center_size(
+                                ui.available_rect_before_wrap().center(),
+                                egui::vec2(300.0, 300.0),
+                            );
+
+                            ui.allocate_ui_at_rect(menu_size, |ui| {
+                                ui.painter().rect_filled(
+                                    ui.available_rect_before_wrap(),
+                                    0.0,
+                                    Color32::BLACK,
+                                );
+                                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                    ui.label(RichText::new("Menu").color(Color32::WHITE));
+                                    if ui.button("Card Editor").clicked() {
+                                        gui_state.menu_stack.push(GuiElement::CardEditor);
+                                    }
+                                    if ui.button("Exit to Desktop").clicked() {
+                                        gui_state.should_exit = true;
+                                    }
+                                    if ui.button("Close").clicked() {
+                                        gui_state.menu_stack.pop();
+                                    }
+                                });
                             });
                         });
-                    });
                 }
                 Some(&GuiElement::CardEditor) => {
                     egui::Area::new("card editor")
-                    .anchor(
-                        Align2::LEFT_TOP,
-                        Vec2::new(0.0, 0.0),
-                    )
-                    .show(&ctx, |ui| {
-                        ui.painter().rect_filled(
-                            ui.available_rect_before_wrap(),
-                            0.0,
-                            Color32::BLACK.gamma_multiply(0.5),
-                        );
-
-                        let menu_size = Rect::from_center_size(ui.available_rect_before_wrap().center(), ui.available_rect_before_wrap().size() * egui::vec2(0.75, 0.75));
-                        
-                        ui.allocate_ui_at_rect(menu_size, |ui| {
+                        .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
+                        .show(&ctx, |ui| {
                             ui.painter().rect_filled(
                                 ui.available_rect_before_wrap(),
                                 0.0,
-                                Color32::BLACK,
+                                Color32::BLACK.gamma_multiply(0.5),
                             );
-                            ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-                                ui.label(RichText::new("Card Editor").color(Color32::WHITE));
-                                
-                                let id_source = "my_drag_and_drop_demo";
-                                // let mut source_path = None;
-                                // let mut drop_path = None;
 
-                                for (ability_idx, card) in gui_state.gui_cards.iter().enumerate() {
-                                    ui.horizontal_top(|ui| {
-                                        {
-                                            let desired_size = ui.spacing().interact_size.y * egui::vec2(3.0, 3.0);
-                                            let (rect, _response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
-                                            let font = egui::FontId::proportional(24.0);
-                                            ui.painter().rect_filled(rect, 0.0, Color32::LIGHT_GRAY);
-                                            ui.painter().text(
-                                                rect.center(),
-                                                Align2::CENTER_CENTER,
-                                                format!("{}", settings.ability_controls[ability_idx]).as_str(),
-                                                font,
-                                                Color32::BLACK,
-                                            );
-                                        }
-                                        draw_base_card(ui, &card);
-                                    });
-                                }
-                                // for card in gui_state.gui_cards.iter() {
-                                //     let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
-                                //     let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
-                                //         ui.set_min_size(egui::vec2(64.0, 100.0));
-                                //         for (row_idx, item) in column.iter().enumerate() {
-                                //             let item_id = egui::Id::new(id_source).with(col_idx).with(row_idx);
-                                //             drag_source(ui, item_id, |ui| {
-                                //                 ui.add(Label::new(item).sense(Sense::click()));
-                                //             });
+                            let menu_size = Rect::from_center_size(
+                                ui.available_rect_before_wrap().center(),
+                                ui.available_rect_before_wrap().size() * egui::vec2(0.75, 0.75),
+                            );
 
-                                //             if ui.memory(|mem| mem.is_being_dragged(item_id)) {
-                                //                 source_col_row = Some((col_idx, row_idx));
-                                //             }
-                                //         }
-                                //     })
-                                //     .response;
+                            ui.allocate_ui_at_rect(menu_size, |ui| {
+                                ui.painter().rect_filled(
+                                    ui.available_rect_before_wrap(),
+                                    0.0,
+                                    Color32::BLACK,
+                                );
+                                ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
+                                    ui.label(RichText::new("Card Editor").color(Color32::WHITE));
 
-                                //     let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
-                                //     if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
-                                //         drop_col = Some(col_idx);
-                                //     }
-                                // }
+                                    let id_source = "my_drag_and_drop_demo";
+                                    // let mut source_path = None;
+                                    // let mut drop_path = None;
 
-                                // if let Some((source_col, source_row)) = source_col_row {
-                                //     if let Some(drop_col) = drop_col {
-                                //         if ui.input(|i| i.pointer.any_released()) {
-                                //             // do the drop:
-                                //             let item = columns[source_col].remove(source_row);
-                                //             columns[drop_col].push(item);
-                                //         }
-                                //     }
-                                // }
+                                    for (ability_idx, card) in
+                                        gui_state.gui_cards.iter().enumerate()
+                                    {
+                                        ui.horizontal_top(|ui| {
+                                            {
+                                                let desired_size = ui.spacing().interact_size.y
+                                                    * egui::vec2(3.0, 3.0);
+                                                let (rect, _response) = ui.allocate_exact_size(
+                                                    desired_size,
+                                                    egui::Sense::click(),
+                                                );
+                                                let font = egui::FontId::proportional(24.0);
+                                                ui.painter().rect_filled(
+                                                    rect,
+                                                    0.0,
+                                                    Color32::LIGHT_GRAY,
+                                                );
+                                                ui.painter().text(
+                                                    rect.center(),
+                                                    Align2::CENTER_CENTER,
+                                                    format!(
+                                                        "{}",
+                                                        settings.ability_controls[ability_idx]
+                                                    )
+                                                    .as_str(),
+                                                    font,
+                                                    Color32::BLACK,
+                                                );
+                                            }
+                                            draw_base_card(ui, &card);
+                                        });
+                                    }
+                                    // for card in gui_state.gui_cards.iter() {
+                                    //     let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
+                                    //     let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
+                                    //         ui.set_min_size(egui::vec2(64.0, 100.0));
+                                    //         for (row_idx, item) in column.iter().enumerate() {
+                                    //             let item_id = egui::Id::new(id_source).with(col_idx).with(row_idx);
+                                    //             drag_source(ui, item_id, |ui| {
+                                    //                 ui.add(Label::new(item).sense(Sense::click()));
+                                    //             });
+
+                                    //             if ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                                    //                 source_col_row = Some((col_idx, row_idx));
+                                    //             }
+                                    //         }
+                                    //     })
+                                    //     .response;
+
+                                    //     let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
+                                    //     if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
+                                    //         drop_col = Some(col_idx);
+                                    //     }
+                                    // }
+
+                                    // if let Some((source_col, source_row)) = source_col_row {
+                                    //     if let Some(drop_col) = drop_col {
+                                    //         if ui.input(|i| i.pointer.any_released()) {
+                                    //             // do the drop:
+                                    //             let item = columns[source_col].remove(source_row);
+                                    //             columns[drop_col].push(item);
+                                    //         }
+                                    //     }
+                                    // }
+                                });
                             });
                         });
-                    });
                 }
                 None => {}
             }

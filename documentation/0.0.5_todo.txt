@@ -1,7 +1,6 @@
 Replays
     Add playback
 Gui
-    Main menu
     Card editor
         Interactivity
 Tuning

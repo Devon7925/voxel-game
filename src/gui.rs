@@ -1,21 +1,23 @@
 use egui_winit_vulkano::egui::{
-    self, epaint, Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse, LayerId, Order,
-    Rect, Sense, Shape, Stroke, TextFormat, Ui, text::LayoutJob,
+    self, epaint, text::LayoutJob, Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse,
+    LayerId, Order, Rect, Sense, Shape, Stroke, TextFormat, Ui,
 };
 
 use crate::{
-    card_system::{BaseCard, Effect, ProjectileModifier, MultiCastModifier},
+    card_system::{BaseCard, Effect, MultiCastModifier, ProjectileModifier},
     rollback_manager::PlayerAbility,
 };
 
 pub enum GuiElement {
-    MainMenu,
+    EscMenu,
     CardEditor,
+    MainMenu,
 }
 
 pub struct GuiState {
     pub menu_stack: Vec<GuiElement>,
     pub gui_cards: Vec<BaseCard>,
+    pub in_game: bool,
     pub should_exit: bool,
 }
 
@@ -143,31 +145,61 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard) {
                         ui.label("Projectile");
                         for modifier in modifiers {
                             match modifier {
-                                ProjectileModifier::Gravity(v) => {
-                                    add_hoverable_basic_modifer(ui, "Gravity", *v, modifier.get_hover_text())
-                                }
-                                ProjectileModifier::Health(v) => {
-                                    add_hoverable_basic_modifer(ui, "Health", *v, modifier.get_hover_text())
-                                }
-                                ProjectileModifier::Height(v) => {
-                                    add_hoverable_basic_modifer(ui, "Height", *v, modifier.get_hover_text())
-                                }
-                                ProjectileModifier::Length(v) => {
-                                    add_hoverable_basic_modifer(ui, "Length", *v, modifier.get_hover_text())
-                                }
-                                ProjectileModifier::Lifetime(v) => {
-                                    add_hoverable_basic_modifer(ui, "Lifetime", *v, modifier.get_hover_text())
-                                }
-                                ProjectileModifier::NoEnemyFire => {
-                                    add_hoverable_basic_modifer(ui, "No Enemy Fire", "", modifier.get_hover_text())
-                                }
-                                ProjectileModifier::NoFriendlyFire => {
-                                    add_hoverable_basic_modifer(ui, "No Friendly Fire", "", modifier.get_hover_text())
-                                }
-                                ProjectileModifier::Speed(v) => add_hoverable_basic_modifer(ui, "Speed", *v, modifier.get_hover_text()),
-                                ProjectileModifier::Width(v) => add_hoverable_basic_modifer(ui, "Width", *v, modifier.get_hover_text()),
-                                ProjectileModifier::OnExpiry(_)
-                                | ProjectileModifier::OnHit(_) => {}
+                                ProjectileModifier::Gravity(v) => add_hoverable_basic_modifer(
+                                    ui,
+                                    "Gravity",
+                                    *v,
+                                    modifier.get_hover_text(),
+                                ),
+                                ProjectileModifier::Health(v) => add_hoverable_basic_modifer(
+                                    ui,
+                                    "Health",
+                                    *v,
+                                    modifier.get_hover_text(),
+                                ),
+                                ProjectileModifier::Height(v) => add_hoverable_basic_modifer(
+                                    ui,
+                                    "Height",
+                                    *v,
+                                    modifier.get_hover_text(),
+                                ),
+                                ProjectileModifier::Length(v) => add_hoverable_basic_modifer(
+                                    ui,
+                                    "Length",
+                                    *v,
+                                    modifier.get_hover_text(),
+                                ),
+                                ProjectileModifier::Lifetime(v) => add_hoverable_basic_modifer(
+                                    ui,
+                                    "Lifetime",
+                                    *v,
+                                    modifier.get_hover_text(),
+                                ),
+                                ProjectileModifier::NoEnemyFire => add_hoverable_basic_modifer(
+                                    ui,
+                                    "No Enemy Fire",
+                                    "",
+                                    modifier.get_hover_text(),
+                                ),
+                                ProjectileModifier::NoFriendlyFire => add_hoverable_basic_modifer(
+                                    ui,
+                                    "No Friendly Fire",
+                                    "",
+                                    modifier.get_hover_text(),
+                                ),
+                                ProjectileModifier::Speed(v) => add_hoverable_basic_modifer(
+                                    ui,
+                                    "Speed",
+                                    *v,
+                                    modifier.get_hover_text(),
+                                ),
+                                ProjectileModifier::Width(v) => add_hoverable_basic_modifer(
+                                    ui,
+                                    "Width",
+                                    *v,
+                                    modifier.get_hover_text(),
+                                ),
+                                ProjectileModifier::OnExpiry(_) | ProjectileModifier::OnHit(_) => {}
                             }
                         }
                         ui.add_space(CARD_UI_SPACING);
@@ -203,9 +235,7 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard) {
                         ui.label("Multi");
                         for modifier in modifiers {
                             match modifier {
-                                MultiCastModifier::Spread(v) => {
-                                    add_basic_modifer(ui, "Spread", *v)
-                                }
+                                MultiCastModifier::Spread(v) => add_basic_modifer(ui, "Spread", *v),
                                 MultiCastModifier::Duplication(v) => {
                                     add_basic_modifer(ui, "Duplication", *v)
                                 }
@@ -279,7 +309,12 @@ pub fn add_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display)
     ui.label(job);
 }
 
-pub fn add_hoverable_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display, hover_text: String) {
+pub fn add_hoverable_basic_modifer(
+    ui: &mut Ui,
+    name: &str,
+    count: impl std::fmt::Display,
+    hover_text: String,
+) {
     let mut job = LayoutJob::default();
     job.append(
         name,

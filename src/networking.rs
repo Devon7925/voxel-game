@@ -35,12 +35,12 @@ impl NetworkConnection {
         let rt = Runtime::new().unwrap();
 
         rt.spawn(async move {
-            let timeout = Delay::new(Duration::from_millis(100));
+            let timeout = Delay::new(Duration::from_millis(50));
             futures::pin_mut!(loop_fut, timeout);
             loop {
                 select! {
                     _ = (&mut timeout).fuse() => {
-                        timeout.reset(Duration::from_millis(100));
+                        timeout.reset(Duration::from_millis(50));
                     }
 
                     _ = &mut loop_fut => {
