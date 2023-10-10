@@ -1,5 +1,4 @@
 Replays
-    Add recording for meta packets 
     Add playback
 Gui
     Main menu

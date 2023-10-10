@@ -86,8 +86,11 @@ fn main() {
         start_puffin_server();
     }
 
+    let player_deck =
+        BaseCard::vec_from_string(fs::read_to_string(&settings.card_file).unwrap().as_str());
+
     // Create app with vulkano context.
-    let mut app = RenderPipeline::new(&event_loop, settings);
+    let mut app = RenderPipeline::new(&event_loop, settings, &player_deck);
 
     // Time & inputs...
     let mut cursor_pos = Vector2::new(0.0, 0.0);
@@ -101,9 +104,6 @@ fn main() {
         render_size: RENDER_SIZE,
         start_pos: FIRST_START_POS,
     };
-
-    let player_deck =
-        BaseCard::vec_from_string(fs::read_to_string(&app.settings.card_file).unwrap().as_str());
 
     assert!(player_deck.iter().all(|card| card.is_reasonable()));
 
@@ -471,7 +471,7 @@ fn compute_then_render(
             .rollback_data
             .send_action(action, 0, pipeline.rollback_data.current_time);
         pipeline.rollback_data.step(
-            &pipeline.card_manager,
+            &mut pipeline.card_manager,
             time_step,
             &mut pipeline.voxel_compute,
         );
@@ -577,7 +577,7 @@ fn compute_then_render(
             .rollback_data
             .send_action(action, 0, pipeline.rollback_data.current_time);
         pipeline.rollback_data.step(
-            &pipeline.card_manager,
+            &mut pipeline.card_manager,
             time_step,
             &mut pipeline.voxel_compute,
         );

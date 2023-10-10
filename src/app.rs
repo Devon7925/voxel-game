@@ -9,7 +9,7 @@
 
 use crate::{
     multipass_system::FrameSystem, rasterizer::RasterizerSystem, rollback_manager::RollbackData,
-    voxel_sim_manager::VoxelComputePipeline, WINDOW_HEIGHT, WINDOW_WIDTH, projectile_sim_manager::ProjectileComputePipeline, card_system::CardManager, settings_manager::Settings,
+    voxel_sim_manager::VoxelComputePipeline, WINDOW_HEIGHT, WINDOW_WIDTH, projectile_sim_manager::ProjectileComputePipeline, card_system::{CardManager, BaseCard}, settings_manager::Settings,
 };
 use std::sync::Arc;
 use vulkano::{
@@ -57,7 +57,7 @@ pub struct RenderPipeline {
 }
 
 impl RenderPipeline {
-    pub fn new(event_loop: &EventLoop<()>, settings: Settings) -> RenderPipeline {
+    pub fn new(event_loop: &EventLoop<()>, settings: Settings, deck: &Vec<BaseCard>) -> RenderPipeline {
         // Basic initialization. See the triangle example if you want more details about this.
 
         let library = VulkanLibrary::new().unwrap();
@@ -191,7 +191,7 @@ impl RenderPipeline {
 
         let compute_queue: Arc<Queue> = queue.clone();
 
-        let rollback_data = RollbackData::new(&memory_allocator, &settings);
+        let rollback_data = RollbackData::new(&memory_allocator, &settings, deck);
 
         let vulkano_interface = VulkanoInterface {
             memory_allocator,

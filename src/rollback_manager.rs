@@ -11,7 +11,7 @@ use vulkano::{
 };
 
 use crate::{
-    card_system::{CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, VoxelMaterial},
+    card_system::{CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, VoxelMaterial, BaseCard},
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     settings_manager::Settings,
     voxel_sim_manager::VoxelComputePipeline,
@@ -54,6 +54,7 @@ pub struct PlayerAction {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MetaAction {
     pub adjust_dt: Option<f32>,
+    pub deck_update: Option<Vec<BaseCard>>,
 }
 
 #[derive(Clone, Debug)]
@@ -109,7 +110,10 @@ impl Default for PlayerAction {
 
 impl Default for MetaAction {
     fn default() -> Self {
-        MetaAction { adjust_dt: None }
+        MetaAction {
+            adjust_dt: None,
+            deck_update: None,
+        }
     }
 }
 
@@ -133,7 +137,7 @@ impl Default for Player {
 }
 
 impl RollbackData {
-    pub fn new(memory_allocator: &Arc<StandardMemoryAllocator>, settings: &Settings) -> Self {
+    pub fn new(memory_allocator: &Arc<StandardMemoryAllocator>, settings: &Settings, deck: &Vec<BaseCard>) -> Self {
         let projectile_buffer = Buffer::new_sized(
             memory_allocator,
             BufferCreateInfo {
@@ -160,10 +164,19 @@ impl RollbackData {
         )
         .unwrap();
 
-        let replay_file = settings
+        let mut replay_file = settings
             .replay_settings
             .record_replay
             .then(|| std::fs::File::create(settings.replay_settings.replay_file.clone()).unwrap());
+
+        if let Some(replay_file) = replay_file.as_mut() {
+            write!(replay_file, "PLAYER COUNT {}\n", settings.player_count).unwrap();
+            write!(replay_file, "PLAYER DECK ").unwrap();
+            ron::ser::to_writer(replay_file, &deck).unwrap();
+        }
+        if let Some(replay_file) = replay_file.as_mut() {
+            write!(replay_file, "\nPERSONAL DT {}", settings.delta_time).unwrap();
+        }
 
         let current_time: u64 = 5;
         let rollback_time: u64 = 0;
@@ -218,9 +231,39 @@ impl RollbackData {
         if meta_action_frame[player_idx].is_none() {
             meta_action_frame[player_idx] = Some(MetaAction {
                 adjust_dt: Some(delta_time),
+                ..Default::default()
             });
         } else {
             meta_action_frame[player_idx].as_mut().unwrap().adjust_dt = Some(delta_time);
+        }
+    }
+
+    pub fn send_deck_update(&mut self, new_deck: Vec<BaseCard>, player_idx: usize, time_stamp: u64) {
+        if time_stamp < self.rollback_time {
+            println!(
+                "cannot send dt update with timestamp {} when rollback time is {}",
+                time_stamp, self.rollback_time
+            );
+            return;
+        }
+        let time_idx = time_stamp - self.rollback_time;
+        let meta_actions_len = self.meta_actions.len();
+        let meta_action_frame = self
+            .meta_actions
+            .get_mut(time_idx as usize)
+            .unwrap_or_else(|| {
+                panic!(
+                "cannot access index {} in action deque of length {} on sending with timestamp {}",
+                time_idx, meta_actions_len, time_stamp
+            )
+            });
+        if meta_action_frame[player_idx].is_none() {
+            meta_action_frame[player_idx] = Some(MetaAction {
+                deck_update: Some(new_deck),
+                ..Default::default()
+            });
+        } else {
+            meta_action_frame[player_idx].as_mut().unwrap().deck_update = Some(new_deck);
         }
     }
 
@@ -251,25 +294,42 @@ impl RollbackData {
             }))
         });
         self.meta_actions.iter_mut().for_each(|x| {
-            x.push(Some(MetaAction {
-                ..Default::default()
-            }))
+            x.push(None)
         });
     }
 
     fn update_rollback_state(
         &mut self,
-        card_manager: &CardManager,
+        card_manager: &mut CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
     ) {
+        if let Some(replay_file) = self.replay_file.as_mut() {
+            write!(replay_file, "\nTIME {}", self.current_time).unwrap();
+        }
         self.rollback_time += 1;
         {
             let meta_actions = self.meta_actions.pop_front().unwrap();
-            for meta_action in meta_actions.iter() {
-                if let Some(meta_action) = meta_action {
-                    if let Some(adjust_dt) = meta_action.adjust_dt {
+            if let Some(replay_file) = self.replay_file.as_mut() {
+                replay_file.write_all(b"\n").unwrap();
+                ron::ser::to_writer(replay_file, &meta_actions).unwrap();
+            }
+            for (player_idx, meta_action) in meta_actions.into_iter().enumerate() {
+                if let Some(MetaAction {
+                    adjust_dt,
+                    deck_update,
+                }) = meta_action {
+                    if let Some(adjust_dt) = adjust_dt {
                         self.delta_time = self.delta_time.max(adjust_dt);
+                    }
+                    if let Some(new_deck) = deck_update {
+                        self.rollback_state.players[player_idx].abilities = new_deck.into_iter().map(|card| {
+                            PlayerAbility {
+                                value: card.evaluate_value(true),
+                                ability: card_manager.register_base_card(card),
+                                cooldown: 0.0,
+                            }
+                        }).collect();
                     }
                 }
             }
@@ -319,7 +379,7 @@ impl RollbackData {
 
     pub fn step(
         &mut self,
-        card_manager: &CardManager,
+        card_manager: &mut CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
     ) {

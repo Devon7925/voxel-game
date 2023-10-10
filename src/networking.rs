@@ -17,7 +17,7 @@ pub struct NetworkConnection {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum NetworkPacket {
     Action(u64, PlayerAction),
-    DeckUpdate(Vec<BaseCard>),
+    DeckUpdate(u64, Vec<BaseCard>),
     DeltatimeUpdate(u64, f32),
 }
 
@@ -76,7 +76,7 @@ impl NetworkConnection {
                     });
 
                     {
-                        let deck_packet_data = NetworkPacket::DeckUpdate(player_cards.clone());
+                        let deck_packet_data = NetworkPacket::DeckUpdate(rollback_manager.current_time, player_cards.clone());
                         let deck_packet = ron::to_string(&deck_packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
                         self.socket.send(deck_packet.clone(), peer);
                     }
@@ -111,14 +111,8 @@ impl NetworkConnection {
                 NetworkPacket::Action(time, action) => {
                     rollback_manager.send_action(action, player_idx, time);
                 }
-                NetworkPacket::DeckUpdate(cards) => {
-                    rollback_manager.rollback_state.players[player_idx].abilities = cards.into_iter().map(|card| {
-                        PlayerAbility {
-                            value: card.evaluate_value(true),
-                            ability: card_system.register_base_card(card),
-                            cooldown: 0.0,
-                        }
-                    }).collect();
+                NetworkPacket::DeckUpdate(time, cards) => {
+                    rollback_manager.send_deck_update(cards, player_idx, time);
                 }
                 NetworkPacket::DeltatimeUpdate(time, delta_time) => {
                     rollback_manager.send_dt_update(delta_time, player_idx, time);
