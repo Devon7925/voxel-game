@@ -736,6 +736,17 @@ impl WorldState {
                                     writer[get_index(pos) as usize] = material.to_memory();
                                 }
                             }
+                            for effect in effects.2 {
+                                match effect {
+                                    Effect::Damage(damage) => {
+                                        player.health -= damage as f32;
+                                    }
+                                    Effect::Knockback(knockback) => {
+                                        let knockback = 10.0 * knockback as f32;
+                                        player.vel += knockback * player.dir;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
