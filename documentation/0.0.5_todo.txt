@@ -9,7 +9,6 @@ Tuning
     Add player velocity to bullet initial velocity
     Adjust on hit material
 Consider headshots
-Release script
 Cards
     Trail
     Effects
