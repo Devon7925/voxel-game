@@ -36,7 +36,7 @@ use crate::{
     raytracer::PointLightingSystem,
     rollback_manager::RollbackData,
     settings_manager::Settings,
-    GuiState, SimData, voxel_sim_manager::VoxelComputePipeline,
+    GuiState, SimData, voxel_sim_manager::VoxelComputePipeline, card_system::{ProjectileModifier, BaseCard, ProjectileModifierType},
 };
 
 #[derive(BufferContents, Vertex)]
@@ -734,9 +734,27 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                                     ui.label(RichText::new("Card Editor").color(Color32::WHITE));
 
-                                    let id_source = "my_drag_and_drop_demo";
-                                    // let mut source_path = None;
-                                    // let mut drop_path = None;
+                                    let mut source_path = None;
+                                    let mut drop_path = None;
+                                    let mut dock_card = BaseCard::Projectile(vec![
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Gravity, -1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Gravity, 1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Health, -1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Health, 1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Length, -1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Length, 1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Width, -1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Width, 1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Height, -1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Height, 1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, -1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, 1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Lifetime, -1),
+                                        ProjectileModifier::SimpleModify(ProjectileModifierType::Lifetime, 1),
+                                        ProjectileModifier::NoEnemyFire,
+                                        ProjectileModifier::NoFriendlyFire,
+                                    ]);
+                                    draw_base_card(ui, &dock_card, &mut vec![0].into(), &mut source_path, &mut drop_path);
 
                                     for (ability_idx, card) in
                                         gui_state.gui_cards.iter().enumerate()
@@ -767,41 +785,33 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                     Color32::BLACK,
                                                 );
                                             }
-                                            draw_base_card(ui, &card);
+                                            draw_base_card(ui, &card, &mut vec![ability_idx as u32 + 1].into(), &mut source_path, &mut drop_path);
                                         });
                                     }
-                                    // for card in gui_state.gui_cards.iter() {
-                                    //     let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
-                                    //     let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
-                                    //         ui.set_min_size(egui::vec2(64.0, 100.0));
-                                    //         for (row_idx, item) in column.iter().enumerate() {
-                                    //             let item_id = egui::Id::new(id_source).with(col_idx).with(row_idx);
-                                    //             drag_source(ui, item_id, |ui| {
-                                    //                 ui.add(Label::new(item).sense(Sense::click()));
-                                    //             });
 
-                                    //             if ui.memory(|mem| mem.is_being_dragged(item_id)) {
-                                    //                 source_col_row = Some((col_idx, row_idx));
-                                    //             }
-                                    //         }
-                                    //     })
-                                    //     .response;
-
-                                    //     let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
-                                    //     if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
-                                    //         drop_col = Some(col_idx);
-                                    //     }
-                                    // }
-
-                                    // if let Some((source_col, source_row)) = source_col_row {
-                                    //     if let Some(drop_col) = drop_col {
-                                    //         if ui.input(|i| i.pointer.any_released()) {
-                                    //             // do the drop:
-                                    //             let item = columns[source_col].remove(source_row);
-                                    //             columns[drop_col].push(item);
-                                    //         }
-                                    //     }
-                                    // }
+                                    if let Some(source_path) = source_path.as_mut() {
+                                        if let Some(drop_path) = drop_path.as_mut() {
+                                            if ui.input(|i| i.pointer.any_released()) {
+                                                let source_action_idx = source_path.pop_front().unwrap() as usize;
+                                                let drop_action_idx = drop_path.pop_front().unwrap() as usize;
+                                                // do the drop:
+                                                let item = if source_action_idx == 0 {
+                                                    dock_card.take_modifier(source_path)
+                                                } else {
+                                                    gui_state.gui_cards[source_action_idx - 1].take_modifier(source_path)
+                                                };
+                                                if drop_action_idx > 0 {
+                                                    gui_state.gui_cards[drop_action_idx - 1].insert_modifier(drop_path, item);
+                                                }
+                                                if source_action_idx > 0 {
+                                                    gui_state.gui_cards[source_action_idx - 1].cleanup();
+                                                }
+                                                if drop_action_idx > 0 {
+                                                    gui_state.gui_cards[drop_action_idx - 1].cleanup();
+                                                }
+                                            }
+                                        }
+                                    }
                                 });
                             });
                         });

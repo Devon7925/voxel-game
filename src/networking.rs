@@ -12,6 +12,7 @@ pub struct NetworkConnection {
     socket: WebRtcSocket,
     _runtime: Runtime,
     player_idx_map: HashMap<PeerId, usize>,
+    packet_queue: Vec<NetworkPacket>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -54,7 +55,12 @@ impl NetworkConnection {
             socket,
             _runtime: rt,
             player_idx_map: HashMap::new(),
+            packet_queue: Vec::new(),
         }
+    }
+
+    pub fn queue_packet(&mut self, packet: NetworkPacket) {
+        self.packet_queue.push(packet);
     }
 
     pub fn network_update(&mut self, player_action: &PlayerAction, player_cards: &Vec<BaseCard>, card_system: &mut CardManager, rollback_manager: &mut RollbackData) {
@@ -99,6 +105,10 @@ impl NetworkConnection {
 
         for (peer, _) in self.player_idx_map.iter() {
             self.socket.send(packet.clone(), *peer);
+            for packet in self.packet_queue.drain(..) {
+                let packet = ron::to_string(&packet).unwrap().as_bytes().to_vec().into_boxed_slice();
+                self.socket.send(packet.clone(), *peer);
+            }
         }
 
         // Accept any messages incoming

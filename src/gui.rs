@@ -1,13 +1,16 @@
+use std::collections::VecDeque;
+
 use egui_winit_vulkano::egui::{
     self, epaint, text::LayoutJob, Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse,
-    LayerId, Order, Rect, Sense, Shape, Stroke, TextFormat, Ui,
+    LayerId, Order, Rect, Sense, Shape, Stroke, TextFormat, Ui, Rounding,
 };
 
 use crate::{
-    card_system::{BaseCard, Effect, MultiCastModifier, ProjectileModifier},
+    card_system::{BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType},
     rollback_manager::PlayerAbility,
 };
 
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum GuiElement {
     EscMenu,
     CardEditor,
@@ -59,13 +62,18 @@ pub fn drag_source(ui: &mut Ui, id: Id, body: impl FnOnce(&mut Ui)) {
     let is_being_dragged = ui.memory(|mem| mem.is_being_dragged(id));
 
     if !is_being_dragged {
-        let response = ui.scope(body).response;
-
-        // Check for drags:
-        let response = ui.interact(response.rect, id, Sense::drag());
-        if response.hovered() {
-            ui.ctx().set_cursor_icon(CursorIcon::Grab);
+        //load from previous frame
+        let prev_frame_area: Option<Rect> = ui.data(|d| d.get_temp(id));
+        if let Some(area) = prev_frame_area {
+            // Check for drags:
+            let response = ui.interact(area, id, Sense::drag());
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::Grab);
+            }
         }
+        let response = ui.scope(body).response;
+        //store for next frame
+        ui.data_mut(|d| d.insert_temp(id, response.rect));  
     } else {
         ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
 
@@ -132,7 +140,8 @@ pub fn drop_target<R>(
 
 const CARD_UI_SPACING: f32 = 3.0;
 const CARD_UI_ROUNDING: f32 = 3.0;
-pub fn draw_base_card(ui: &mut Ui, card: &BaseCard) {
+pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, source_path: &mut Option<VecDeque<u32>>, dest_path: &mut Option<VecDeque<u32>>) {
+    let id_source = "my_drag_and_drop_demo";
     ui.allocate_ui_with_layout(
         egui::vec2(1000.0, 0.0),
         egui::Layout::top_down(egui::Align::LEFT),
@@ -140,94 +149,102 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard) {
             ui.add_space(CARD_UI_SPACING);
             match card {
                 BaseCard::Projectile(modifiers) => {
-                    ui.horizontal(|ui| {
-                        ui.add_space(CARD_UI_SPACING);
-                        ui.label("Projectile");
-                        for modifier in modifiers {
-                            match modifier {
-                                ProjectileModifier::Gravity(v) => add_hoverable_basic_modifer(
-                                    ui,
-                                    "Gravity",
-                                    *v,
-                                    modifier.get_hover_text(),
-                                ),
-                                ProjectileModifier::Health(v) => add_hoverable_basic_modifer(
-                                    ui,
-                                    "Health",
-                                    *v,
-                                    modifier.get_hover_text(),
-                                ),
-                                ProjectileModifier::Height(v) => add_hoverable_basic_modifer(
-                                    ui,
-                                    "Height",
-                                    *v,
-                                    modifier.get_hover_text(),
-                                ),
-                                ProjectileModifier::Length(v) => add_hoverable_basic_modifer(
-                                    ui,
-                                    "Length",
-                                    *v,
-                                    modifier.get_hover_text(),
-                                ),
-                                ProjectileModifier::Lifetime(v) => add_hoverable_basic_modifer(
-                                    ui,
-                                    "Lifetime",
-                                    *v,
-                                    modifier.get_hover_text(),
-                                ),
-                                ProjectileModifier::NoEnemyFire => add_hoverable_basic_modifer(
-                                    ui,
-                                    "No Enemy Fire",
-                                    "",
-                                    modifier.get_hover_text(),
-                                ),
-                                ProjectileModifier::NoFriendlyFire => add_hoverable_basic_modifer(
-                                    ui,
-                                    "No Friendly Fire",
-                                    "",
-                                    modifier.get_hover_text(),
-                                ),
-                                ProjectileModifier::Speed(v) => add_hoverable_basic_modifer(
-                                    ui,
-                                    "Speed",
-                                    *v,
-                                    modifier.get_hover_text(),
-                                ),
-                                ProjectileModifier::Width(v) => add_hoverable_basic_modifer(
-                                    ui,
-                                    "Width",
-                                    *v,
-                                    modifier.get_hover_text(),
-                                ),
-                                ProjectileModifier::OnExpiry(_) | ProjectileModifier::OnHit(_) => {}
-                            }
-                        }
-                        ui.add_space(CARD_UI_SPACING);
-                    });
-
-                    for modifier in modifiers {
-                        ui.horizontal_top(|ui| {
+                    let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
+                    ui.visuals_mut().widgets.active.rounding = Rounding::from(CARD_UI_ROUNDING);
+                    ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(0.5, Color32::WHITE);
+                    let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
+                        ui.horizontal(|ui| {
                             ui.add_space(CARD_UI_SPACING);
-                            match modifier {
-                                ProjectileModifier::OnExpiry(base_card) => {
-                                    ui.label("On Expiry");
-                                    draw_base_card(ui, base_card)
+                            ui.label("Projectile");
+                            for (modifier_idx, modifier) in modifiers.iter().enumerate() {
+                                path.push_back(modifier_idx as u32);
+                                let item_id = egui::Id::new(id_source).with(path.clone());
+                                
+                                match modifier {
+                                    ProjectileModifier::SimpleModify(ty, v) => {
+                                        let name = match ty {
+                                            ProjectileModifierType::Gravity => "Gravity",
+                                            ProjectileModifierType::Health => "Health",
+                                            ProjectileModifierType::Height => "Height",
+                                            ProjectileModifierType::Length => "Length",
+                                            ProjectileModifierType::Lifetime => "Lifetime",
+                                            ProjectileModifierType::Speed => "Speed",
+                                            ProjectileModifierType::Width => "Width",                                            
+                                        };
+                                        add_hoverable_basic_modifer(
+                                            ui,
+                                            item_id,
+                                            name,
+                                            *v,
+                                            modifier.get_hover_text(),
+                                        )
+                                    },
+                                    ProjectileModifier::NoEnemyFire => add_hoverable_basic_modifer(
+                                        ui,
+                                        item_id,
+                                        "No Enemy Fire",
+                                        "",
+                                        modifier.get_hover_text(),
+                                    ),
+                                    ProjectileModifier::NoFriendlyFire => add_hoverable_basic_modifer(
+                                        ui,
+                                        item_id,
+                                        "No Friendly Fire",
+                                        "",
+                                        modifier.get_hover_text(),
+                                    ),
+                                    ProjectileModifier::OnExpiry(_) | ProjectileModifier::OnHit(_) => {}
                                 }
-                                ProjectileModifier::OnHit(base_card) => {
-                                    ui.label("On Hit");
-                                    draw_base_card(ui, base_card)
-                                }
-                                _ => {}
+
+                                path.pop_back();
                             }
                             ui.add_space(CARD_UI_SPACING);
                         });
+
+                        for (modifier_idx, modifier) in modifiers.iter().enumerate() {
+                            path.push_back(modifier_idx as u32);
+                            let item_id = egui::Id::new(id_source).with(path.clone());
+                            ui.horizontal_top(|ui| {
+                                ui.add_space(CARD_UI_SPACING);
+                                match modifier {
+                                    ProjectileModifier::OnExpiry(base_card) => {
+                                        drag_source(ui, item_id, |ui| {
+                                            ui.label("On Expiry");
+                                            draw_base_card(ui, base_card, path, source_path, dest_path)
+                                        });
+                                    }
+                                    ProjectileModifier::OnHit(base_card) => {
+                                        drag_source(ui, item_id, |ui| {
+                                            ui.label("On Hit");
+                                            draw_base_card(ui, base_card, path, source_path, dest_path)
+                                        });
+                                    }
+                                    _ => {}
+                                }
+                                ui.add_space(CARD_UI_SPACING);
+                            });
+                            if ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                                *source_path = Some(path.clone());
+                            }
+                            path.pop_back();
+                        }
+                        for (modifier_idx, _modifier) in modifiers.iter().enumerate() {
+                            path.push_back(modifier_idx as u32);
+                            let item_id = egui::Id::new(id_source).with(path.clone());
+                            if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                                *source_path = Some(path.clone());
+                            }
+                            path.pop_back();
+                        }
+                        ui.add_space(CARD_UI_SPACING);
+                    }).response;
+
+                    if dest_path.is_none() {
+                        let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
+                        if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
+                            *dest_path = Some(path.clone());
+                        }
                     }
-                    ui.add_space(CARD_UI_SPACING);
-                    ui.painter().rect_stroke(
-                        ui.min_rect(),
-                        CARD_UI_ROUNDING,
-                        Stroke::new(1.0, Color32::WHITE),
-                    );
                 }
                 BaseCard::MultiCast(cards, modifiers) => {
                     ui.horizontal(|ui| {
@@ -243,8 +260,10 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard) {
                         }
                         ui.add_space(CARD_UI_SPACING);
                     });
-                    for card in cards {
-                        draw_base_card(ui, card);
+                    for (card_idx, card) in cards.iter().enumerate() {
+                        path.push_back(card_idx as u32);
+                        draw_base_card(ui, card, path, source_path, dest_path);
+                        path.pop_back();
                     }
                     ui.painter().rect_stroke(
                         ui.min_rect(),
@@ -311,26 +330,29 @@ pub fn add_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display)
 
 pub fn add_hoverable_basic_modifer(
     ui: &mut Ui,
+    item_id: Id,
     name: &str,
     count: impl std::fmt::Display,
     hover_text: String,
 ) {
-    let mut job = LayoutJob::default();
-    job.append(
-        name,
-        0.0,
-        TextFormat {
-            ..Default::default()
-        },
-    );
-    job.append(
-        format!("{}", count).as_str(),
-        0.0,
-        TextFormat {
-            font_id: FontId::proportional(7.0),
-            valign: Align::TOP,
-            ..Default::default()
-        },
-    );
-    ui.label(job).on_hover_text(hover_text);
+    drag_source(ui, item_id, |ui| {
+        let mut job = LayoutJob::default();
+        job.append(
+            name,
+            0.0,
+            TextFormat {
+                ..Default::default()
+            },
+        );
+        job.append(
+            format!("{}", count).as_str(),
+            0.0,
+            TextFormat {
+                font_id: FontId::proportional(7.0),
+                valign: Align::TOP,
+                ..Default::default()
+            },
+        );
+        ui.label(job).on_hover_text(hover_text);
+    });
 }

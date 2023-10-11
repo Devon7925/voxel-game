@@ -17,7 +17,7 @@ use crate::{
     card_system::BaseCard,
     gui::{GuiElement, GuiState},
     rollback_manager::PlayerAbility,
-    settings_manager::Settings,
+    settings_manager::Settings, networking::NetworkPacket,
 };
 use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector2, Vector3};
 use multipass_system::Pass;
@@ -87,11 +87,11 @@ fn main() {
         let settings = Settings::from_string(fs::read_to_string("settings.yaml").unwrap().as_str());
         let mut crash_log = std::fs::File::create(settings.crash_log).unwrap();
         if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-            eprintln!("panic occurred: {s:?} at {:?}", panic_info.location());
-            write!(crash_log, "panic occurred: {s:?} at {:?}", panic_info.location()).unwrap();
+            eprintln!("panic occurred: {s:?} at {}", panic_info.location().unwrap());
+            write!(crash_log, "panic occurred: {s:?} at {}", panic_info.location().unwrap()).unwrap();
         } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-            eprintln!("panic occurred: {s:?} at {:?}", panic_info.location());
-            write!(crash_log, "panic occurred: {s:?} at {:?}", panic_info.location()).unwrap();
+            eprintln!("panic occurred: {s:?} at {}", panic_info.location().unwrap());
+            write!(crash_log, "panic occurred: {s:?} at {}", panic_info.location().unwrap()).unwrap();
         } else {
             write!(crash_log, "panic occurred").unwrap();
         }
@@ -102,7 +102,7 @@ fn main() {
         start_puffin_server();
     }
 
-    let player_deck =
+    let mut player_deck =
         BaseCard::vec_from_string(fs::read_to_string(&settings.card_file).unwrap().as_str());
 
     // Create app with vulkano context.
@@ -175,6 +175,8 @@ fn main() {
             &mut player_action,
             &mut window_props,
             &mut gui_state,
+            &mut player_deck,
+            &mut network_connection,
         );
         // Event handling.
         if !should_continue {
@@ -252,6 +254,8 @@ fn handle_events(
     controls: &mut PlayerAction,
     window_props: &mut WindowProperties,
     gui_state: &mut GuiState,
+    player_deck: &mut Vec<BaseCard>,
+    network_connection: &mut NetworkConnection,
 ) -> bool {
     let mut is_running = true;
 
@@ -388,8 +392,16 @@ fn handle_events(
                             match key {
                                 winit::event::VirtualKeyCode::Escape => {
                                     if input.state == ElementState::Released {
-                                        if gui_state.menu_stack.len() > 0 {
-                                            gui_state.menu_stack.pop();
+                                        if gui_state.menu_stack.len() > 0 && !gui_state.menu_stack.last().is_some_and(|gui| *gui == GuiElement::MainMenu) {
+                                            let exited_ui = gui_state.menu_stack.pop().unwrap();
+                                            match exited_ui {
+                                                GuiElement::CardEditor => {
+                                                    *player_deck = gui_state.gui_cards.clone();
+                                                    app.rollback_data.send_deck_update(player_deck.clone(), 0, app.rollback_data.current_time);
+                                                    network_connection.queue_packet(NetworkPacket::DeckUpdate(app.rollback_data.current_time, player_deck.clone()));
+                                                }
+                                                _ => (),
+                                            }
                                         } else {
                                             gui_state.menu_stack.push(GuiElement::EscMenu);
                                         }

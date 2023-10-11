@@ -1,8 +1,5 @@
 Replays
     Add playback
-Gui
-    Card editor
-        Interactivity
 Tuning
     balance 1 shots
     Add player velocity to bullet initial velocity
