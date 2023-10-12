@@ -6,7 +6,7 @@ use egui_winit_vulkano::egui::{
 };
 
 use crate::{
-    card_system::{BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType},
+    card_system::{BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType, StatusEffect},
     rollback_manager::PlayerAbility,
 };
 
@@ -292,6 +292,17 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                         match effect {
                             Effect::Damage(v) => add_basic_modifer(ui, "Damage", *v),
                             Effect::Knockback(v) => add_basic_modifer(ui, "Knockback", *v),
+                            Effect::StatusEffect(e,t) => {
+                                let effect_name = match e {
+                                    StatusEffect::DamageOverTime => "Damage Over Time",
+                                    StatusEffect::DecreaceDamageTaken => "Decreace Damage Taken",
+                                    StatusEffect::HealOverTime => "Heal Over Time",
+                                    StatusEffect::IncreaceDamageTaken => "Increace Damage Taken",
+                                    StatusEffect::Slow => "Slow",
+                                    StatusEffect::Speed => "Speed Up",
+                                };
+                                add_basic_modifer(ui, effect_name, *t)
+                            },
                         }
                         ui.add_space(CARD_UI_SPACING);
                     });

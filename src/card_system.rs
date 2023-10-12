@@ -53,6 +53,17 @@ pub enum VoxelMaterial {
 pub enum Effect {
     Damage(i32),
     Knockback(i32),
+    StatusEffect(StatusEffect, u32),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum StatusEffect {
+    Speed,
+    Slow,
+    DamageOverTime,
+    HealOverTime,
+    IncreaceDamageTaken,
+    DecreaceDamageTaken,
 }
 
 impl VoxelMaterial {
@@ -156,6 +167,16 @@ impl BaseCard {
             BaseCard::Effect(effect) => match effect {
                 Effect::Damage(damage) => (*damage as f32).abs(),
                 Effect::Knockback(knockback) => (*knockback as f32).abs(),
+                Effect::StatusEffect(effect_type, duration) => {
+                    match effect_type {
+                        StatusEffect::Speed => 5.0 * (*duration as f32),
+                        StatusEffect::Slow => 5.0 * (*duration as f32),
+                        StatusEffect::DamageOverTime => 7.0 * (*duration as f32),
+                        StatusEffect::HealOverTime => 7.0 * (*duration as f32),
+                        StatusEffect::IncreaceDamageTaken => 10.0 * (*duration as f32),
+                        StatusEffect::DecreaceDamageTaken => 10.0 * (*duration as f32),
+                    }
+                }
             },
         }
     }
@@ -209,6 +230,11 @@ impl BaseCard {
                 }
                 Effect::Knockback(knockback) => {
                     if knockback.abs() > 20 {
+                        return false;
+                    }
+                }
+                Effect::StatusEffect(_, duration) => {
+                    if *duration > 15 {
                         return false;
                     }
                 }

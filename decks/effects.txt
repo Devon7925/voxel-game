@@ -1,0 +1,10 @@
+[
+    Effect(StatusEffect(DamageOverTime, 3)),
+    Effect(StatusEffect(HealOverTime, 3)),
+    MultiCast([
+        Effect(StatusEffect(IncreaceDamageTaken, 3)),
+        Effect(StatusEffect(Speed, 3)),
+        Effect(StatusEffect(Speed, 3)),
+        Effect(StatusEffect(Speed, 3)),
+    ],[]),
+]

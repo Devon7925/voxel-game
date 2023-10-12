@@ -12,7 +12,8 @@ use vulkano::{
 
 use crate::{
     card_system::{
-        BaseCard, CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, VoxelMaterial,
+        BaseCard, CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, StatusEffect,
+        VoxelMaterial,
     },
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     settings_manager::Settings,
@@ -72,6 +73,13 @@ pub struct Player {
     pub abilities: Vec<PlayerAbility>,
     pub respawn_timer: f32,
     pub collision_vec: Vector3<i32>,
+    pub status_effects: Vec<AppliedStatusEffect>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AppliedStatusEffect {
+    pub effect: StatusEffect,
+    pub time_left: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -132,6 +140,7 @@ impl Default for Player {
             abilities: Vec::new(),
             respawn_timer: 0.0,
             collision_vec: Vector3::new(0, 0, 0),
+            status_effects: Vec::new(),
         }
     }
 }
@@ -646,6 +655,48 @@ impl WorldState {
         let mut voxels_to_write: Vec<(i32, [u32; 2])> = Vec::new();
         {
             let voxel_reader = voxels.read().unwrap();
+            let mut player_stats = vec![];
+            for player in self.players.iter_mut() {
+                let mut player_speed = 1.0;
+                let mut player_damage_taken = 1.0;
+
+                for status_effect in player.status_effects.iter_mut() {
+                    match status_effect.effect {
+                        StatusEffect::DamageOverTime => {
+                            // wait for damage taken to be calculated
+                        }
+                        StatusEffect::HealOverTime => {
+                            // wait for damage taken to be calculated
+                        }
+                        StatusEffect::Speed => {
+                            player_speed *= 1.25;
+                        }
+                        StatusEffect::Slow => {
+                            player_speed *= 0.75;
+                        }
+                        StatusEffect::IncreaceDamageTaken => {
+                            player_damage_taken *= 1.25;
+                        }
+                        StatusEffect::DecreaceDamageTaken => {
+                            player_damage_taken *= 0.75;
+                        }
+                    }
+                }
+                for status_effect in player.status_effects.iter_mut() {
+                    match status_effect.effect {
+                        StatusEffect::DamageOverTime => {
+                            player.health -= 10.0 * player_damage_taken * time_step;
+                        }
+                        StatusEffect::HealOverTime => {
+                            player.health += 10.0 * player_damage_taken * time_step;
+                        }
+                        _ => {}
+                    }
+                    status_effect.time_left -= time_step;
+                }
+                player.status_effects.retain(|x| x.time_left > 0.0);
+                player_stats.push((player_speed, player_damage_taken));
+            }
             for (player_idx, (player, action)) in self
                 .players
                 .iter_mut()
@@ -660,6 +711,7 @@ impl WorldState {
                     }
                     continue;
                 }
+
                 if let Some(action) = action {
                     player.facing[0] = (player.facing[0] - action.aim[0] + 2.0 * PI) % (2.0 * PI);
                     player.facing[1] = (player.facing[1] - action.aim[1])
@@ -703,11 +755,12 @@ impl WorldState {
                     if move_vec.magnitude() > 0.0 {
                         move_vec = move_vec.normalize();
                     }
-                    let accel_speed = if player.collision_vec != Vector3::new(0, 0, 0) {
-                        42.0
-                    } else {
-                        18.0
-                    };
+                    let accel_speed = player_stats[player_idx].0
+                        * if player.collision_vec != Vector3::new(0, 0, 0) {
+                            42.0
+                        } else {
+                            18.0
+                        };
                     player.vel += accel_speed * move_vec * time_step;
 
                     if action.jump {
@@ -729,14 +782,22 @@ impl WorldState {
                                 player_idx as u32,
                             );
                             for proj in effects.0.iter_mut() {
-                                let projectile_rot =
-                                    Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
-                                let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+                                let projectile_rot = Quaternion::new(
+                                    proj.dir[3],
+                                    proj.dir[0],
+                                    proj.dir[1],
+                                    proj.dir[2],
+                                );
+                                let projectile_dir =
+                                    projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
                                 let mut proj_vel = projectile_dir * proj.vel;
                                 proj_vel += player.vel;
                                 // recompute vel and rot
-                                let new_projectile_rot: Quaternion<f32> =
-                                    Quaternion::from_arc(projectile_dir, proj_vel.normalize(), None) * projectile_rot;
+                                let new_projectile_rot: Quaternion<f32> = Quaternion::from_arc(
+                                    projectile_dir,
+                                    proj_vel.normalize(),
+                                    None,
+                                ) * projectile_rot;
                                 proj.dir = [
                                     new_projectile_rot.v[0],
                                     new_projectile_rot.v[1],
@@ -761,6 +822,12 @@ impl WorldState {
                                     Effect::Knockback(knockback) => {
                                         let knockback = 10.0 * knockback as f32;
                                         player.vel += knockback * player.dir;
+                                    }
+                                    Effect::StatusEffect(effect, duration) => {
+                                        player.status_effects.push(AppliedStatusEffect {
+                                            effect,
+                                            time_left: duration as f32,
+                                        })
                                     }
                                 }
                             }
@@ -837,9 +904,17 @@ impl WorldState {
                                 ];
                                 let likely_hit = hitspheres
                                     .iter()
-                                    .min_by(|(offset_a, _), (offset_b, _)| (player.pos + player.size * offset_a - pos).magnitude().total_cmp(&(player.pos + player.size * offset_b - pos).magnitude()))
+                                    .min_by(|(offset_a, _), (offset_b, _)| {
+                                        (player.pos + player.size * offset_a - pos)
+                                            .magnitude()
+                                            .total_cmp(
+                                                &(player.pos + player.size * offset_b - pos)
+                                                    .magnitude(),
+                                            )
+                                    })
                                     .unwrap();
-                                if (player.pos + player.size * likely_hit.0 - pos).magnitude() < likely_hit.1 * player.size
+                                if (player.pos + player.size * likely_hit.0 - pos).magnitude()
+                                    < likely_hit.1 * player.size
                                 {
                                     proj.health = 0.0;
                                     for card_ref in card_manager
@@ -874,11 +949,14 @@ impl WorldState {
                                         for effect in effects {
                                             match effect {
                                                 Effect::Damage(damage) => {
-                                                    player.health -= damage as f32;
+                                                    player.health -=
+                                                        player_stats[player_idx].1 * damage as f32;
                                                 }
                                                 Effect::Knockback(knockback) => {
                                                     let knockback = 10.0 * knockback as f32;
-                                                    let knockback_dir = player.pos + player.size * likely_hit.0 - projectile_pos;
+                                                    let knockback_dir = player.pos
+                                                        + player.size * likely_hit.0
+                                                        - projectile_pos;
                                                     if knockback_dir.magnitude() > 0.0 {
                                                         player.vel +=
                                                             knockback * (knockback_dir).normalize();
@@ -886,6 +964,12 @@ impl WorldState {
                                                         player.vel.y += knockback;
                                                     }
                                                 }
+                                                Effect::StatusEffect(effect, duration) => player
+                                                    .status_effects
+                                                    .push(AppliedStatusEffect {
+                                                        effect,
+                                                        time_left: duration as f32,
+                                                    }),
                                             }
                                         }
                                     }
@@ -895,9 +979,13 @@ impl WorldState {
                         }
                     }
                 }
-                if player.health <= 0.0 {
-                    player.respawn_timer = 5.0;
-                }
+            }
+        }
+        for player in self.players.iter_mut() {
+            if player.health <= 0.0 {
+                player.respawn_timer = 5.0;
+            } else if player.health > 100.0 {
+                player.health = 100.0;
             }
         }
         // remove dead projectiles

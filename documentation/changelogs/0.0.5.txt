@@ -2,3 +2,7 @@ Card file setting
 Hover for modifiers
 Increased gravity
 Main menu
+Status Effects
+    Damage Taken
+    Damage over time
+    Speed

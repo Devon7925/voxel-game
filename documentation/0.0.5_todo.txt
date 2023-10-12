@@ -3,14 +3,10 @@ Replays
 Tuning
     balance 1 shots
     Adjust on hit material
-Consider headshots
 Cards
     Trail
     Effects
         Player Projectile Modifier
-        Damage Taken
-        Damage over time
-        Speed
         immobile
         teleport owner
         cleanse
