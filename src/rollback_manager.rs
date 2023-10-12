@@ -722,12 +722,29 @@ impl WorldState {
                             && ability.cooldown <= 0.0
                         {
                             ability.cooldown = ability.value;
-                            let effects = card_manager.get_effects_from_base_card(
+                            let mut effects = card_manager.get_effects_from_base_card(
                                 ability.ability,
                                 &player.pos,
                                 &player.rot,
                                 player_idx as u32,
                             );
+                            for proj in effects.0.iter_mut() {
+                                let projectile_rot =
+                                    Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
+                                let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+                                let mut proj_vel = projectile_dir * proj.vel;
+                                proj_vel += player.vel;
+                                // recompute vel and rot
+                                let new_projectile_rot: Quaternion<f32> =
+                                    Quaternion::from_arc(projectile_dir, proj_vel.normalize(), None) * projectile_rot;
+                                proj.dir = [
+                                    new_projectile_rot.v[0],
+                                    new_projectile_rot.v[1],
+                                    new_projectile_rot.v[2],
+                                    new_projectile_rot.s,
+                                ];
+                                proj.vel = proj_vel.magnitude();
+                            }
                             self.projectiles.extend(effects.0);
                             if is_real_update && effects.1.len() > 0 {
                                 let mut writer = voxels.write().unwrap();
@@ -812,8 +829,11 @@ impl WorldState {
                                     + grid_dist.z * grid_iter_z as f32 * projectile_dir;
                                 let hitspheres = [
                                     (Vector3::new(0.0, 0.0, 0.0), 0.6),
-                                    (Vector3::new(0.0, -1.9, 0.0), 1.5),
-                                    (Vector3::new(0.0, -3.3, 0.0), 0.7),
+                                    (Vector3::new(0.0, -1.3, 0.0), 0.6),
+                                    (Vector3::new(0.0, -1.9, 0.0), 0.9),
+                                    (Vector3::new(0.0, -2.6, 0.0), 0.8),
+                                    (Vector3::new(0.0, -3.3, 0.0), 0.6),
+                                    (Vector3::new(0.0, -3.8, 0.0), 0.6),
                                 ];
                                 let likely_hit = hitspheres
                                     .iter()

@@ -2,7 +2,6 @@ Replays
     Add playback
 Tuning
     balance 1 shots
-    Add player velocity to bullet initial velocity
     Adjust on hit material
 Consider headshots
 Cards
