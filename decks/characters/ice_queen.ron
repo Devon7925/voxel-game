@@ -1,0 +1,57 @@
+[
+    Projectile([
+        SimpleModify(Speed,-1),
+        SimpleModify(Width,-3),
+        SimpleModify(Height,-3),
+        SimpleModify(Length,-3),
+        SimpleModify(Lifetime,-5),
+        SimpleModify(Health,-10),
+        OnHit(Effect(Damage(3))),
+        OnHit(Effect(StatusEffect(Slow, 1))),
+    ]),
+    Projectile([
+        SimpleModify(Speed,1),
+        SimpleModify(Width,-5),
+        SimpleModify(Height,-5),
+        SimpleModify(Length,-3),
+        SimpleModify(Lifetime,1),
+        SimpleModify(Health,-10),
+        OnHit(Effect(Damage(38)))
+    ]),
+    Projectile([
+        SimpleModify(Speed,4),
+        SimpleModify(Width,-5),
+        SimpleModify(Length,-5),
+        SimpleModify(Height,3),
+        SimpleModify(Lifetime,-3),
+        SimpleModify(Health,-10),
+        OnHit(MultiCast([
+            Projectile([
+                SimpleModify(Width,-5),
+                SimpleModify(Height,-5),
+                SimpleModify(Length,-5),
+                SimpleModify(Lifetime,-6),
+                SimpleModify(Health,-10),
+                OnExpiry(CreateMaterial(Stone)),
+            ]),
+        ],[
+            Spread(10),
+            Duplication(5),
+        ])),
+    ]),
+    MultiCast([
+        Effect(StatusEffect(Slow, 5)),
+        Effect(StatusEffect(Slow, 5)),
+        Effect(StatusEffect(Slow, 5)),
+        Effect(StatusEffect(Slow, 5)),
+        Effect(StatusEffect(Slow, 5)),
+        Effect(StatusEffect(Slow, 5)),
+        Effect(StatusEffect(Slow, 5)),
+        Effect(StatusEffect(Slow, 5)),
+        Effect(StatusEffect(DecreaceDamageTaken, 5)),
+        Effect(StatusEffect(DecreaceDamageTaken, 5)),
+        Effect(StatusEffect(HealOverTime, 5)),
+        Effect(StatusEffect(HealOverTime, 5)),
+    ],[]),
+    Effect(StatusEffect(DamageOverTime, 3)),
+]

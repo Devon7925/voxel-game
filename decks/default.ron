@@ -13,7 +13,6 @@
             SimpleModify(Length,1),
             SimpleModify(Lifetime,-10),
             SimpleModify(Health,-10),
-            NoFriendlyFire,
             OnHit(Effect(Damage(20))),
         ])),
         OnHit(Projectile([
@@ -23,6 +22,7 @@
             SimpleModify(Length,1),
             SimpleModify(Lifetime,-10),
             SimpleModify(Health,-10),
+            FriendlyFire
             OnHit(Effect(Knockback(10))),
         ])),
     ]),
@@ -34,7 +34,6 @@
                 SimpleModify(Height,-5),
                 SimpleModify(Length,-5),
                 SimpleModify(Gravity,10),
-                NoFriendlyFire,
                 OnHit(CreateMaterial(Ice)),
             ]),
         ],[
@@ -42,5 +41,5 @@
             Duplication(5),
         ])),
     ]),
-    Projectile([SimpleModify(Speed,-3),SimpleModify(Width,2),SimpleModify(Height,1),SimpleModify(Length,-5),SimpleModify(Lifetime,4),SimpleModify(Health,5),NoFriendlyFire]),
+    Projectile([SimpleModify(Speed,-3),SimpleModify(Width,2),SimpleModify(Height,1),SimpleModify(Length,-5),SimpleModify(Lifetime,4),SimpleModify(Health,5),FriendlyFire]),
 ]

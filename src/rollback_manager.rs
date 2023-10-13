@@ -482,8 +482,11 @@ impl WorldState {
                 proj.pos[i] += proj_vel[i] * time_step;
             }
             // recompute vel and rot
-            let new_projectile_rot: Quaternion<f32> =
-                Quaternion::from_arc(projectile_dir, proj_vel.normalize(), None) * projectile_rot;
+            let new_projectile_rot: Quaternion<f32> = if proj_vel.magnitude() < 0.0001 {
+                projectile_rot
+            } else {
+                Quaternion::from_arc(projectile_dir, proj_vel.normalize(), None) * projectile_rot
+            };
             proj.dir = [
                 new_projectile_rot.v[0],
                 new_projectile_rot.v[1],
@@ -652,51 +655,80 @@ impl WorldState {
                 proj2_mut.health -= damage_2;
             }
         }
+
         let mut voxels_to_write: Vec<(i32, [u32; 2])> = Vec::new();
+
+        // handle trails
+        for proj in self.projectiles.iter() {
+            let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
+            for (trail_time, trail_card) in proj_card.trail.iter() {
+                if proj.lifetime % trail_time >= trail_time - time_step {
+                    let proj_rot = proj.dir;
+                    let proj_rot = Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
+                    let effects = card_manager.get_effects_from_base_card(
+                        trail_card.clone(),
+                        &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                        &proj_rot,
+                        proj.owner,
+                    );
+                    new_projectiles.extend(effects.0);
+                    if is_real_update && effects.1.len() > 0 {
+                        for (pos, material) in effects.1 {
+                            vox_compute.queue_update_from_voxel_pos(&[
+                                pos.x, pos.y, pos.z,
+                            ]);
+                            voxels_to_write
+                                .push((get_index(pos), material.to_memory()));
+                        }
+                    }
+                } 
+            }
+        }
+
+        let mut player_stats = vec![];
+        for player in self.players.iter_mut() {
+            let mut player_speed = 1.0;
+            let mut player_damage_taken = 1.0;
+
+            for status_effect in player.status_effects.iter_mut() {
+                match status_effect.effect {
+                    StatusEffect::DamageOverTime => {
+                        // wait for damage taken to be calculated
+                    }
+                    StatusEffect::HealOverTime => {
+                        // wait for damage taken to be calculated
+                    }
+                    StatusEffect::Speed => {
+                        player_speed *= 1.25;
+                    }
+                    StatusEffect::Slow => {
+                        player_speed *= 0.75;
+                    }
+                    StatusEffect::IncreaceDamageTaken => {
+                        player_damage_taken *= 1.25;
+                    }
+                    StatusEffect::DecreaceDamageTaken => {
+                        player_damage_taken *= 0.75;
+                    }
+                }
+            }
+            for status_effect in player.status_effects.iter_mut() {
+                match status_effect.effect {
+                    StatusEffect::DamageOverTime => {
+                        player.health -= 10.0 * player_damage_taken * time_step;
+                    }
+                    StatusEffect::HealOverTime => {
+                        player.health += 10.0 * player_damage_taken * time_step;
+                    }
+                    _ => {}
+                }
+                status_effect.time_left -= time_step;
+            }
+            player.status_effects.retain(|x| x.time_left > 0.0);
+            player_stats.push((player_speed, player_damage_taken));
+        }
         {
             let voxel_reader = voxels.read().unwrap();
-            let mut player_stats = vec![];
-            for player in self.players.iter_mut() {
-                let mut player_speed = 1.0;
-                let mut player_damage_taken = 1.0;
-
-                for status_effect in player.status_effects.iter_mut() {
-                    match status_effect.effect {
-                        StatusEffect::DamageOverTime => {
-                            // wait for damage taken to be calculated
-                        }
-                        StatusEffect::HealOverTime => {
-                            // wait for damage taken to be calculated
-                        }
-                        StatusEffect::Speed => {
-                            player_speed *= 1.25;
-                        }
-                        StatusEffect::Slow => {
-                            player_speed *= 0.75;
-                        }
-                        StatusEffect::IncreaceDamageTaken => {
-                            player_damage_taken *= 1.25;
-                        }
-                        StatusEffect::DecreaceDamageTaken => {
-                            player_damage_taken *= 0.75;
-                        }
-                    }
-                }
-                for status_effect in player.status_effects.iter_mut() {
-                    match status_effect.effect {
-                        StatusEffect::DamageOverTime => {
-                            player.health -= 10.0 * player_damage_taken * time_step;
-                        }
-                        StatusEffect::HealOverTime => {
-                            player.health += 10.0 * player_damage_taken * time_step;
-                        }
-                        _ => {}
-                    }
-                    status_effect.time_left -= time_step;
-                }
-                player.status_effects.retain(|x| x.time_left > 0.0);
-                player_stats.push((player_speed, player_damage_taken));
-            }
             for (player_idx, (player, action)) in self
                 .players
                 .iter_mut()
@@ -708,6 +740,7 @@ impl WorldState {
                     if player.respawn_timer <= 0.0 {
                         player.pos = SPAWN_LOCATION;
                         player.health = 100.0;
+                        player.status_effects.clear();
                     }
                     continue;
                 }
@@ -982,7 +1015,7 @@ impl WorldState {
             }
         }
         for player in self.players.iter_mut() {
-            if player.health <= 0.0 {
+            if player.health <= 0.0 && player.respawn_timer <= 0.0 {
                 player.respawn_timer = 5.0;
             } else if player.health > 100.0 {
                 player.health = 100.0;

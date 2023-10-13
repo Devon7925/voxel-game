@@ -4,7 +4,6 @@ Tuning
     balance 1 shots
     Adjust on hit material
 Cards
-    Trail
     Effects
         Player Projectile Modifier
         immobile

@@ -186,14 +186,14 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                         "",
                                         modifier.get_hover_text(),
                                     ),
-                                    ProjectileModifier::NoFriendlyFire => add_hoverable_basic_modifer(
+                                    ProjectileModifier::FriendlyFire => add_hoverable_basic_modifer(
                                         ui,
                                         item_id,
-                                        "No Friendly Fire",
+                                        "Friendly Fire",
                                         "",
                                         modifier.get_hover_text(),
                                     ),
-                                    ProjectileModifier::OnExpiry(_) | ProjectileModifier::OnHit(_) => {}
+                                    ProjectileModifier::OnExpiry(_) | ProjectileModifier::OnHit(_) | ProjectileModifier::Trail(_, _) => {}
                                 }
 
                                 path.pop_back();
@@ -216,6 +216,29 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                     ProjectileModifier::OnHit(base_card) => {
                                         drag_source(ui, item_id, |ui| {
                                             ui.label("On Hit");
+                                            draw_base_card(ui, base_card, path, source_path, dest_path)
+                                        });
+                                    }
+                                    ProjectileModifier::Trail(frequency, base_card) => {
+                                        drag_source(ui, item_id, |ui| {
+                                            let mut job = LayoutJob::default();
+                                            job.append(
+                                                "Trail",
+                                                0.0,
+                                                TextFormat {
+                                                    ..Default::default()
+                                                },
+                                            );
+                                            job.append(
+                                                format!("{}", frequency).as_str(),
+                                                0.0,
+                                                TextFormat {
+                                                    font_id: FontId::proportional(7.0),
+                                                    valign: Align::TOP,
+                                                    ..Default::default()
+                                                },
+                                            );
+                                            ui.label(job);
                                             draw_base_card(ui, base_card, path, source_path, dest_path)
                                         });
                                     }

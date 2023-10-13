@@ -6,3 +6,4 @@ Status Effects
     Damage Taken
     Damage over time
     Speed
+Trails

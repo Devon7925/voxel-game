@@ -1,0 +1,8 @@
+Abiliy Modifiers
+    charges
+    cooldown as recovery time (unable to do anything during)
+    shared cooldowns
+    keybind
+On Trigger
+    On Trigger (id)
+    Trigger (id)
