@@ -689,6 +689,7 @@ impl WorldState {
         for player in self.players.iter_mut() {
             let mut player_speed = 1.0;
             let mut player_damage_taken = 1.0;
+            let mut player_gravity = 1.0;
 
             for status_effect in player.status_effects.iter_mut() {
                 match status_effect.effect {
@@ -710,6 +711,12 @@ impl WorldState {
                     StatusEffect::DecreaceDamageTaken => {
                         player_damage_taken *= 0.75;
                     }
+                    StatusEffect::IncreaceGravity => {
+                        player_gravity += 0.5;
+                    }
+                    StatusEffect::DecreaceGravity => {
+                        player_gravity -= 0.5;
+                    }
                 }
             }
             for status_effect in player.status_effects.iter_mut() {
@@ -725,7 +732,7 @@ impl WorldState {
                 status_effect.time_left -= time_step;
             }
             player.status_effects.retain(|x| x.time_left > 0.0);
-            player_stats.push((player_speed, player_damage_taken));
+            player_stats.push((player_speed, player_damage_taken, player_gravity));
         }
         {
             let voxel_reader = voxels.read().unwrap();
@@ -871,7 +878,7 @@ impl WorldState {
                     ability.cooldown -= time_step;
                 }
 
-                player.vel.y -= 32.0 * time_step;
+                player.vel.y -= player_stats[player_idx].2 * 32.0 * time_step;
                 if player.vel.magnitude() > 0.0 {
                     player.vel -= 0.1 * player.vel * player.vel.magnitude() * time_step
                         + 0.2 * player.vel.normalize() * time_step;

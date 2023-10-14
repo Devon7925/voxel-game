@@ -318,11 +318,13 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                             Effect::StatusEffect(e,t) => {
                                 let effect_name = match e {
                                     StatusEffect::DamageOverTime => "Damage Over Time",
-                                    StatusEffect::DecreaceDamageTaken => "Decreace Damage Taken",
                                     StatusEffect::HealOverTime => "Heal Over Time",
+                                    StatusEffect::DecreaceDamageTaken => "Decreace Damage Taken",
                                     StatusEffect::IncreaceDamageTaken => "Increace Damage Taken",
                                     StatusEffect::Slow => "Slow",
                                     StatusEffect::Speed => "Speed Up",
+                                    StatusEffect::DecreaceGravity => "Decreace Gravity",
+                                    StatusEffect::IncreaceGravity => "Increace Gravity",
                                 };
                                 add_basic_modifer(ui, effect_name, *t)
                             },

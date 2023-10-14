@@ -26,7 +26,11 @@
             OnHit(Effect(Damage(20))),
         ])),
     ]),
-    Effect(Knockback(1)),
+    MultiCast([
+        Effect(StatusEffect(DecreaceGravity, 1)),
+        Effect(StatusEffect(DecreaceGravity, 1)),
+        Effect(StatusEffect(DecreaceGravity, 1)),
+    ],[]),
     Projectile([
         SimpleModify(Width,-5),
         SimpleModify(Height,-5),
@@ -44,5 +48,12 @@
             OnHit(Effect(Knockback(10))),
         ])),
     ]),
-    Effect(Knockback(15)),
+    MultiCast([
+        Effect(StatusEffect(DecreaceGravity, 1)),
+        Effect(StatusEffect(DecreaceGravity, 1)),
+        Effect(StatusEffect(DecreaceGravity, 1)),
+        Effect(StatusEffect(DecreaceGravity, 1)),
+        Effect(StatusEffect(DecreaceGravity, 1)),
+        Effect(StatusEffect(DecreaceGravity, 1)),
+    ],[]),
 ]

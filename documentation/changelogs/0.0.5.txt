@@ -6,4 +6,5 @@ Status Effects
     Damage Taken
     Damage over time
     Speed
+    Changed gravity
 Trails

@@ -5,7 +5,6 @@ Tuning
     Adjust on hit material
 Cards
     Effects
-        change gravity
         overheal
         on hit
         attack speed

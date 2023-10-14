@@ -65,6 +65,8 @@ pub enum StatusEffect {
     HealOverTime,
     IncreaceDamageTaken,
     DecreaceDamageTaken,
+    IncreaceGravity,
+    DecreaceGravity,
 }
 
 impl VoxelMaterial {
@@ -219,6 +221,8 @@ impl BaseCard {
                     StatusEffect::HealOverTime => 7.0 * (*duration as f32),
                     StatusEffect::IncreaceDamageTaken => 5.0 * (*duration as f32),
                     StatusEffect::DecreaceDamageTaken => 5.0 * (*duration as f32),
+                    StatusEffect::IncreaceGravity => 0.5 * (*duration as f32),
+                    StatusEffect::DecreaceGravity => 0.5 * (*duration as f32),
                 },
             },
         }
