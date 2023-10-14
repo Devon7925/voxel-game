@@ -5,8 +5,11 @@ Tuning
     Adjust on hit material
 Cards
     Effects
-        Player Projectile Modifier
-        immobile
+        change gravity
+        overheal
+        on hit
+        attack speed
+        invincibility
         teleport owner
         cleanse
     Projectile Modifiers
