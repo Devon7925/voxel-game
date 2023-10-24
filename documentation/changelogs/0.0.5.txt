@@ -2,9 +2,12 @@ Card file setting
 Hover for modifiers
 Increased gravity
 Main menu
-Status Effects
-    Damage Taken
-    Damage over time
-    Speed
-    Changed gravity
-Trails
+New Cards
+    Status Effects
+        Damage Taken
+        Damage over time
+        Speed
+        Changed gravity
+    Trails
+    Projectile Modifiers
+        Lock to Player

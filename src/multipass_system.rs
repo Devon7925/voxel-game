@@ -753,6 +753,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                         ProjectileModifier::SimpleModify(ProjectileModifierType::Lifetime, 1),
                                         ProjectileModifier::NoEnemyFire,
                                         ProjectileModifier::FriendlyFire,
+                                        ProjectileModifier::LockToOwner,
                                     ]);
                                     draw_base_card(ui, &dock_card, &mut vec![0].into(), &mut source_path, &mut drop_path);
 

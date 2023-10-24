@@ -21,6 +21,7 @@ pub enum ProjectileModifier {
     OnHit(BaseCard),
     OnExpiry(BaseCard),
     Trail(u32, BaseCard),
+    LockToOwner,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -142,6 +143,7 @@ impl BaseCard {
                         ProjectileModifier::Trail(freq, card) => {
                             trail_value += card.evaluate_value(false) * *freq as f32
                         }
+                        ProjectileModifier::LockToOwner => {}
                     }
                 }
                 let speed = ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, speed)
@@ -260,6 +262,7 @@ impl BaseCard {
                         }
                         ProjectileModifier::NoEnemyFire => {}
                         ProjectileModifier::FriendlyFire => {}
+                        ProjectileModifier::LockToOwner => {}
                     }
                 }
             }
@@ -444,6 +447,7 @@ impl ProjectileModifier {
             ProjectileModifier::OnHit(card) => format!("On Hit {}", card.to_string()),
             ProjectileModifier::OnExpiry(card) => format!("On Expiry {}", card.to_string()),
             ProjectileModifier::Trail(freq, card) => format!("Trail {}: {}", freq, card.to_string()),
+            ProjectileModifier::LockToOwner => format!("Locks the projectile's position to the player's position"),
         }
     }
 
@@ -469,6 +473,7 @@ impl ProjectileModifier {
             ProjectileModifier::OnHit(_) => panic!(),
             ProjectileModifier::OnExpiry(_) => panic!(),
             ProjectileModifier::Trail(_, _) => panic!(),
+            ProjectileModifier::LockToOwner => panic!(),
         }
     }
 }
@@ -509,6 +514,7 @@ pub struct ReferencedProjectile {
     pub health: f32,
     pub no_friendly_fire: bool,
     pub no_enemy_fire: bool,
+    pub lock_owner: bool,
     pub on_hit: Vec<ReferencedBaseCard>,
     pub on_expiry: Vec<ReferencedBaseCard>,
     pub trail: Vec<(f32, ReferencedBaseCard)>,
@@ -556,6 +562,7 @@ impl CardManager {
                 let mut on_hit = Vec::new();
                 let mut on_expiry = Vec::new();
                 let mut trail = Vec::new();
+                let mut lock_owner = false;
                 for modifier in modifiers {
                     match modifier {
                         ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, s) => {
@@ -593,6 +600,7 @@ impl CardManager {
                         ProjectileModifier::Trail(freq, card) => {
                             trail.push((1.0/(freq as f32), self.register_base_card(card)))
                         }
+                        ProjectileModifier::LockToOwner => lock_owner = true,
                     }
                 }
                 self.referenced_projs.push(ReferencedProjectile {
@@ -628,6 +636,7 @@ impl CardManager {
                     .get_effect_value(),
                     no_friendly_fire: !friendly_fire,
                     no_enemy_fire,
+                    lock_owner,
                     on_hit,
                     on_expiry,
                     trail,

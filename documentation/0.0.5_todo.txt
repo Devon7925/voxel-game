@@ -12,6 +12,5 @@ Cards
         teleport owner
         cleanse
     Projectile Modifiers
-        Lock to Player
         Player piercing
         Terrain bounce
