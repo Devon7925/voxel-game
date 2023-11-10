@@ -332,6 +332,7 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                     StatusEffect::Speed => "Speed Up",
                                     StatusEffect::DecreaceGravity => "Decreace Gravity",
                                     StatusEffect::IncreaceGravity => "Increace Gravity",
+                                    StatusEffect::Overheal => "Overheal",
                                 };
                                 add_basic_modifer(ui, effect_name, *t)
                             },

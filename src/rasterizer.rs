@@ -222,7 +222,7 @@ impl RasterizerSystem {
         let mut player_writer = self.player_instance_data.write().unwrap();
         let mut player_buffer_idx = 0;
         for player in world_state.players.iter().skip(1) {
-            if player.health <= 0.0 {
+            if player.get_health_stats().0 <= 0.0 {
                 continue;
             }
             player_writer[player_buffer_idx].instance_position = [player.pos[0], player.pos[1], player.pos[2]];

@@ -8,6 +8,7 @@ New Cards
         Damage over time
         Speed
         Changed gravity
+        Overheal
     Trails
     Projectile Modifiers
         Lock to Player

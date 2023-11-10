@@ -71,11 +71,17 @@ pub struct Player {
     pub dir: Vector3<f32>,
     pub up: Vector3<f32>,
     pub right: Vector3<f32>,
-    pub health: f32,
+    pub health: Vec<HealthSection>,
     pub abilities: Vec<PlayerAbility>,
     pub respawn_timer: f32,
     pub collision_vec: Vector3<i32>,
     pub status_effects: Vec<AppliedStatusEffect>,
+}
+
+#[derive(Clone, Debug)]
+pub enum HealthSection {
+    Health(f32, f32),
+    Overhealth(f32, f32),
 }
 
 #[derive(Clone, Debug)]
@@ -144,7 +150,7 @@ impl Default for Player {
             rot: Quaternion::one(),
             size: 1.0,
             vel: Vector3::new(0.0, 0.0, 0.0),
-            health: 100.0,
+            health: vec![HealthSection::Health(100.0, 100.0)],
             abilities: Vec::new(),
             respawn_timer: 0.0,
             collision_vec: Vector3::new(0, 0, 0),
@@ -542,20 +548,25 @@ impl WorldState {
                         StatusEffect::DecreaceGravity => {
                             gravity -= 0.5;
                         }
+                        StatusEffect::Overheal => {
+                            // managed seperately
+                        }
                     }
                 }
+                let mut health_adjustment = 0.0;
                 for status_effect in player.status_effects.iter_mut() {
                     match status_effect.effect {
                         StatusEffect::DamageOverTime => {
-                            player.health -= 10.0 * damage_taken * time_step;
+                            health_adjustment += -10.0 * damage_taken * time_step;
                         }
                         StatusEffect::HealOverTime => {
-                            player.health += 10.0 * damage_taken * time_step;
+                            health_adjustment += 10.0 * damage_taken * time_step;
                         }
                         _ => {}
                     }
                     status_effect.time_left -= time_step;
                 }
+                player.adjust_health(health_adjustment);
                 player.status_effects.retain(|x| x.time_left > 0.0);
                 PlayerEffectStats {
                     speed,
@@ -687,9 +698,9 @@ impl WorldState {
                                         for effect in effects {
                                             match effect {
                                                 Effect::Damage(damage) => {
-                                                    player.health -= player_stats[player_idx]
+                                                    player.adjust_health(player_stats[player_idx]
                                                         .damage_taken
-                                                        * damage as f32;
+                                                        * damage as f32);
                                                 }
                                                 Effect::Knockback(knockback) => {
                                                     let knockback = 10.0 * knockback as f32;
@@ -722,10 +733,8 @@ impl WorldState {
         }
 
         for player in self.players.iter_mut() {
-            if player.health <= 0.0 && player.respawn_timer <= 0.0 {
+            if player.get_health_stats().0 <= 0.0 && player.respawn_timer <= 0.0 {
                 player.respawn_timer = 5.0;
-            } else if player.health > 100.0 {
-                player.health = 100.0;
             }
         }
         // remove dead projectiles and add new ones
@@ -974,7 +983,7 @@ impl Player {
             self.respawn_timer -= time_step;
             if self.respawn_timer <= 0.0 {
                 self.pos = SPAWN_LOCATION;
-                self.health = 100.0;
+                self.health = vec![HealthSection::Health(100.0, 100.0)];
                 self.status_effects.clear();
             }
             return;
@@ -1033,6 +1042,7 @@ impl Player {
                     .zip(Vector3::new(0.3, 13.0, 0.3), |c, m| c as f32 * m);
             }
 
+            let mut health_adjustment = 0.0;
             for (ability_idx, ability) in self.abilities.iter_mut().enumerate() {
                 if ability_idx < action.activate_ability.len()
                     && action.activate_ability[ability_idx]
@@ -1071,13 +1081,19 @@ impl Player {
                     for effect in effects.2 {
                         match effect {
                             Effect::Damage(damage) => {
-                                self.health -= damage as f32;
+                                health_adjustment += -damage as f32 * player_stats[player_idx].damage_taken;
                             }
                             Effect::Knockback(knockback) => {
                                 let knockback = 10.0 * knockback as f32;
                                 self.vel += knockback * self.dir;
                             }
                             Effect::StatusEffect(effect, duration) => {
+                                match effect {
+                                    StatusEffect::Overheal => {
+                                        self.health.push(HealthSection::Overhealth(10.0, duration as f32));
+                                    }
+                                    _ => {}
+                                }
                                 self.status_effects.push(AppliedStatusEffect {
                                     effect,
                                     time_left: duration as f32,
@@ -1087,6 +1103,7 @@ impl Player {
                     }
                 }
             }
+            self.adjust_health(health_adjustment);
         }
         for ability in self.abilities.iter_mut() {
             ability.cooldown -= time_step;
@@ -1099,6 +1116,19 @@ impl Player {
         let prev_collision_vec = self.collision_vec.clone();
         self.collision_vec = Vector3::new(0, 0, 0);
         self.collide_player(time_step, voxel_reader, prev_collision_vec);
+
+        for health_section in self.health.iter_mut() {
+            match health_section {
+                HealthSection::Overhealth(_health, duration) => {
+                    *duration -= time_step;
+                }
+                _ => {}
+            }
+        }
+        self.health.retain(|health_section| match health_section {
+            HealthSection::Health(_health, _max_health) => true,
+            HealthSection::Overhealth(health, duration) => *health > 0.0 && *duration > 0.0,
+        });
     }
 
     fn collide_player(
@@ -1267,6 +1297,73 @@ impl Player {
             }
         }
         true
+    }
+    
+    fn adjust_health(
+        &mut self,
+        adjustment: f32,
+    ) {
+        if adjustment > 0.0 {
+            let mut healing_left = adjustment;
+            let mut health_idx = 0;
+            while healing_left > 0.0 {
+                let health_section = &mut self.health[health_idx];
+                match health_section {
+                    HealthSection::Health(current, max) => {
+                        let health_to_add = (*max - *current).min(healing_left);
+                        *current += health_to_add;
+                        healing_left -= health_to_add;
+                    }
+                    HealthSection::Overhealth(_current, _duration) => {
+                        // overhealth is not affected by healing
+                    }
+                }
+                health_idx += 1;
+                if health_idx >= self.health.len() {
+                    break;
+                }
+            }
+        } else {
+            let mut damage_left = -adjustment;
+            let mut health_idx = self.health.len() - 1;
+            while damage_left < 0.0 {
+                let health_section = &mut self.health[health_idx];
+                match health_section {
+                    HealthSection::Health(current, _) => {
+                        let health_to_remove = (*current).min(damage_left);
+                        *current -= health_to_remove;
+                        damage_left -= health_to_remove;
+                    }
+                    HealthSection::Overhealth(current, _duration) => {
+                        let health_to_remove = (*current).min(damage_left);
+                        *current -= health_to_remove;
+                        damage_left -= health_to_remove;
+                    }
+                }
+                if health_idx == 0 {
+                    break;
+                }
+                health_idx -= 1;
+            }
+        }
+    }
+
+    pub fn get_health_stats(&self) -> (f32, f32) {
+        let mut current_health = 0.0;
+        let mut max_health = 0.0;
+        for health_section in self.health.iter() {
+            match health_section {
+                HealthSection::Health(current, max) => {
+                    current_health += *current;
+                    max_health += *max;
+                }
+                HealthSection::Overhealth(current, _duration) => {
+                    current_health += *current;
+                    max_health += *current;
+                }
+            }
+        }
+        (current_health, max_health)
     }
 }
 
