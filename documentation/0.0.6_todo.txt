@@ -6,3 +6,11 @@ Abiliy Modifiers
 On Trigger
     On Trigger (id)
     Trigger (id)
+Add effect ui
+Finish card editor
+    allow dragging
+        multi modifiers
+        base cards
+    select palette type
+    scrolling
+    clip out of area

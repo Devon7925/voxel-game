@@ -15,7 +15,7 @@ use vulkano::{
 use crate::{
     card_system::{
         BaseCard, CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, StatusEffect,
-        VoxelMaterial,
+        VoxelMaterial, ReferencedEffect, ReferencedStatusEffect,
     },
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     settings_manager::Settings,
@@ -86,7 +86,7 @@ pub enum HealthSection {
 
 #[derive(Clone, Debug)]
 pub struct AppliedStatusEffect {
-    pub effect: StatusEffect,
+    pub effect: ReferencedStatusEffect,
     pub time_left: f32,
 }
 
@@ -524,31 +524,34 @@ impl WorldState {
 
                 for status_effect in player.status_effects.iter_mut() {
                     match status_effect.effect {
-                        StatusEffect::DamageOverTime => {
+                        ReferencedStatusEffect::DamageOverTime => {
                             // wait for damage taken to be calculated
                         }
-                        StatusEffect::HealOverTime => {
+                        ReferencedStatusEffect::HealOverTime => {
                             // wait for damage taken to be calculated
                         }
-                        StatusEffect::Speed => {
+                        ReferencedStatusEffect::Speed => {
                             speed *= 1.25;
                         }
-                        StatusEffect::Slow => {
+                        ReferencedStatusEffect::Slow => {
                             speed *= 0.75;
                         }
-                        StatusEffect::IncreaceDamageTaken => {
+                        ReferencedStatusEffect::IncreaceDamageTaken => {
                             damage_taken *= 1.25;
                         }
-                        StatusEffect::DecreaceDamageTaken => {
+                        ReferencedStatusEffect::DecreaceDamageTaken => {
                             damage_taken *= 0.75;
                         }
-                        StatusEffect::IncreaceGravity => {
+                        ReferencedStatusEffect::IncreaceGravity => {
                             gravity += 0.5;
                         }
-                        StatusEffect::DecreaceGravity => {
+                        ReferencedStatusEffect::DecreaceGravity => {
                             gravity -= 0.5;
                         }
-                        StatusEffect::Overheal => {
+                        ReferencedStatusEffect::Overheal => {
+                            // managed seperately
+                        }
+                        ReferencedStatusEffect::OnHit(_) => {
                             // managed seperately
                         }
                     }
@@ -556,10 +559,10 @@ impl WorldState {
                 let mut health_adjustment = 0.0;
                 for status_effect in player.status_effects.iter_mut() {
                     match status_effect.effect {
-                        StatusEffect::DamageOverTime => {
+                        ReferencedStatusEffect::DamageOverTime => {
                             health_adjustment += -10.0 * damage_taken * time_step;
                         }
-                        StatusEffect::HealOverTime => {
+                        ReferencedStatusEffect::HealOverTime => {
                             health_adjustment += 10.0 * damage_taken * time_step;
                         }
                         _ => {}
@@ -595,138 +598,203 @@ impl WorldState {
                     &mut voxels_to_write,
                 );
             }
-
-            for (player_idx, player) in self.players.iter_mut().enumerate() {
-                if player.respawn_timer > 0.0 {
+        }
+        for (player_idx, player) in self.players.iter_mut().enumerate() {
+            if player.respawn_timer > 0.0 {
+                continue;
+            }
+            // check for collision with projectiles
+            for proj in self.projectiles.iter_mut() {
+                if player_idx as u32 == proj.owner
+                    && proj.lifetime < 1.0
+                    && player
+                        .abilities
+                        .iter()
+                        .map(|a| &a.ability)
+                        .filter(|a| a.card_type == ReferencedBaseCardType::Projectile)
+                        .any(|a| a.card_idx as u32 == proj.proj_card_idx)
+                {
                     continue;
                 }
-                // check for collision with projectiles
-                for proj in self.projectiles.iter_mut() {
-                    if player_idx as u32 == proj.owner
-                        && proj.lifetime < 1.0
-                        && player
-                            .abilities
-                            .iter()
-                            .map(|a| &a.ability)
-                            .filter(|a| a.card_type == ReferencedBaseCardType::Projectile)
-                            .any(|a| a.card_idx as u32 == proj.proj_card_idx)
-                    {
-                        continue;
-                    }
-                    let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
+                let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
 
-                    if proj_card.no_friendly_fire && proj.owner == player_idx as u32 {
-                        continue;
-                    }
-                    if proj_card.no_enemy_fire && proj.owner != player_idx as u32 {
-                        continue;
-                    }
+                if proj_card.no_friendly_fire && proj.owner == player_idx as u32 {
+                    continue;
+                }
+                if proj_card.no_enemy_fire && proj.owner != player_idx as u32 {
+                    continue;
+                }
 
-                    let projectile_rot =
-                        Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
-                    let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
-                    let projectile_right =
-                        projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
-                    let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
-                    let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
-                    let projectile_size = Vector3::new(proj.size[0], proj.size[1], proj.size[2]);
+                let projectile_rot =
+                    Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
+                let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+                let projectile_right =
+                    projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
+                let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
+                let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
+                let projectile_size = Vector3::new(proj.size[0], proj.size[1], proj.size[2]);
 
-                    let grid_iteration_count =
-                        (2.0 * projectile_size * 2.0_f32.sqrt()).map(|c| c.ceil());
-                    let grid_dist =
-                        2.0 * projectile_size.zip(grid_iteration_count, |size, count| size / count);
+                let grid_iteration_count =
+                    (2.0 * projectile_size * 2.0_f32.sqrt()).map(|c| c.ceil());
+                let grid_dist =
+                    2.0 * projectile_size.zip(grid_iteration_count, |size, count| size / count);
 
-                    let start_pos = projectile_pos
-                        - projectile_size.x * projectile_right
-                        - projectile_size.y * projectile_up
-                        - projectile_size.z * projectile_dir;
-                    'outer: for grid_iter_x in 0..=(grid_iteration_count.x as i32) {
-                        for grid_iter_y in 0..=(grid_iteration_count.y as i32) {
-                            for grid_iter_z in 0..=(grid_iteration_count.z as i32) {
-                                let pos = start_pos
-                                    + grid_dist.x * grid_iter_x as f32 * projectile_right
-                                    + grid_dist.y * grid_iter_y as f32 * projectile_up
-                                    + grid_dist.z * grid_iter_z as f32 * projectile_dir;
-                                let hitspheres = [
-                                    (Vector3::new(0.0, 0.0, 0.0), 0.6),
-                                    (Vector3::new(0.0, -1.3, 0.0), 0.6),
-                                    (Vector3::new(0.0, -1.9, 0.0), 0.9),
-                                    (Vector3::new(0.0, -2.6, 0.0), 0.8),
-                                    (Vector3::new(0.0, -3.3, 0.0), 0.6),
-                                    (Vector3::new(0.0, -3.8, 0.0), 0.6),
-                                ];
-                                let likely_hit = hitspheres
-                                    .iter()
-                                    .min_by(|(offset_a, _), (offset_b, _)| {
-                                        (player.pos + player.size * offset_a - pos)
-                                            .magnitude()
-                                            .total_cmp(
-                                                &(player.pos + player.size * offset_b - pos)
-                                                    .magnitude(),
-                                            )
-                                    })
-                                    .unwrap();
-                                if (player.pos + player.size * likely_hit.0 - pos).magnitude()
-                                    < likely_hit.1 * player.size
+                let start_pos = projectile_pos
+                    - projectile_size.x * projectile_right
+                    - projectile_size.y * projectile_up
+                    - projectile_size.z * projectile_dir;
+                'outer: for grid_iter_x in 0..=(grid_iteration_count.x as i32) {
+                    for grid_iter_y in 0..=(grid_iteration_count.y as i32) {
+                        for grid_iter_z in 0..=(grid_iteration_count.z as i32) {
+                            let pos = start_pos
+                                + grid_dist.x * grid_iter_x as f32 * projectile_right
+                                + grid_dist.y * grid_iter_y as f32 * projectile_up
+                                + grid_dist.z * grid_iter_z as f32 * projectile_dir;
+                            let likely_hit = Player::HITSPHERES
+                                .iter()
+                                .min_by(|(offset_a, _), (offset_b, _)| {
+                                    (player.pos + player.size * offset_a - pos)
+                                        .magnitude()
+                                        .total_cmp(
+                                            &(player.pos + player.size * offset_b - pos)
+                                                .magnitude(),
+                                        )
+                                })
+                                .unwrap();
+                            if (player.pos + player.size * likely_hit.0 - pos).magnitude()
+                                < likely_hit.1 * player.size
+                            {
+                                proj.health = 0.0;
+                                for card_ref in card_manager
+                                    .get_referenced_proj(proj.proj_card_idx as usize)
+                                    .on_hit
+                                    .clone()
                                 {
-                                    proj.health = 0.0;
-                                    for card_ref in card_manager
-                                        .get_referenced_proj(proj.proj_card_idx as usize)
-                                        .on_hit
-                                        .clone()
-                                    {
-                                        let proj_rot = proj.dir;
-                                        let proj_rot = Quaternion::new(
-                                            proj_rot[3],
-                                            proj_rot[0],
-                                            proj_rot[1],
-                                            proj_rot[2],
+                                    let proj_rot = proj.dir;
+                                    let proj_rot = Quaternion::new(
+                                        proj_rot[3],
+                                        proj_rot[0],
+                                        proj_rot[1],
+                                        proj_rot[2],
+                                    );
+                                    let (on_hit_projectiles, on_hit_voxels, effects) =
+                                        card_manager.get_effects_from_base_card(
+                                            card_ref,
+                                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                                            &proj_rot,
+                                            proj.owner,
                                         );
-                                        let (on_hit_projectiles, on_hit_voxels, effects) =
-                                            card_manager.get_effects_from_base_card(
-                                                card_ref,
-                                                &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
-                                                &proj_rot,
-                                                proj.owner,
-                                            );
-                                        new_projectiles.extend(on_hit_projectiles);
-                                        if is_real_update && on_hit_voxels.len() > 0 {
-                                            for (pos, material) in on_hit_voxels {
-                                                voxels_to_write.push((pos, material.to_memory()));
+                                    new_projectiles.extend(on_hit_projectiles);
+                                    for (pos, material) in on_hit_voxels {
+                                        voxels_to_write.push((pos, material.to_memory()));
+                                    }
+                                    for effect in effects {
+                                        match effect {
+                                            ReferencedEffect::Damage(damage) => {
+                                                player.adjust_health(player_stats[player_idx]
+                                                    .damage_taken
+                                                    * damage as f32);
                                             }
-                                        }
-                                        for effect in effects {
-                                            match effect {
-                                                Effect::Damage(damage) => {
-                                                    player.adjust_health(player_stats[player_idx]
-                                                        .damage_taken
-                                                        * damage as f32);
+                                            ReferencedEffect::Knockback(knockback) => {
+                                                let knockback = 10.0 * knockback as f32;
+                                                let knockback_dir = player.pos
+                                                    + player.size * likely_hit.0
+                                                    - projectile_pos;
+                                                if knockback_dir.magnitude() > 0.0 {
+                                                    player.vel +=
+                                                        knockback * (knockback_dir).normalize();
+                                                } else {
+                                                    player.vel.y += knockback;
                                                 }
-                                                Effect::Knockback(knockback) => {
-                                                    let knockback = 10.0 * knockback as f32;
-                                                    let knockback_dir = player.pos
-                                                        + player.size * likely_hit.0
-                                                        - projectile_pos;
-                                                    if knockback_dir.magnitude() > 0.0 {
-                                                        player.vel +=
-                                                            knockback * (knockback_dir).normalize();
-                                                    } else {
-                                                        player.vel.y += knockback;
-                                                    }
-                                                }
-                                                Effect::StatusEffect(effect, duration) => player
-                                                    .status_effects
-                                                    .push(AppliedStatusEffect {
-                                                        effect,
-                                                        time_left: duration as f32,
-                                                    }),
                                             }
+                                            ReferencedEffect::StatusEffect(effect, duration) => player
+                                                .status_effects
+                                                .push(AppliedStatusEffect {
+                                                    effect,
+                                                    time_left: duration as f32,
+                                                }),
                                         }
                                     }
-                                    break 'outer;
                                 }
+                                break 'outer;
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        let mut player_player_collision_pairs:Vec<(usize, usize)> = vec![];
+        for i in 0..self.players.len() {
+            let player1 = self.players.get(i).unwrap();
+            for j in 0..self.players.len() {
+                if i == j {
+                    continue;
+                }
+                let player2 = self.players.get(j).unwrap();
+                if 5.0 * (player1.size + player2.size)
+                    > (player1.pos - player2.pos).magnitude()
+                {
+                    for si in 0..Player::HITSPHERES.len() {
+                        for sj in 0..Player::HITSPHERES.len() {
+                            let pos1 = player1.pos + player1.size * Player::HITSPHERES[si].0;
+                            let pos2 = player2.pos + player2.size * Player::HITSPHERES[sj].0;
+                            if (pos1 - pos2).magnitude()
+                                < (Player::HITSPHERES[si].1 + Player::HITSPHERES[sj].1)
+                                    * (player1.size + player2.size)
+                            {
+                                player_player_collision_pairs.push((i, j));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (i, j) in player_player_collision_pairs {
+            let hit_vector = self.players.get(j).unwrap().pos
+                - self.players.get(i).unwrap().pos;
+            let hit_effects = {
+                let player1 = self.players.get(i).unwrap();
+                player1.status_effects.iter().filter_map(|effect| match effect {
+                    AppliedStatusEffect { effect: ReferencedStatusEffect::OnHit(hit_card), time_left: _ } => Some(hit_card),
+                    _ => None,
+                }).map(|hit_effect| {
+                    card_manager.get_effects_from_base_card(
+                        *hit_effect,
+                        &player1.pos,
+                        &player1.rot,
+                        i as u32,
+                    )
+                }).collect::<Vec<_>>()
+            };
+            let player2 = self.players.get_mut(j).unwrap();
+            for (on_hit_projectiles, on_hit_voxels, effects) in hit_effects {
+                new_projectiles.extend(on_hit_projectiles);
+                for (pos, material) in on_hit_voxels {
+                    voxels_to_write.push((pos, material.to_memory()));
+                }
+                for effect in effects {
+                    match effect {
+                        ReferencedEffect::Damage(damage) => {
+                            player2.adjust_health(player_stats[j]
+                                .damage_taken
+                                * damage as f32);
+                        }
+                        ReferencedEffect::Knockback(knockback) => {
+                            let knockback = 10.0 * knockback as f32;
+                            if hit_vector.magnitude() > 0.0 {
+                                player2.vel +=
+                                    knockback * hit_vector.normalize();
+                            } else {
+                                player2.vel.y += knockback;
+                            }
+                        }
+                        ReferencedEffect::StatusEffect(effect, duration) => player2
+                            .status_effects
+                            .push(AppliedStatusEffect {
+                                effect,
+                                time_left: duration as f32,
+                            }),
                     }
                 }
             }
@@ -968,6 +1036,14 @@ pub fn get_index(global_pos: Point3<i32>) -> i32 {
 }
 
 impl Player {
+    const HITSPHERES:[(Vector3<f32>, f32); 6] = [
+        (Vector3::new(0.0, 0.0, 0.0), 0.6),
+        (Vector3::new(0.0, -1.3, 0.0), 0.6),
+        (Vector3::new(0.0, -1.9, 0.0), 0.9),
+        (Vector3::new(0.0, -2.6, 0.0), 0.8),
+        (Vector3::new(0.0, -3.3, 0.0), 0.6),
+        (Vector3::new(0.0, -3.8, 0.0), 0.6),
+    ];
     fn simple_step(
         &mut self,
         time_step: f32,
@@ -1080,16 +1156,16 @@ impl Player {
                     }
                     for effect in effects.2 {
                         match effect {
-                            Effect::Damage(damage) => {
+                            ReferencedEffect::Damage(damage) => {
                                 health_adjustment += -damage as f32 * player_stats[player_idx].damage_taken;
                             }
-                            Effect::Knockback(knockback) => {
+                            ReferencedEffect::Knockback(knockback) => {
                                 let knockback = 10.0 * knockback as f32;
                                 self.vel += knockback * self.dir;
                             }
-                            Effect::StatusEffect(effect, duration) => {
+                            ReferencedEffect::StatusEffect(effect, duration) => {
                                 match effect {
-                                    StatusEffect::Overheal => {
+                                    ReferencedStatusEffect::Overheal => {
                                         self.health.push(HealthSection::Overhealth(10.0, duration as f32));
                                     }
                                     _ => {}

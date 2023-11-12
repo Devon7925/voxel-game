@@ -3,9 +3,10 @@
         SimpleModify(Width,3),
         SimpleModify(Height,-3),
         SimpleModify(Length,-3),
-        SimpleModify(Speed,-2),
+        SimpleModify(Speed,-1),
         SimpleModify(Lifetime,-5),
         SimpleModify(Health,-10),
+        LockToOwner,
         OnHit(Effect(Damage(42))),
     ]),
     MultiCast([
@@ -20,5 +21,17 @@
         ]),
         Effect(StatusEffect(Slow, 1)),
         Effect(StatusEffect(Slow, 1)),
+    ],[]),
+    Projectile([
+        SimpleModify(Width,-1),
+        SimpleModify(Height,-1),
+        SimpleModify(Length,-1),
+        SimpleModify(Speed,-1),
+        SimpleModify(Health,-10),
+        OnHit(Effect(Damage(50))),
+    ]),
+    MultiCast([
+        Effect(StatusEffect(OnHit(Effect(Damage(25))), 10)),
+        Effect(Knockback(20)),
     ],[]),
 ]

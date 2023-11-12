@@ -68,7 +68,8 @@ pub enum StatusEffect {
     DecreaceDamageTaken,
     IncreaceGravity,
     DecreaceGravity,
-    Overheal
+    Overheal,
+    OnHit(Box<BaseCard>),
 }
 
 impl VoxelMaterial {
@@ -227,6 +228,7 @@ impl BaseCard {
                     StatusEffect::IncreaceGravity => 0.5 * (*duration as f32),
                     StatusEffect::DecreaceGravity => 0.5 * (*duration as f32),
                     StatusEffect::Overheal => 5.0 * (2.0 - (-(*duration as f32)).exp()),
+                    StatusEffect::OnHit(card) => card.evaluate_value(false) * 0.5 *  (2.0 - (-(*duration as f32)).exp()),
                 },
             },
         }
@@ -529,11 +531,32 @@ pub struct ReferencedMulticast {
     pub duplication: u32,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum ReferencedEffect {
+    Damage(i32),
+    Knockback(i32),
+    StatusEffect(ReferencedStatusEffect, u32),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum ReferencedStatusEffect {
+    Speed,
+    Slow,
+    DamageOverTime,
+    HealOverTime,
+    IncreaceDamageTaken,
+    DecreaceDamageTaken,
+    IncreaceGravity,
+    DecreaceGravity,
+    Overheal,
+    OnHit(ReferencedBaseCard),
+}
+
 pub struct CardManager {
     pub referenced_multicasts: Vec<ReferencedMulticast>,
     pub referenced_projs: Vec<ReferencedProjectile>,
     pub referenced_material_creators: Vec<VoxelMaterial>,
-    pub referenced_effects: Vec<Effect>,
+    pub referenced_effects: Vec<ReferencedEffect>,
 }
 
 impl Default for CardManager {
@@ -683,7 +706,26 @@ impl CardManager {
                 }
             }
             BaseCard::Effect(effect) => {
-                self.referenced_effects.push(effect);
+                let referenced_effect = match effect {
+                    Effect::Damage(damage) => ReferencedEffect::Damage(damage),
+                    Effect::Knockback(knockback) => ReferencedEffect::Knockback(knockback),
+                    Effect::StatusEffect(status, duration) => {
+                        let referenced_status = match status {
+                            StatusEffect::Speed => ReferencedStatusEffect::Speed,
+                            StatusEffect::Slow => ReferencedStatusEffect::Slow,
+                            StatusEffect::DamageOverTime => ReferencedStatusEffect::DamageOverTime,
+                            StatusEffect::HealOverTime => ReferencedStatusEffect::HealOverTime,
+                            StatusEffect::IncreaceDamageTaken => ReferencedStatusEffect::IncreaceDamageTaken,
+                            StatusEffect::DecreaceDamageTaken => ReferencedStatusEffect::DecreaceDamageTaken,
+                            StatusEffect::IncreaceGravity => ReferencedStatusEffect::IncreaceGravity,
+                            StatusEffect::DecreaceGravity => ReferencedStatusEffect::DecreaceGravity,
+                            StatusEffect::Overheal => ReferencedStatusEffect::Overheal,
+                            StatusEffect::OnHit(card) => ReferencedStatusEffect::OnHit(self.register_base_card(*card)),
+                        };
+                        ReferencedEffect::StatusEffect(referenced_status, duration)
+                    }
+                };
+                self.referenced_effects.push(referenced_effect);
                 ReferencedBaseCard {
                     card_type: ReferencedBaseCardType::Effect,
                     card_idx: self.referenced_effects.len() - 1,
@@ -701,7 +743,7 @@ impl CardManager {
     ) -> (
         Vec<Projectile>,
         Vec<(Point3<i32>, VoxelMaterial)>,
-        Vec<Effect>,
+        Vec<ReferencedEffect>,
     ) {
         let mut projectiles = vec![];
         let mut new_voxels = vec![];

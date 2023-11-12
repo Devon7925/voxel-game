@@ -9,6 +9,7 @@ New Cards
         Speed
         Changed gravity
         Overheal
+        On Hit
     Trails
     Projectile Modifiers
         Lock to Player

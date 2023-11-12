@@ -155,7 +155,7 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                     let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
                         ui.horizontal(|ui| {
                             ui.add_space(CARD_UI_SPACING);
-                            ui.label("Projectile");
+                            ui.label("Create Projectile");
                             for (modifier_idx, modifier) in modifiers.iter().enumerate() {
                                 path.push_back(modifier_idx as u32);
                                 let item_id = egui::Id::new(id_source).with(path.clone());
@@ -279,7 +279,7 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                 BaseCard::MultiCast(cards, modifiers) => {
                     ui.horizontal(|ui| {
                         ui.add_space(CARD_UI_SPACING);
-                        ui.label("Multi");
+                        ui.label("Multicast");
                         for modifier in modifiers {
                             match modifier {
                                 MultiCastModifier::Spread(v) => add_basic_modifer(ui, "Spread", *v),
@@ -304,7 +304,7 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                 BaseCard::CreateMaterial(mat) => {
                     ui.horizontal(|ui| {
                         ui.add_space(CARD_UI_SPACING);
-                        ui.label("Material");
+                        ui.label("Create Material");
                         ui.label(format!("{:?}", mat));
                         ui.add_space(CARD_UI_SPACING);
                     });
@@ -318,23 +318,29 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                 BaseCard::Effect(effect) => {
                     ui.horizontal(|ui| {
                         ui.add_space(CARD_UI_SPACING);
-                        ui.label("Effect");
+                        ui.label("Apply Effect");
                         match effect {
                             Effect::Damage(v) => add_basic_modifer(ui, "Damage", *v),
                             Effect::Knockback(v) => add_basic_modifer(ui, "Knockback", *v),
                             Effect::StatusEffect(e,t) => {
-                                let effect_name = match e {
-                                    StatusEffect::DamageOverTime => "Damage Over Time",
-                                    StatusEffect::HealOverTime => "Heal Over Time",
-                                    StatusEffect::DecreaceDamageTaken => "Decreace Damage Taken",
-                                    StatusEffect::IncreaceDamageTaken => "Increace Damage Taken",
-                                    StatusEffect::Slow => "Slow",
-                                    StatusEffect::Speed => "Speed Up",
-                                    StatusEffect::DecreaceGravity => "Decreace Gravity",
-                                    StatusEffect::IncreaceGravity => "Increace Gravity",
-                                    StatusEffect::Overheal => "Overheal",
-                                };
-                                add_basic_modifer(ui, effect_name, *t)
+                                if let StatusEffect::OnHit(base_card) = e {
+                                    ui.label("On Hit");
+                                    draw_base_card(ui, base_card, path, source_path, dest_path)
+                                } else {
+                                    let effect_name = match e {
+                                        StatusEffect::DamageOverTime => "Damage Over Time",
+                                        StatusEffect::HealOverTime => "Heal Over Time",
+                                        StatusEffect::DecreaceDamageTaken => "Decreace Damage Taken",
+                                        StatusEffect::IncreaceDamageTaken => "Increace Damage Taken",
+                                        StatusEffect::Slow => "Slow",
+                                        StatusEffect::Speed => "Speed Up",
+                                        StatusEffect::DecreaceGravity => "Decreace Gravity",
+                                        StatusEffect::IncreaceGravity => "Increace Gravity",
+                                        StatusEffect::Overheal => "Overheal",
+                                        StatusEffect::OnHit(_base_card) => panic!("OnHit should be handled above"),
+                                    };
+                                    add_basic_modifer(ui, effect_name, *t)
+                                }
                             },
                         }
                         ui.add_space(CARD_UI_SPACING);
