@@ -569,7 +569,9 @@ impl WorldState {
                     }
                     status_effect.time_left -= time_step;
                 }
-                player.adjust_health(health_adjustment);
+                if health_adjustment != 0.0 {
+                    player.adjust_health(health_adjustment);
+                }
                 player.status_effects.retain(|x| x.time_left > 0.0);
                 PlayerEffectStats {
                     speed,
@@ -691,7 +693,7 @@ impl WorldState {
                                     for effect in effects {
                                         match effect {
                                             ReferencedEffect::Damage(damage) => {
-                                                player.adjust_health(player_stats[player_idx]
+                                                player.adjust_health(-player_stats[player_idx]
                                                     .damage_taken
                                                     * damage as f32);
                                             }
@@ -776,7 +778,7 @@ impl WorldState {
                 for effect in effects {
                     match effect {
                         ReferencedEffect::Damage(damage) => {
-                            player2.adjust_health(player_stats[j]
+                            player2.adjust_health(-player_stats[j]
                                 .damage_taken
                                 * damage as f32);
                         }
@@ -1179,7 +1181,9 @@ impl Player {
                     }
                 }
             }
-            self.adjust_health(health_adjustment);
+            if health_adjustment != 0.0 {
+                self.adjust_health(health_adjustment);
+            }
         }
         for ability in self.abilities.iter_mut() {
             ability.cooldown -= time_step;
@@ -1379,6 +1383,7 @@ impl Player {
         &mut self,
         adjustment: f32,
     ) {
+        println!("adjusting health by {}", adjustment);
         if adjustment > 0.0 {
             let mut healing_left = adjustment;
             let mut health_idx = 0;
@@ -1402,7 +1407,7 @@ impl Player {
         } else {
             let mut damage_left = -adjustment;
             let mut health_idx = self.health.len() - 1;
-            while damage_left < 0.0 {
+            while damage_left > 0.0 {
                 let health_section = &mut self.health[health_idx];
                 match health_section {
                     HealthSection::Health(current, _) => {
