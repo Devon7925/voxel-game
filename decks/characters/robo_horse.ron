@@ -25,6 +25,7 @@
             OnHit(Effect(Damage(10))),
             OnHit(Effect(Knockback(2))),
             LockToOwner,
+            PiercePlayers,
         ]),
         Effect(StatusEffect(Speed, 2)),
     ],[]),

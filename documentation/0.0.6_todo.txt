@@ -1,8 +1,13 @@
 Abiliy Modifiers
     charges
-    cooldown as recovery time (unable to do anything during)
+    add cast time
     shared cooldowns
     keybind
+        Pressed (button)
+        On Pressed (button)
+        Released (button)
+        On Released (button)
+        And (keybind, keybind)
 On Trigger
     On Trigger (id)
     Trigger (id)

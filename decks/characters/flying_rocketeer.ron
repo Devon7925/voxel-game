@@ -12,6 +12,7 @@
             SimpleModify(Length,1),
             SimpleModify(Lifetime,-10),
             SimpleModify(Health,-10),
+            PiercePlayers,
             OnHit(Effect(Damage(20))),
         ])),
         OnHit(Projectile([
@@ -22,6 +23,7 @@
             SimpleModify(Lifetime,-10),
             SimpleModify(Health,-10),
             FriendlyFire,
+            PiercePlayers,
             OnHit(Effect(Knockback(2))),
             OnHit(Effect(Damage(20))),
         ])),
@@ -45,6 +47,7 @@
             SimpleModify(Lifetime,-10),
             SimpleModify(Health,-10),
             FriendlyFire,
+            PiercePlayers,
             OnHit(Effect(Knockback(10))),
         ])),
     ]),

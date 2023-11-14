@@ -12,4 +12,5 @@ New Cards
         On Hit
     Trails
     Projectile Modifiers
+        Player piercing
         Lock to Player

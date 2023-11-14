@@ -22,6 +22,7 @@ pub enum ProjectileModifier {
     OnExpiry(BaseCard),
     Trail(u32, BaseCard),
     LockToOwner,
+    PiercePlayers,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -103,6 +104,7 @@ impl BaseCard {
         match self {
             BaseCard::Projectile(modifiers) => {
                 let mut hit_value = 0.0;
+                let mut expiry_value = 0.0;
                 let mut speed = 0;
                 let mut length = 0;
                 let mut width = 0;
@@ -112,6 +114,7 @@ impl BaseCard {
                 let mut health = 0;
                 let mut friendly_fire = false;
                 let mut enemy_fire = true;
+                let mut pierce_players = false;
                 let mut trail_value = 0.0;
                 for modifier in modifiers {
                     match modifier {
@@ -140,12 +143,13 @@ impl BaseCard {
                         ProjectileModifier::NoEnemyFire => enemy_fire = false,
                         ProjectileModifier::OnHit(card) => hit_value += card.evaluate_value(false),
                         ProjectileModifier::OnExpiry(card) => {
-                            hit_value += card.evaluate_value(false)
+                            expiry_value += card.evaluate_value(false)
                         }
                         ProjectileModifier::Trail(freq, card) => {
                             trail_value += card.evaluate_value(false) * *freq as f32
                         }
                         ProjectileModifier::LockToOwner => {}
+                        ProjectileModifier::PiercePlayers => pierce_players = true,
                     }
                 }
                 let speed = ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, speed)
@@ -170,25 +174,22 @@ impl BaseCard {
                 let trail_value = trail_value * lifetime;
 
                 trail_value
-                    + if is_direct_shot {
-                        0.002
-                            * hit_value
-                            * (1.0 + speed.abs() * lifetime).sqrt()
-                            * (1.0 + width * height + length)
-                            * (1.0 + health)
-                            + 0.02
-                                * lifetime
+                    + if pierce_players { 1.5 } else { 1.0 }
+                        * if is_direct_shot {
+                            0.002
+                                * hit_value
+                                * (1.0 + speed.abs() * lifetime).sqrt()
                                 * (1.0 + width * height + length)
                                 * (1.0 + health)
-                                * if friendly_fire { 1.0 } else { 2.0 }
-                    } else {
-                        hit_value * (1.0 + health)
-                            + 0.02
-                                * lifetime
-                                * (1.0 + width * height + length)
-                                * (1.0 + health)
-                                * if friendly_fire { 1.0 } else { 2.0 }
-                    }
+                        } else {
+                            hit_value * (1.0 + health)
+                        }
+                    + expiry_value
+                    + 0.02
+                        * lifetime
+                        * (1.0 + width * height + length)
+                        * (1.0 + health)
+                        * if friendly_fire { 1.0 } else { 2.0 }
             }
             BaseCard::MultiCast(cards, modifiers) => {
                 let mut value = cards
@@ -220,15 +221,21 @@ impl BaseCard {
                 Effect::Knockback(knockback) => 0.3 * (*knockback as f32).abs(),
                 Effect::StatusEffect(effect_type, duration) => match effect_type {
                     StatusEffect::Speed => 0.5 * (*duration as f32),
-                    StatusEffect::Slow => (if is_direct_shot {-1.0} else {1.0}) * 0.5 * (*duration as f32),
-                    StatusEffect::DamageOverTime => (if is_direct_shot {-1.0} else {1.0}) * 7.0 * (*duration as f32),
+                    StatusEffect::Slow => {
+                        (if is_direct_shot { -1.0 } else { 1.0 }) * 0.5 * (*duration as f32)
+                    }
+                    StatusEffect::DamageOverTime => {
+                        (if is_direct_shot { -1.0 } else { 1.0 }) * 7.0 * (*duration as f32)
+                    }
                     StatusEffect::HealOverTime => 7.0 * (*duration as f32),
                     StatusEffect::IncreaceDamageTaken => 5.0 * (*duration as f32),
                     StatusEffect::DecreaceDamageTaken => 5.0 * (*duration as f32),
                     StatusEffect::IncreaceGravity => 0.5 * (*duration as f32),
                     StatusEffect::DecreaceGravity => 0.5 * (*duration as f32),
                     StatusEffect::Overheal => 5.0 * (2.0 - (-(*duration as f32)).exp()),
-                    StatusEffect::OnHit(card) => card.evaluate_value(false) * 0.5 *  (2.0 - (-(*duration as f32)).exp()),
+                    StatusEffect::OnHit(card) => {
+                        card.evaluate_value(false) * 0.5 * (2.0 - (-(*duration as f32)).exp())
+                    }
                 },
             },
         }
@@ -267,6 +274,7 @@ impl BaseCard {
                         ProjectileModifier::NoEnemyFire => {}
                         ProjectileModifier::FriendlyFire => {}
                         ProjectileModifier::LockToOwner => {}
+                        ProjectileModifier::PiercePlayers => {}
                     }
                 }
             }
@@ -450,8 +458,15 @@ impl ProjectileModifier {
             ProjectileModifier::NoEnemyFire => format!("Prevents hitting enemy entities"),
             ProjectileModifier::OnHit(card) => format!("On Hit {}", card.to_string()),
             ProjectileModifier::OnExpiry(card) => format!("On Expiry {}", card.to_string()),
-            ProjectileModifier::Trail(freq, card) => format!("Trail {}: {}", freq, card.to_string()),
-            ProjectileModifier::LockToOwner => format!("Locks the projectile's position to the player's position"),
+            ProjectileModifier::Trail(freq, card) => {
+                format!("Trail {}: {}", freq, card.to_string())
+            }
+            ProjectileModifier::LockToOwner => {
+                format!("Locks the projectile's position to the player's position")
+            }
+            ProjectileModifier::PiercePlayers => {
+                format!("Allows the projectile to pierce players, potentially hitting multiple players")
+            }
         }
     }
 
@@ -478,6 +493,7 @@ impl ProjectileModifier {
             ProjectileModifier::OnExpiry(_) => panic!(),
             ProjectileModifier::Trail(_, _) => panic!(),
             ProjectileModifier::LockToOwner => panic!(),
+            ProjectileModifier::PiercePlayers => panic!(),
         }
     }
 }
@@ -519,6 +535,7 @@ pub struct ReferencedProjectile {
     pub no_friendly_fire: bool,
     pub no_enemy_fire: bool,
     pub lock_owner: bool,
+    pub pierce_players: bool,
     pub on_hit: Vec<ReferencedBaseCard>,
     pub on_expiry: Vec<ReferencedBaseCard>,
     pub trail: Vec<(f32, ReferencedBaseCard)>,
@@ -588,6 +605,7 @@ impl CardManager {
                 let mut on_expiry = Vec::new();
                 let mut trail = Vec::new();
                 let mut lock_owner = false;
+                let mut pierce_players = false;
                 for modifier in modifiers {
                     match modifier {
                         ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, s) => {
@@ -623,9 +641,10 @@ impl CardManager {
                             on_expiry.push(self.register_base_card(card))
                         }
                         ProjectileModifier::Trail(freq, card) => {
-                            trail.push((1.0/(freq as f32), self.register_base_card(card)))
+                            trail.push((1.0 / (freq as f32), self.register_base_card(card)))
                         }
                         ProjectileModifier::LockToOwner => lock_owner = true,
+                        ProjectileModifier::PiercePlayers => pierce_players = true,
                     }
                 }
                 self.referenced_projs.push(ReferencedProjectile {
@@ -662,6 +681,7 @@ impl CardManager {
                     no_friendly_fire: !friendly_fire,
                     no_enemy_fire,
                     lock_owner,
+                    pierce_players,
                     on_hit,
                     on_expiry,
                     trail,
@@ -715,12 +735,22 @@ impl CardManager {
                             StatusEffect::Slow => ReferencedStatusEffect::Slow,
                             StatusEffect::DamageOverTime => ReferencedStatusEffect::DamageOverTime,
                             StatusEffect::HealOverTime => ReferencedStatusEffect::HealOverTime,
-                            StatusEffect::IncreaceDamageTaken => ReferencedStatusEffect::IncreaceDamageTaken,
-                            StatusEffect::DecreaceDamageTaken => ReferencedStatusEffect::DecreaceDamageTaken,
-                            StatusEffect::IncreaceGravity => ReferencedStatusEffect::IncreaceGravity,
-                            StatusEffect::DecreaceGravity => ReferencedStatusEffect::DecreaceGravity,
+                            StatusEffect::IncreaceDamageTaken => {
+                                ReferencedStatusEffect::IncreaceDamageTaken
+                            }
+                            StatusEffect::DecreaceDamageTaken => {
+                                ReferencedStatusEffect::DecreaceDamageTaken
+                            }
+                            StatusEffect::IncreaceGravity => {
+                                ReferencedStatusEffect::IncreaceGravity
+                            }
+                            StatusEffect::DecreaceGravity => {
+                                ReferencedStatusEffect::DecreaceGravity
+                            }
                             StatusEffect::Overheal => ReferencedStatusEffect::Overheal,
-                            StatusEffect::OnHit(card) => ReferencedStatusEffect::OnHit(self.register_base_card(*card)),
+                            StatusEffect::OnHit(card) => {
+                                ReferencedStatusEffect::OnHit(self.register_base_card(*card))
+                            }
                         };
                         ReferencedEffect::StatusEffect(referenced_status, duration)
                     }

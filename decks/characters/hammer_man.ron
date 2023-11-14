@@ -7,6 +7,7 @@
         SimpleModify(Lifetime,-5),
         SimpleModify(Health,-10),
         LockToOwner,
+        PiercePlayers,
         OnHit(Effect(Damage(42))),
     ]),
     MultiCast([
@@ -18,6 +19,7 @@
             SimpleModify(Health,1),
             SimpleModify(Lifetime,-2),
             LockToOwner,
+            PiercePlayers,
         ]),
         Effect(StatusEffect(Slow, 1)),
         Effect(StatusEffect(Slow, 1)),
@@ -28,6 +30,7 @@
         SimpleModify(Length,-1),
         SimpleModify(Speed,-1),
         SimpleModify(Health,-10),
+        PiercePlayers,
         OnHit(Effect(Damage(50))),
     ]),
     MultiCast([

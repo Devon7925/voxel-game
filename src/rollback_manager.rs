@@ -76,6 +76,7 @@ pub struct Player {
     pub respawn_timer: f32,
     pub collision_vec: Vector3<i32>,
     pub status_effects: Vec<AppliedStatusEffect>,
+    pub player_piercing_invincibility: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -155,6 +156,7 @@ impl Default for Player {
             respawn_timer: 0.0,
             collision_vec: Vector3::new(0, 0, 0),
             status_effects: Vec::new(),
+            player_piercing_invincibility: 0.0,
         }
     }
 }
@@ -663,63 +665,72 @@ impl WorldState {
                                         )
                                 })
                                 .unwrap();
+
                             if (player.pos + player.size * likely_hit.0 - pos).magnitude()
-                                < likely_hit.1 * player.size
+                                > likely_hit.1 * player.size
                             {
+                                continue;
+                            }
+
+                            if !proj_card.pierce_players {
                                 proj.health = 0.0;
-                                for card_ref in card_manager
-                                    .get_referenced_proj(proj.proj_card_idx as usize)
-                                    .on_hit
-                                    .clone()
-                                {
-                                    let proj_rot = proj.dir;
-                                    let proj_rot = Quaternion::new(
-                                        proj_rot[3],
-                                        proj_rot[0],
-                                        proj_rot[1],
-                                        proj_rot[2],
+                            } else if player.player_piercing_invincibility > 0.0 {
+                                continue;
+                            } else {
+                                player.player_piercing_invincibility = 0.3;
+                            }
+                            for card_ref in card_manager
+                                .get_referenced_proj(proj.proj_card_idx as usize)
+                                .on_hit
+                                .clone()
+                            {
+                                let proj_rot = proj.dir;
+                                let proj_rot = Quaternion::new(
+                                    proj_rot[3],
+                                    proj_rot[0],
+                                    proj_rot[1],
+                                    proj_rot[2],
+                                );
+                                let (on_hit_projectiles, on_hit_voxels, effects) =
+                                    card_manager.get_effects_from_base_card(
+                                        card_ref,
+                                        &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                                        &proj_rot,
+                                        proj.owner,
                                     );
-                                    let (on_hit_projectiles, on_hit_voxels, effects) =
-                                        card_manager.get_effects_from_base_card(
-                                            card_ref,
-                                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
-                                            &proj_rot,
-                                            proj.owner,
-                                        );
-                                    new_projectiles.extend(on_hit_projectiles);
-                                    for (pos, material) in on_hit_voxels {
-                                        voxels_to_write.push((pos, material.to_memory()));
-                                    }
-                                    for effect in effects {
-                                        match effect {
-                                            ReferencedEffect::Damage(damage) => {
-                                                player.adjust_health(-player_stats[player_idx]
-                                                    .damage_taken
-                                                    * damage as f32);
-                                            }
-                                            ReferencedEffect::Knockback(knockback) => {
-                                                let knockback = 10.0 * knockback as f32;
-                                                let knockback_dir = player.pos
-                                                    + player.size * likely_hit.0
-                                                    - projectile_pos;
-                                                if knockback_dir.magnitude() > 0.0 {
-                                                    player.vel +=
-                                                        knockback * (knockback_dir).normalize();
-                                                } else {
-                                                    player.vel.y += knockback;
-                                                }
-                                            }
-                                            ReferencedEffect::StatusEffect(effect, duration) => player
-                                                .status_effects
-                                                .push(AppliedStatusEffect {
-                                                    effect,
-                                                    time_left: duration as f32,
-                                                }),
+                                new_projectiles.extend(on_hit_projectiles);
+                                for (pos, material) in on_hit_voxels {
+                                    voxels_to_write.push((pos, material.to_memory()));
+                                }
+                                for effect in effects {
+                                    match effect {
+                                        ReferencedEffect::Damage(damage) => {
+                                            player.adjust_health(-player_stats[player_idx]
+                                                .damage_taken
+                                                * damage as f32);
                                         }
+                                        ReferencedEffect::Knockback(knockback) => {
+                                            let knockback = 10.0 * knockback as f32;
+                                            let knockback_dir = player.pos
+                                                + player.size * likely_hit.0
+                                                - projectile_pos;
+                                            if knockback_dir.magnitude() > 0.0 {
+                                                player.vel +=
+                                                    knockback * (knockback_dir).normalize();
+                                            } else {
+                                                player.vel.y += knockback;
+                                            }
+                                        }
+                                        ReferencedEffect::StatusEffect(effect, duration) => player
+                                            .status_effects
+                                            .push(AppliedStatusEffect {
+                                                effect,
+                                                time_left: duration as f32,
+                                            }),
                                     }
                                 }
-                                break 'outer;
                             }
+                            break 'outer;
                         }
                     }
                 }
@@ -1065,6 +1076,9 @@ impl Player {
                 self.status_effects.clear();
             }
             return;
+        }
+        if self.player_piercing_invincibility > 0.0 {
+            self.player_piercing_invincibility -= time_step;
         }
         if let Some(action) = action {
             self.facing[0] = (self.facing[0] - action.aim[0] + 2.0 * PI) % (2.0 * PI);

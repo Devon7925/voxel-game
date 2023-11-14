@@ -36,6 +36,7 @@
             SimpleModify(Length,3),
             SimpleModify(Lifetime,-10),
             SimpleModify(Health,-10),
+            PiercePlayers,
             OnHit(Effect(Damage(20))),
             OnHit(Effect(StatusEffect(DamageOverTime, 5))),
         ])),

@@ -6,6 +6,7 @@
         SimpleModify(Length,-3),
         SimpleModify(Lifetime,-5),
         SimpleModify(Health,-10),
+        PiercePlayers,
         OnHit(Effect(Damage(3))),
         OnHit(Effect(StatusEffect(Slow, 1))),
     ]),
@@ -32,6 +33,7 @@
                 SimpleModify(Length,-5),
                 SimpleModify(Lifetime,-6),
                 SimpleModify(Health,-10),
+                PiercePlayers,
                 OnExpiry(CreateMaterial(Stone)),
             ]),
         ],[
