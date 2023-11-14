@@ -5,7 +5,6 @@ Tuning
     Adjust on hit material
 Cards
     Effects
-        attack speed
         invincibility
         teleport owner
         cleanse
