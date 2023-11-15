@@ -329,6 +329,8 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                         match effect {
                             Effect::Damage(v) => add_basic_modifer(ui, "Damage", *v),
                             Effect::Knockback(v) => add_basic_modifer(ui, "Knockback", *v),
+                            Effect::Cleanse => add_basic_modifer(ui, "Cleanse", ""),
+                            Effect::Teleport => add_basic_modifer(ui, "Teleport", ""),
                             Effect::StatusEffect(e,t) => {
                                 if let StatusEffect::OnHit(base_card) = e {
                                     ui.label("On Hit");
@@ -344,6 +346,7 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                         StatusEffect::DecreaceGravity => "Decreace Gravity",
                                         StatusEffect::IncreaceGravity => "Increace Gravity",
                                         StatusEffect::Overheal => "Overheal",
+                                        StatusEffect::Invincibility => "Invincibility",
                                         StatusEffect::OnHit(_base_card) => panic!("OnHit should be handled above"),
                                     };
                                     add_basic_modifer(ui, effect_name, *t)

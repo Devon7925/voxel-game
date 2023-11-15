@@ -54,6 +54,8 @@ pub enum VoxelMaterial {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum Effect {
+    Cleanse,
+    Teleport,
     Damage(i32),
     Knockback(i32),
     StatusEffect(StatusEffect, u32),
@@ -70,6 +72,7 @@ pub enum StatusEffect {
     IncreaceGravity,
     DecreaceGravity,
     Overheal,
+    Invincibility,
     OnHit(Box<BaseCard>),
 }
 
@@ -219,6 +222,8 @@ impl BaseCard {
             BaseCard::Effect(effect) => match effect {
                 Effect::Damage(damage) => (*damage as f32).abs(),
                 Effect::Knockback(knockback) => 0.3 * (*knockback as f32).abs(),
+                Effect::Cleanse => 7.0,
+                Effect::Teleport => 12.0,
                 Effect::StatusEffect(effect_type, duration) => match effect_type {
                     StatusEffect::Speed => 0.5 * (*duration as f32),
                     StatusEffect::Slow => {
@@ -233,6 +238,7 @@ impl BaseCard {
                     StatusEffect::IncreaceGravity => 0.5 * (*duration as f32),
                     StatusEffect::DecreaceGravity => 0.5 * (*duration as f32),
                     StatusEffect::Overheal => 5.0 * (2.0 - (-(*duration as f32)).exp()),
+                    StatusEffect::Invincibility => 10.0 * (*duration as f32),
                     StatusEffect::OnHit(card) => {
                         card.evaluate_value(false) * 0.5 * (2.0 - (-(*duration as f32)).exp())
                     }
@@ -310,6 +316,8 @@ impl BaseCard {
                         return false;
                     }
                 }
+                Effect::Cleanse => {}
+                Effect::Teleport => {}
             },
         }
         return true;
@@ -328,6 +336,7 @@ impl BaseCard {
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => card.take_modifier(path),
                         ProjectileModifier::OnExpiry(ref mut card) => card.take_modifier(path),
+                        ProjectileModifier::Trail(_freqency, ref mut card) => card.take_modifier(path),
                         _ => panic!("Invalid state"),
                     }
                 }
@@ -354,6 +363,9 @@ impl BaseCard {
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => card.insert_modifier(path, item),
                         ProjectileModifier::OnExpiry(ref mut card) => {
+                            card.insert_modifier(path, item)
+                        }
+                        ProjectileModifier::Trail(_freqency, ref mut card) => {
                             card.insert_modifier(path, item)
                         }
                         _ => panic!("Invalid state"),
@@ -552,6 +564,8 @@ pub struct ReferencedMulticast {
 pub enum ReferencedEffect {
     Damage(i32),
     Knockback(i32),
+    Cleanse,
+    Teleport,
     StatusEffect(ReferencedStatusEffect, u32),
 }
 
@@ -566,6 +580,7 @@ pub enum ReferencedStatusEffect {
     IncreaceGravity,
     DecreaceGravity,
     Overheal,
+    Invincibility,
     OnHit(ReferencedBaseCard),
 }
 
@@ -729,6 +744,8 @@ impl CardManager {
                 let referenced_effect = match effect {
                     Effect::Damage(damage) => ReferencedEffect::Damage(damage),
                     Effect::Knockback(knockback) => ReferencedEffect::Knockback(knockback),
+                    Effect::Cleanse => ReferencedEffect::Cleanse,
+                    Effect::Teleport => ReferencedEffect::Teleport,
                     Effect::StatusEffect(status, duration) => {
                         let referenced_status = match status {
                             StatusEffect::Speed => ReferencedStatusEffect::Speed,
@@ -748,6 +765,7 @@ impl CardManager {
                                 ReferencedStatusEffect::DecreaceGravity
                             }
                             StatusEffect::Overheal => ReferencedStatusEffect::Overheal,
+                            StatusEffect::Invincibility => ReferencedStatusEffect::Invincibility,
                             StatusEffect::OnHit(card) => {
                                 ReferencedStatusEffect::OnHit(self.register_base_card(*card))
                             }

@@ -42,6 +42,7 @@
         ])),
     ]),
     MultiCast([
+        Effect(Cleanse),
         Effect(StatusEffect(Slow, 5)),
         Effect(StatusEffect(Slow, 5)),
         Effect(StatusEffect(Slow, 5)),
@@ -50,8 +51,7 @@
         Effect(StatusEffect(Slow, 5)),
         Effect(StatusEffect(Slow, 5)),
         Effect(StatusEffect(Slow, 5)),
-        Effect(StatusEffect(DecreaceDamageTaken, 5)),
-        Effect(StatusEffect(DecreaceDamageTaken, 5)),
+        Effect(StatusEffect(Invincibility, 5)),
         Effect(StatusEffect(HealOverTime, 5)),
         Effect(StatusEffect(HealOverTime, 5)),
     ],[]),

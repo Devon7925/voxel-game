@@ -114,6 +114,7 @@ struct PlayerEffectStats {
     speed: f32,
     damage_taken: f32,
     gravity: f32,
+    invincible: bool,
 }
 
 impl Default for PlayerAction {
@@ -487,34 +488,8 @@ impl WorldState {
     ) {
         let voxels = vox_compute.voxels();
         let mut new_projectiles = Vec::new();
-
         let mut voxels_to_write: Vec<(Point3<i32>, [u32; 2])> = Vec::new();
-        self.projectiles.iter_mut().for_each(|proj| {
-            proj.simple_step(
-                &self.players,
-                card_manager,
-                time_step,
-                &mut new_projectiles,
-                &mut voxels_to_write,
-            )
-        });
-
-        let collision_pairs = self.get_collision_pairs(card_manager);
-
-        for (i, j) in collision_pairs {
-            let damage_1 = self.projectiles.get(i).unwrap().damage;
-            let damage_2 = self.projectiles.get(j).unwrap().damage;
-            {
-                let proj1_mut = self.projectiles.get_mut(j).unwrap();
-                proj1_mut.health -= damage_2;
-                proj1_mut.health -= damage_1;
-            }
-            {
-                let proj2_mut = self.projectiles.get_mut(i).unwrap();
-                proj2_mut.health -= damage_1;
-                proj2_mut.health -= damage_2;
-            }
-        }
+        let mut new_effects:Vec<(usize, Point3<f32>, ReferencedEffect)> = Vec::new();
 
         let player_stats: Vec<PlayerEffectStats> = self
             .players
@@ -523,6 +498,7 @@ impl WorldState {
                 let mut speed = 1.0;
                 let mut damage_taken = 1.0;
                 let mut gravity = 1.0;
+                let mut invincible = false;
 
                 for status_effect in player.status_effects.iter_mut() {
                     match status_effect.effect {
@@ -553,6 +529,9 @@ impl WorldState {
                         ReferencedStatusEffect::Overheal => {
                             // managed seperately
                         }
+                        ReferencedStatusEffect::Invincibility => {
+                            invincible = true;
+                        }
                         ReferencedStatusEffect::OnHit(_) => {
                             // managed seperately
                         }
@@ -579,9 +558,38 @@ impl WorldState {
                     speed,
                     damage_taken,
                     gravity,
+                    invincible,
                 }
             })
             .collect();
+
+        self.projectiles.iter_mut().for_each(|proj| {
+            proj.simple_step(
+                &self.players,
+                card_manager,
+                time_step,
+                &mut new_projectiles,
+                &mut voxels_to_write,
+                &mut new_effects,
+            )
+        });
+
+        let collision_pairs = self.get_collision_pairs(card_manager);
+
+        for (i, j) in collision_pairs {
+            let damage_1 = self.projectiles.get(i).unwrap().damage;
+            let damage_2 = self.projectiles.get(j).unwrap().damage;
+            {
+                let proj1_mut = self.projectiles.get_mut(j).unwrap();
+                proj1_mut.health -= damage_2;
+                proj1_mut.health -= damage_1;
+            }
+            {
+                let proj2_mut = self.projectiles.get_mut(i).unwrap();
+                proj2_mut.health -= damage_1;
+                proj2_mut.health -= damage_2;
+            }
+        }
 
         {
             let voxel_reader = voxels.read().unwrap();
@@ -600,11 +608,12 @@ impl WorldState {
                     &voxel_reader,
                     &mut new_projectiles,
                     &mut voxels_to_write,
+                    &mut new_effects,
                 );
             }
         }
         for (player_idx, player) in self.players.iter_mut().enumerate() {
-            if player.respawn_timer > 0.0 {
+            if player.respawn_timer > 0.0 || player_stats[player_idx].invincible {
                 continue;
             }
             // check for collision with projectiles
@@ -703,31 +712,7 @@ impl WorldState {
                                     voxels_to_write.push((pos, material.to_memory()));
                                 }
                                 for effect in effects {
-                                    match effect {
-                                        ReferencedEffect::Damage(damage) => {
-                                            player.adjust_health(-player_stats[player_idx]
-                                                .damage_taken
-                                                * damage as f32);
-                                        }
-                                        ReferencedEffect::Knockback(knockback) => {
-                                            let knockback = 10.0 * knockback as f32;
-                                            let knockback_dir = player.pos
-                                                + player.size * likely_hit.0
-                                                - projectile_pos;
-                                            if knockback_dir.magnitude() > 0.0 {
-                                                player.vel +=
-                                                    knockback * (knockback_dir).normalize();
-                                            } else {
-                                                player.vel.y += knockback;
-                                            }
-                                        }
-                                        ReferencedEffect::StatusEffect(effect, duration) => player
-                                            .status_effects
-                                            .push(AppliedStatusEffect {
-                                                effect,
-                                                time_left: duration as f32,
-                                            }),
-                                    }
+                                    new_effects.push((player_idx, pos, effect));
                                 }
                             }
                             break 'outer;
@@ -764,8 +749,7 @@ impl WorldState {
             }
         }
         for (i, j) in player_player_collision_pairs {
-            let hit_vector = self.players.get(j).unwrap().pos
-                - self.players.get(i).unwrap().pos;
+            let player1_pos = self.players.get(i).unwrap().pos;
             let hit_effects = {
                 let player1 = self.players.get(i).unwrap();
                 player1.status_effects.iter().filter_map(|effect| match effect {
@@ -780,35 +764,13 @@ impl WorldState {
                     )
                 }).collect::<Vec<_>>()
             };
-            let player2 = self.players.get_mut(j).unwrap();
             for (on_hit_projectiles, on_hit_voxels, effects) in hit_effects {
                 new_projectiles.extend(on_hit_projectiles);
                 for (pos, material) in on_hit_voxels {
                     voxels_to_write.push((pos, material.to_memory()));
                 }
                 for effect in effects {
-                    match effect {
-                        ReferencedEffect::Damage(damage) => {
-                            player2.adjust_health(-player_stats[j]
-                                .damage_taken
-                                * damage as f32);
-                        }
-                        ReferencedEffect::Knockback(knockback) => {
-                            let knockback = 10.0 * knockback as f32;
-                            if hit_vector.magnitude() > 0.0 {
-                                player2.vel +=
-                                    knockback * hit_vector.normalize();
-                            } else {
-                                player2.vel.y += knockback;
-                            }
-                        }
-                        ReferencedEffect::StatusEffect(effect, duration) => player2
-                            .status_effects
-                            .push(AppliedStatusEffect {
-                                effect,
-                                time_left: duration as f32,
-                            }),
-                    }
+                    new_effects.push((j, player1_pos, effect));
                 }
             }
         }
@@ -828,6 +790,42 @@ impl WorldState {
             for (pos, material) in voxels_to_write {
                 vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
                 writer[get_index(pos) as usize] = material;
+            }
+        }
+
+        for (player_idx, effect_pos, effect) in new_effects {
+            let player = self.players.get_mut(player_idx).unwrap();
+            match effect {
+                ReferencedEffect::Damage(damage) => {
+                    player.adjust_health(-player_stats[player_idx]
+                        .damage_taken
+                        * damage as f32);
+                }
+                ReferencedEffect::Knockback(knockback) => {
+                    let knockback = 10.0 * knockback as f32;
+                    let knockback_dir = player.pos
+                        - effect_pos;
+                    if knockback_dir.magnitude() > 0.0 {
+                        player.vel +=
+                            knockback * (knockback_dir).normalize();
+                    } else {
+                        player.vel.y += knockback;
+                    }
+                }
+                ReferencedEffect::StatusEffect(effect, duration) => player
+                    .status_effects
+                    .push(AppliedStatusEffect {
+                        effect,
+                        time_left: duration as f32,
+                    }),
+                ReferencedEffect::Cleanse => {
+                    player.status_effects.clear();
+                }
+                ReferencedEffect::Teleport => {
+                    player.pos = effect_pos;
+                    player.pos.y += player.size * (PLAYER_HITBOX_SIZE[1]/2.0 - PLAYER_HITBOX_OFFSET[1]);
+                    player.vel = Vector3::new(0.0, 0.0, 0.0);
+                }
             }
         }
     }
@@ -961,6 +959,7 @@ impl Projectile {
         time_step: f32,
         new_projectiles: &mut Vec<Projectile>,
         voxels_to_write: &mut Vec<(Point3<i32>, [u32; 2])>,
+        new_effects: &mut Vec<(usize, Point3<f32>, ReferencedEffect)>,
     ) {
         let proj_card = card_manager.get_referenced_proj(self.proj_card_idx as usize);
         let projectile_rot = Quaternion::new(self.dir[3], self.dir[0], self.dir[1], self.dir[2]);
@@ -1004,30 +1003,36 @@ impl Projectile {
                 .on_expiry
                 .clone()
             {
-                let effects = card_manager.get_effects_from_base_card(
+                let (proj_effects, vox_effects, effects) = card_manager.get_effects_from_base_card(
                     card_ref,
                     &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
                     &new_projectile_rot,
                     self.owner,
                 );
-                new_projectiles.extend(effects.0);
-                for (pos, material) in effects.1 {
+                new_projectiles.extend(proj_effects);
+                for (pos, material) in vox_effects {
                     voxels_to_write.push((pos, material.to_memory()));
+                }
+                for effect in effects {
+                    new_effects.push((self.owner as usize, Point3::new(self.pos[0], self.pos[1], self.pos[2]), effect));
                 }
             }
         }
 
         for (trail_time, trail_card) in proj_card.trail.iter() {
             if self.lifetime % trail_time >= trail_time - time_step {
-                let effects = card_manager.get_effects_from_base_card(
+                let (proj_effects, vox_effects, effects) = card_manager.get_effects_from_base_card(
                     trail_card.clone(),
                     &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
                     &new_projectile_rot,
                     self.owner,
                 );
-                new_projectiles.extend(effects.0);
-                for (pos, material) in effects.1 {
+                new_projectiles.extend(proj_effects);
+                for (pos, material) in vox_effects {
                     voxels_to_write.push((pos, material.to_memory()));
+                }
+                for effect in effects {
+                    new_effects.push((self.owner as usize, Point3::new(self.pos[0], self.pos[1], self.pos[2]), effect));
                 }
             }
         }
@@ -1067,6 +1072,7 @@ impl Player {
         voxel_reader: &BufferReadGuard<'_, [[u32; 2]]>,
         new_projectiles: &mut Vec<Projectile>,
         voxels_to_write: &mut Vec<(Point3<i32>, [u32; 2])>,
+        new_effects: &mut Vec<(usize, Point3<f32>, ReferencedEffect)>,
     ) {
         if self.respawn_timer > 0.0 {
             self.respawn_timer -= time_step;
@@ -1141,57 +1147,18 @@ impl Player {
                     && ability.cooldown <= 0.0
                 {
                     ability.cooldown = ability.value;
-                    let mut effects = card_manager.get_effects_from_base_card(
+                    let (proj_effects, vox_effects, effects) = card_manager.get_effects_from_base_card(
                         ability.ability,
                         &self.pos,
                         &self.rot,
                         player_idx as u32,
                     );
-                    for proj in effects.0.iter_mut() {
-                        let projectile_rot =
-                            Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
-                        let projectile_dir =
-                            projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
-                        let mut proj_vel = projectile_dir * proj.vel;
-                        proj_vel += self.vel;
-                        // recompute vel and rot
-                        let new_projectile_rot: Quaternion<f32> =
-                            Quaternion::from_arc(projectile_dir, proj_vel.normalize(), None)
-                                * projectile_rot;
-                        proj.dir = [
-                            new_projectile_rot.v[0],
-                            new_projectile_rot.v[1],
-                            new_projectile_rot.v[2],
-                            new_projectile_rot.s,
-                        ];
-                        proj.vel = proj_vel.magnitude();
-                    }
-                    new_projectiles.extend(effects.0);
-                    for (pos, material) in effects.1 {
+                    new_projectiles.extend(proj_effects);
+                    for (pos, material) in vox_effects {
                         voxels_to_write.push((pos, material.to_memory()));
                     }
-                    for effect in effects.2 {
-                        match effect {
-                            ReferencedEffect::Damage(damage) => {
-                                health_adjustment += -damage as f32 * player_stats[player_idx].damage_taken;
-                            }
-                            ReferencedEffect::Knockback(knockback) => {
-                                let knockback = 10.0 * knockback as f32;
-                                self.vel += knockback * self.dir;
-                            }
-                            ReferencedEffect::StatusEffect(effect, duration) => {
-                                match effect {
-                                    ReferencedStatusEffect::Overheal => {
-                                        self.health.push(HealthSection::Overhealth(10.0, duration as f32));
-                                    }
-                                    _ => {}
-                                }
-                                self.status_effects.push(AppliedStatusEffect {
-                                    effect,
-                                    time_left: duration as f32,
-                                })
-                            }
-                        }
+                    for effect in effects {
+                        new_effects.push((player_idx, self.pos, effect));
                     }
                 }
             }

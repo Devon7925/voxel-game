@@ -3,9 +3,5 @@ Replays
 Tuning
     balance 1 shots
 Cards
-    Effects
-        invincibility
-        teleport owner
-        cleanse
     Projectile Modifiers
         Terrain bounce

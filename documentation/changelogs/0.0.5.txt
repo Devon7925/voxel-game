@@ -4,13 +4,17 @@ Increased gravity
 Main menu
 Adjusted on hit when hitting terrain to be more accurate
 New Cards
-    Status Effects
-        Damage Taken
-        Damage over time
-        Speed
-        Changed gravity
-        Overheal
-        On Hit
+    Effects
+        Teleport
+        Cleanse
+        Status Effects
+            Damage Taken
+            Damage over time
+            Speed
+            Changed gravity
+            Overheal
+            invincibility
+            On Hit
     Trails
     Projectile Modifiers
         Player piercing
