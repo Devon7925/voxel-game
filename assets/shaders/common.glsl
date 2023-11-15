@@ -10,8 +10,8 @@ struct Projectile {
     float lifetime;
     uint owner;
     float damage;
-    float _filler1;
-    float _filler2;
+    uint proj_card_idx;
+    uint wall_bounce;
     float _filler3;
 };
 
@@ -56,4 +56,21 @@ vec3 quat_transform(vec4 q, vec3 v) {
 
 vec4 quat_inverse(vec4 q) {
     return vec4(-q.xyz, q.w) / dot(q, q);
+}
+
+vec4 quaternion_from_arc(vec3 src, vec3 dst) {
+    float mag_avg = sqrt(dot(src, src) * dot(dst, dst));
+    float dotprod = dot(src, dst);
+    if (dotprod == mag_avg) {
+        return vec4(0.0, 0.0, 0.0, 1.0);
+    } else if (dotprod == -mag_avg) {
+        vec3 v = cross(vec3(1.0, 0.0, 0.0), src);
+        if(v == vec3(0.0)) {
+            v = v = cross(vec3(0.0, 1.0, 0.0), src);
+        }
+        v = normalize(v);
+        return vec4(v, radians(180) / 2.0);
+    } else {
+        return normalize(vec4(cross(src, dst), mag_avg + dotprod));
+    }
 }

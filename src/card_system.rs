@@ -23,6 +23,7 @@ pub enum ProjectileModifier {
     Trail(u32, BaseCard),
     LockToOwner,
     PiercePlayers,
+    WallBounce,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -118,6 +119,7 @@ impl BaseCard {
                 let mut friendly_fire = false;
                 let mut enemy_fire = true;
                 let mut pierce_players = false;
+                let mut wall_bounce = false;
                 let mut trail_value = 0.0;
                 for modifier in modifiers {
                     match modifier {
@@ -144,6 +146,7 @@ impl BaseCard {
                         }
                         ProjectileModifier::FriendlyFire => friendly_fire = true,
                         ProjectileModifier::NoEnemyFire => enemy_fire = false,
+                        ProjectileModifier::WallBounce => wall_bounce = true,
                         ProjectileModifier::OnHit(card) => hit_value += card.evaluate_value(false),
                         ProjectileModifier::OnExpiry(card) => {
                             expiry_value += card.evaluate_value(false)
@@ -176,7 +179,7 @@ impl BaseCard {
                         .get_effect_value();
                 let trail_value = trail_value * lifetime;
 
-                trail_value
+                (trail_value
                     + if pierce_players { 1.5 } else { 1.0 }
                         * if is_direct_shot {
                             0.002
@@ -192,7 +195,8 @@ impl BaseCard {
                         * lifetime
                         * (1.0 + width * height + length)
                         * (1.0 + health)
-                        * if friendly_fire { 1.0 } else { 2.0 }
+                        * if friendly_fire { 1.0 } else { 2.0 })
+                    * if wall_bounce { 1.5 } else { 1.0 }
             }
             BaseCard::MultiCast(cards, modifiers) => {
                 let mut value = cards
@@ -281,6 +285,7 @@ impl BaseCard {
                         ProjectileModifier::FriendlyFire => {}
                         ProjectileModifier::LockToOwner => {}
                         ProjectileModifier::PiercePlayers => {}
+                        ProjectileModifier::WallBounce => {}
                     }
                 }
             }
@@ -336,7 +341,9 @@ impl BaseCard {
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => card.take_modifier(path),
                         ProjectileModifier::OnExpiry(ref mut card) => card.take_modifier(path),
-                        ProjectileModifier::Trail(_freqency, ref mut card) => card.take_modifier(path),
+                        ProjectileModifier::Trail(_freqency, ref mut card) => {
+                            card.take_modifier(path)
+                        }
                         _ => panic!("Invalid state"),
                     }
                 }
@@ -477,7 +484,14 @@ impl ProjectileModifier {
                 format!("Locks the projectile's position to the player's position")
             }
             ProjectileModifier::PiercePlayers => {
-                format!("Allows the projectile to pierce players, potentially hitting multiple players")
+                format!(
+                    "Allows the projectile to pierce players, potentially hitting multiple players"
+                )
+            }
+            ProjectileModifier::WallBounce => {
+                format!(
+                    "Allows the projectile to bounce off walls"
+                )
             }
         }
     }
@@ -506,6 +520,7 @@ impl ProjectileModifier {
             ProjectileModifier::Trail(_, _) => panic!(),
             ProjectileModifier::LockToOwner => panic!(),
             ProjectileModifier::PiercePlayers => panic!(),
+            ProjectileModifier::WallBounce => panic!(),
         }
     }
 }
@@ -548,6 +563,7 @@ pub struct ReferencedProjectile {
     pub no_enemy_fire: bool,
     pub lock_owner: bool,
     pub pierce_players: bool,
+    pub wall_bounce: bool,
     pub on_hit: Vec<ReferencedBaseCard>,
     pub on_expiry: Vec<ReferencedBaseCard>,
     pub trail: Vec<(f32, ReferencedBaseCard)>,
@@ -621,6 +637,7 @@ impl CardManager {
                 let mut trail = Vec::new();
                 let mut lock_owner = false;
                 let mut pierce_players = false;
+                let mut wall_bounce = false;
                 for modifier in modifiers {
                     match modifier {
                         ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, s) => {
@@ -660,6 +677,7 @@ impl CardManager {
                         }
                         ProjectileModifier::LockToOwner => lock_owner = true,
                         ProjectileModifier::PiercePlayers => pierce_players = true,
+                        ProjectileModifier::WallBounce => wall_bounce = true,
                     }
                 }
                 self.referenced_projs.push(ReferencedProjectile {
@@ -697,6 +715,7 @@ impl CardManager {
                     no_enemy_fire,
                     lock_owner,
                     pierce_players,
+                    wall_bounce,
                     on_hit,
                     on_expiry,
                     trail,
@@ -815,7 +834,7 @@ impl CardManager {
                     owner: player_idx,
                     damage: proj_damage,
                     proj_card_idx: card_idx as u32,
-                    _filler2: 0.0,
+                    wall_bounce: if proj_stats.wall_bounce {1} else {0},
                     _filler3: 0.0,
                 });
             }

@@ -19,3 +19,4 @@ New Cards
     Projectile Modifiers
         Player piercing
         Lock to Player
+        Terrain bounce

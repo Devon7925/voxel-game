@@ -73,10 +73,24 @@ void main() {
                 }
 
                 float dist_past_bb = grid_dist.z*k - 2.0*projectile.size.z;
+                vec3 delta = RayBoxDist(pos, -dir, vec3(voxel_pos), vec3(voxel_pos + ivec3(1)));
+                float dist_diff = min(delta.x, min(delta.y, delta.z));
                 if(dist_past_bb > 0.0) {
-                    vec3 delta = RayBoxDist(pos, -dir, vec3(voxel_pos), vec3(voxel_pos + ivec3(1)));
-                    float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
                     projectile.pos += vec4(dir*(dist_past_bb - dist_diff), 0.0);
+                }
+
+                if(projectile.wall_bounce == 1) {
+                    vec3 new_dir = dir;
+                    if(delta.x == dist_diff) {
+                        new_dir.x *= -1.0;
+                    } else if(delta.y == dist_diff) {
+                        new_dir.y *= -1.0;
+                    } else if(delta.z == dist_diff) {
+                        new_dir.z *= -1.0;
+                    }
+                    projectile.dir = quaternion_from_arc(vec3(0.0, 0.0, 1.0), new_dir);
+                    projectiles[projectile_idx] = projectile;
+                    return;
                 }
 
                 if (projectile.damage > 0) {

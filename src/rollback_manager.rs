@@ -489,7 +489,7 @@ impl WorldState {
         let voxels = vox_compute.voxels();
         let mut new_projectiles = Vec::new();
         let mut voxels_to_write: Vec<(Point3<i32>, [u32; 2])> = Vec::new();
-        let mut new_effects:Vec<(usize, Point3<f32>, ReferencedEffect)> = Vec::new();
+        let mut new_effects:Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)> = Vec::new();
 
         let player_stats: Vec<PlayerEffectStats> = self
             .players
@@ -712,7 +712,7 @@ impl WorldState {
                                     voxels_to_write.push((pos, material.to_memory()));
                                 }
                                 for effect in effects {
-                                    new_effects.push((player_idx, pos, effect));
+                                    new_effects.push((player_idx, pos, player.pos - pos, effect));
                                 }
                             }
                             break 'outer;
@@ -750,6 +750,7 @@ impl WorldState {
         }
         for (i, j) in player_player_collision_pairs {
             let player1_pos = self.players.get(i).unwrap().pos;
+            let player2_pos = self.players.get(j).unwrap().pos;
             let hit_effects = {
                 let player1 = self.players.get(i).unwrap();
                 player1.status_effects.iter().filter_map(|effect| match effect {
@@ -770,7 +771,7 @@ impl WorldState {
                     voxels_to_write.push((pos, material.to_memory()));
                 }
                 for effect in effects {
-                    new_effects.push((j, player1_pos, effect));
+                    new_effects.push((j, player1_pos, player2_pos - player1_pos, effect));
                 }
             }
         }
@@ -793,7 +794,7 @@ impl WorldState {
             }
         }
 
-        for (player_idx, effect_pos, effect) in new_effects {
+        for (player_idx, effect_pos, effect_direction, effect) in new_effects {
             let player = self.players.get_mut(player_idx).unwrap();
             match effect {
                 ReferencedEffect::Damage(damage) => {
@@ -803,8 +804,7 @@ impl WorldState {
                 }
                 ReferencedEffect::Knockback(knockback) => {
                     let knockback = 10.0 * knockback as f32;
-                    let knockback_dir = player.pos
-                        - effect_pos;
+                    let knockback_dir = effect_direction;
                     if knockback_dir.magnitude() > 0.0 {
                         player.vel +=
                             knockback * (knockback_dir).normalize();
@@ -959,7 +959,7 @@ impl Projectile {
         time_step: f32,
         new_projectiles: &mut Vec<Projectile>,
         voxels_to_write: &mut Vec<(Point3<i32>, [u32; 2])>,
-        new_effects: &mut Vec<(usize, Point3<f32>, ReferencedEffect)>,
+        new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
     ) {
         let proj_card = card_manager.get_referenced_proj(self.proj_card_idx as usize);
         let projectile_rot = Quaternion::new(self.dir[3], self.dir[0], self.dir[1], self.dir[2]);
@@ -1014,7 +1014,7 @@ impl Projectile {
                     voxels_to_write.push((pos, material.to_memory()));
                 }
                 for effect in effects {
-                    new_effects.push((self.owner as usize, Point3::new(self.pos[0], self.pos[1], self.pos[2]), effect));
+                    new_effects.push((self.owner as usize, Point3::new(self.pos[0], self.pos[1], self.pos[2]), projectile_dir, effect));
                 }
             }
         }
@@ -1032,7 +1032,7 @@ impl Projectile {
                     voxels_to_write.push((pos, material.to_memory()));
                 }
                 for effect in effects {
-                    new_effects.push((self.owner as usize, Point3::new(self.pos[0], self.pos[1], self.pos[2]), effect));
+                    new_effects.push((self.owner as usize, Point3::new(self.pos[0], self.pos[1], self.pos[2]), projectile_dir, effect));
                 }
             }
         }
@@ -1072,7 +1072,7 @@ impl Player {
         voxel_reader: &BufferReadGuard<'_, [[u32; 2]]>,
         new_projectiles: &mut Vec<Projectile>,
         voxels_to_write: &mut Vec<(Point3<i32>, [u32; 2])>,
-        new_effects: &mut Vec<(usize, Point3<f32>, ReferencedEffect)>,
+        new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
     ) {
         if self.respawn_timer > 0.0 {
             self.respawn_timer -= time_step;
@@ -1158,7 +1158,7 @@ impl Player {
                         voxels_to_write.push((pos, material.to_memory()));
                     }
                     for effect in effects {
-                        new_effects.push((player_idx, self.pos, effect));
+                        new_effects.push((player_idx, self.pos, self.dir, effect));
                     }
                 }
             }

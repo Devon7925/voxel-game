@@ -207,6 +207,13 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                         "",
                                         modifier.get_hover_text(),
                                     ),
+                                    ProjectileModifier::WallBounce => add_hoverable_basic_modifer(
+                                        ui,
+                                        item_id,
+                                        "Wall Bounce",
+                                        "",
+                                        modifier.get_hover_text(),
+                                    ),
                                     ProjectileModifier::OnExpiry(_) | ProjectileModifier::OnHit(_) | ProjectileModifier::Trail(_, _) => {}
                                 }
 

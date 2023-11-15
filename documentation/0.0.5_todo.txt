@@ -2,6 +2,3 @@ Replays
     Add playback
 Tuning
     balance 1 shots
-Cards
-    Projectile Modifiers
-        Terrain bounce

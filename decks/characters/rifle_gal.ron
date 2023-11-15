@@ -29,6 +29,7 @@
         SimpleModify(Gravity,2),
         SimpleModify(Health,-10),
         SimpleModify(Speed,-1),
+        WallBounce,
         OnExpiry(Projectile([
             SimpleModify(Speed,-3),
             SimpleModify(Width,3),

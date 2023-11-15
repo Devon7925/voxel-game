@@ -59,7 +59,7 @@ pub struct Projectile {
     pub owner: u32,
     pub damage: f32,
     pub proj_card_idx: u32,
-    pub _filler2: f32,
+    pub wall_bounce: u32,
     pub _filler3: f32,
 }
 

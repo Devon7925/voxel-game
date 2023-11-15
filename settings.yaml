@@ -3,7 +3,7 @@ remote_url: ws://primd.net:3536/extreme_bevy?next=2
 is_remote: false
 player_count: 1
 fullscreen_toggle: F11
-card_file: decks/characters/edgy_skeleton.ron
+card_file: decks/characters/rifle_gal.ron
 movement_controls:
   forward: !Key W
   backward: !Key S
