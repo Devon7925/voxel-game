@@ -11,7 +11,9 @@ Abiliy Modifiers
 On Trigger
     On Trigger (id)
     Trigger (id)
-Add effect ui
+UI
+    Add status effect ui
+    Exit to main menu button
 Finish card editor
     allow dragging
         multi modifiers

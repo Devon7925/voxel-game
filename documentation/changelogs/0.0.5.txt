@@ -2,6 +2,7 @@ Card file setting
 Hover for modifiers
 Increased gravity
 Main menu
+Adjusted on hit when hitting terrain to be more accurate
 New Cards
     Status Effects
         Damage Taken

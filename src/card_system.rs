@@ -210,11 +210,11 @@ impl BaseCard {
             }
             BaseCard::CreateMaterial(material) => match material {
                 VoxelMaterial::Air => 0.0,
-                VoxelMaterial::Stone => 10.0,
-                VoxelMaterial::Dirt => 5.0,
-                VoxelMaterial::Grass => 5.0,
-                VoxelMaterial::Ice => 20.0,
-                VoxelMaterial::Glass => 15.0,
+                VoxelMaterial::Stone => 1.0,
+                VoxelMaterial::Dirt => 0.5,
+                VoxelMaterial::Grass => 0.5,
+                VoxelMaterial::Ice => 2.0,
+                VoxelMaterial::Glass => 1.5,
             },
             BaseCard::Effect(effect) => match effect {
                 Effect::Damage(damage) => (*damage as f32).abs(),

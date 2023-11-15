@@ -40,11 +40,17 @@ void set_data(ivec3 global_pos, uvec2 data) {
     voxels[index] = data;
 }
 
+vec3 RayBoxDist(vec3 pos, vec3 ray, vec3 vmin, vec3 vmax) {
+    vec3 normMinDiff = (vmin - pos) / ray;
+    vec3 normMaxDiff = (vmax - pos) / ray;
+    return max(normMinDiff, normMaxDiff);
+}
+
 void main() {
     uint projectile_idx = gl_WorkGroupSize.x * gl_WorkGroupID.x + gl_LocalInvocationID.x;
     Projectile projectile = projectiles[projectile_idx];
 
-    ivec3 grid_iteration_count =  ivec3(ceil(2.0*projectile.size * sqrt(2.0)));
+    ivec3 grid_iteration_count = ivec3(ceil(2.0*projectile.size * sqrt(2.0)));
     grid_iteration_count.z = int(ceil((2.0*projectile.size.z + sim_data.dt * projectile.vel) * sqrt(2.0)));
     vec3 grid_dist = 2.0 * projectile.size.xyz / grid_iteration_count;
     grid_dist.z = (2.0 * projectile.size.z + sim_data.dt * projectile.vel) / grid_iteration_count.z;
@@ -65,6 +71,14 @@ void main() {
                     projectiles[projectile_idx] = projectile;
                     return;
                 }
+
+                float dist_past_bb = grid_dist.z*k - 2.0*projectile.size.z;
+                if(dist_past_bb > 0.0) {
+                    vec3 delta = RayBoxDist(pos, -dir, vec3(voxel_pos), vec3(voxel_pos + ivec3(1)));
+                    float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
+                    projectile.pos += vec4(dir*(dist_past_bb - dist_diff), 0.0);
+                }
+
                 if (projectile.damage > 0) {
                     uint vox_index = get_index(voxel_pos, sim_data.render_size);
                     atomicAdd(voxels[vox_index].y, int(projectile.damage));
