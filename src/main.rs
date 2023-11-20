@@ -160,26 +160,24 @@ fn main() {
                     (Instant::now() - time).as_secs_f32()
                 );
             }
-            if app.rollback_data.player_count() >= app.settings.player_count as usize
-            {
-                compute_then_render(
-                    &mut app,
-                    &sim_settings,
-                    &mut sim_data,
-                    &mut recreate_swapchain,
-                    &mut previous_frame_end,
-                    &mut gui_state,
-                    skip_render,
-                );
-                let window = app
-                    .vulkano_interface
-                    .surface
-                    .object()
-                    .unwrap()
-                    .downcast_ref::<Window>()
-                    .unwrap();
-                window.set_cursor_visible(gui_state.menu_stack.len() > 0 && window.has_focus());
-            }
+            sim_settings.do_compute = app.rollback_data.player_count() >= app.settings.player_count as usize;
+            compute_then_render(
+                &mut app,
+                &sim_settings,
+                &mut sim_data,
+                &mut recreate_swapchain,
+                &mut previous_frame_end,
+                &mut gui_state,
+                skip_render,
+            );
+            let window = app
+                .vulkano_interface
+                .surface
+                .object()
+                .unwrap()
+                .downcast_ref::<Window>()
+                .unwrap();
+            window.set_cursor_visible(gui_state.menu_stack.len() > 0 && window.has_focus());
             app.rollback_data.end_frame();
         }
     }
