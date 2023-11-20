@@ -15,6 +15,7 @@ UI
     Add status effect ui
     Exit to main menu button
 Finish card editor
+    Make non adjacent modifiers stack
     allow dragging
         multi modifiers
         base cards

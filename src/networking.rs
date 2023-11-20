@@ -2,16 +2,16 @@ use futures::{select, FutureExt};
 use futures_timer::Delay;
 use matchbox_socket::{PeerState, WebRtcSocket, PeerId};
 use serde::{Deserialize, Serialize};
-use std::{time::Duration, collections::HashMap};
+use std::time::Duration;
 use tokio::runtime::Runtime;
 use std::str;
 
-use crate::{rollback_manager::{PlayerAction, RollbackData, Player, PlayerAbility}, SPAWN_LOCATION, card_system::{BaseCard, CardManager}, settings_manager::Settings};
+use crate::{rollback_manager::PlayerAction, card_system::BaseCard, settings_manager::Settings};
 
+#[derive(Debug)]
 pub struct NetworkConnection {
     socket: WebRtcSocket,
     _runtime: Runtime,
-    player_idx_map: HashMap<PeerId, usize>,
     packet_queue: Vec<NetworkPacket>,
 }
 
@@ -54,7 +54,6 @@ impl NetworkConnection {
         NetworkConnection {
             socket,
             _runtime: rt,
-            player_idx_map: HashMap::new(),
             packet_queue: Vec::new(),
         }
     }
@@ -63,71 +62,37 @@ impl NetworkConnection {
         self.packet_queue.push(packet);
     }
 
-    pub fn network_update(&mut self, player_action: &PlayerAction, player_cards: &Vec<BaseCard>, card_system: &mut CardManager, rollback_manager: &mut RollbackData) {
-        // Build message to send to peers
-        let packet_data = NetworkPacket::Action(rollback_manager.current_time, player_action.clone());
-        let packet = ron::to_string(&packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
-
+    pub fn network_update(&mut self, player_count: usize) -> (Vec<(PeerId, PeerState)>, Vec<(PeerId, NetworkPacket)>) {
+        let mut player_connection_changes = Vec::new();
+        let mut recieved_packets = Vec::new();
         // Handle any new peers
         for (peer, state) in self.socket.update_peers() {
-            match state {
-                PeerState::Connected => {
-                    println!("Peer joined: {:?}", peer);
+            player_connection_changes.push((peer, state));
+        }
 
-                    self.player_idx_map.insert(peer, rollback_manager.rollback_state.players.len());
-
-                    rollback_manager.player_join(Player {
-                        pos: SPAWN_LOCATION,
-                        ..Default::default()
-                    });
-
-                    {
-                        let deck_packet_data = NetworkPacket::DeckUpdate(rollback_manager.current_time, player_cards.clone());
-                        let deck_packet = ron::to_string(&deck_packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
-                        self.socket.send(deck_packet.clone(), peer);
-                    }
-                    {
-                        let dt_packet_data = NetworkPacket::DeltatimeUpdate(rollback_manager.current_time, rollback_manager.delta_time);
-                        let dt_packet = ron::to_string(&dt_packet_data).unwrap().as_bytes().to_vec().into_boxed_slice();
-                        self.socket.send(dt_packet.clone(), peer);
-                    }
-                }
-                PeerState::Disconnected => {
-                    println!("Peer left: {:?}", peer);
-                }
+        if player_count > 1 {
+            // Accept any messages incoming
+            for (peer, packet) in self.socket.receive() {
+                let message = str::from_utf8(packet.as_ref()).unwrap();
+                let foreign_player_action:NetworkPacket = ron::from_str(message).unwrap();
+                recieved_packets.push((peer, foreign_player_action));
             }
-            self.socket.send(packet.clone(), peer);
         }
+        (player_connection_changes, recieved_packets)
+    }
 
-        if rollback_manager.rollback_state.players.len() <= 1 {
-            return;
-        }
+    pub fn send_packet(&mut self, peer: PeerId, packet: NetworkPacket) {
+        let packet = ron::to_string(&packet).unwrap().as_bytes().to_vec().into_boxed_slice();
+        self.socket.send(packet.clone(), peer);
+    }
 
-        for (peer, _) in self.player_idx_map.iter() {
-            self.socket.send(packet.clone(), *peer);
-            for packet in self.packet_queue.drain(..) {
+    pub fn send_packet_queue(&mut self, peers: Vec<&PeerId>) {
+        for peer in peers {
+            for packet in self.packet_queue.clone() {
                 let packet = ron::to_string(&packet).unwrap().as_bytes().to_vec().into_boxed_slice();
-                self.socket.send(packet.clone(), *peer);
+                self.socket.send(packet.clone(), peer.clone());
             }
         }
-
-        // Accept any messages incoming
-        for (peer, packet) in self.socket.receive() {
-            let message = str::from_utf8(packet.as_ref()).unwrap();
-            let foreign_player_action:NetworkPacket = ron::from_str(message).unwrap();
-
-            let player_idx = self.player_idx_map.get(&peer).unwrap().clone();
-            match foreign_player_action {
-                NetworkPacket::Action(time, action) => {
-                    rollback_manager.send_action(action, player_idx, time);
-                }
-                NetworkPacket::DeckUpdate(time, cards) => {
-                    rollback_manager.send_deck_update(cards, player_idx, time);
-                }
-                NetworkPacket::DeltatimeUpdate(time, delta_time) => {
-                    rollback_manager.send_dt_update(delta_time, player_idx, time);
-                }
-            }
-        }
+        self.packet_queue.clear();
     }
 }

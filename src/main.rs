@@ -16,14 +16,10 @@ use crate::{
     app::RenderPipeline,
     card_system::BaseCard,
     gui::{GuiElement, GuiState},
-    rollback_manager::PlayerAbility,
-    settings_manager::Settings, networking::NetworkPacket,
+    settings_manager::Settings,
 };
-use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector2, Vector3};
+use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use multipass_system::Pass;
-use networking::NetworkConnection;
-use rollback_manager::{Player, PlayerAction};
-use settings_manager::Control;
 use std::io::Write;
 use std::{fs, panic, time::Instant};
 use vulkano::{
@@ -59,7 +55,7 @@ pub struct SimData {
     start_pos: [i32; 3],
 }
 
-struct WindowProperties {
+pub struct WindowProperties {
     pub width: u32,
     pub height: u32,
     pub fullscreen: bool,
@@ -74,8 +70,6 @@ pub const SPAWN_LOCATION: Point3<f32> = Point3::new(
 
 pub const PLAYER_HITBOX_OFFSET: Vector3<f32> = Vector3::new(0.0, -2.0, 0.0);
 pub const PLAYER_HITBOX_SIZE: Vector3<f32> = Vector3::new(1.8, 4.8, 1.8);
-
-pub const CHUNK_LOAD: bool = false;
 
 fn main() {
     // Create event loop.
@@ -102,14 +96,14 @@ fn main() {
         start_puffin_server();
     }
 
-    let mut player_deck =
+    let player_deck =
         BaseCard::vec_from_string(fs::read_to_string(&settings.card_file).unwrap().as_str());
+    assert!(player_deck.iter().all(|card| card.is_reasonable()));
 
     // Create app with vulkano context.
     let mut app = RenderPipeline::new(&event_loop, settings, &player_deck);
 
     // Time & inputs...
-    let mut cursor_pos = Vector2::new(0.0, 0.0);
     let mut sim_settings = SimSettings {
         max_dist: 15,
         do_compute: true,
@@ -121,33 +115,6 @@ fn main() {
         start_pos: FIRST_START_POS,
     };
 
-    assert!(player_deck.iter().all(|card| card.is_reasonable()));
-
-    app.rollback_data.player_join(Player {
-        pos: SPAWN_LOCATION,
-        abilities: player_deck
-            .iter()
-            .map(|card| PlayerAbility {
-                value: card.evaluate_value(true),
-                ability: app.card_manager.register_base_card(card.clone()),
-                cooldown: 0.0,
-            })
-            .collect(),
-        ..Default::default()
-    });
-
-    let mut player_action = PlayerAction {
-        forward: false,
-        backward: false,
-        left: false,
-        right: false,
-        jump: false,
-        crouch: false,
-        activate_ability: vec![false; app.settings.ability_controls.len()],
-        aim: [0.0, 0.0],
-    };
-
-    let mut network_connection = NetworkConnection::new(&app.settings);
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(app.vulkano_interface.device.clone()).boxed());
 
@@ -165,18 +132,13 @@ fn main() {
     };
 
     let mut time = Instant::now();
-    let mut chunk_time = Instant::now();
     loop {
         let should_continue = handle_events(
             &mut event_loop,
             &mut app,
-            &mut cursor_pos,
             &mut sim_settings,
-            &mut player_action,
             &mut window_props,
             &mut gui_state,
-            &mut player_deck,
-            &mut network_connection,
         );
         // Event handling.
         if !should_continue {
@@ -188,14 +150,9 @@ fn main() {
             puffin::GlobalProfiler::lock().new_frame();
             previous_frame_end.as_mut().unwrap().cleanup_finished();
             if app.settings.player_count > 1 && gui_state.in_game {
-                network_connection.network_update(
-                    &player_action,
-                    &player_deck,
-                    &mut app.card_manager,
-                    &mut app.rollback_data,
-                );
+                app.rollback_data.update();
             }
-            time += std::time::Duration::from_secs_f32(app.rollback_data.delta_time);
+            time += std::time::Duration::from_secs_f32(app.rollback_data.get_delta_time());
             let skip_render = (Instant::now() - time).as_secs_f32() > 0.0;
             if skip_render {
                 println!(
@@ -203,7 +160,7 @@ fn main() {
                     (Instant::now() - time).as_secs_f32()
                 );
             }
-            if app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize
+            if app.rollback_data.player_count() >= app.settings.player_count as usize
             {
                 compute_then_render(
                     &mut app,
@@ -212,7 +169,6 @@ fn main() {
                     &mut recreate_swapchain,
                     &mut previous_frame_end,
                     &mut gui_state,
-                    player_action.clone(),
                     skip_render,
                 );
                 let window = app
@@ -224,23 +180,7 @@ fn main() {
                     .unwrap();
                 window.set_cursor_visible(gui_state.menu_stack.len() > 0 && window.has_focus());
             }
-            player_action.aim = [0.0, 0.0];
-        }
-        if (Instant::now() - chunk_time).as_secs_f64() > 2.0
-            && CHUNK_LOAD
-            && app.rollback_data.rollback_state.players.len() >= app.settings.player_count as usize
-        {
-            let cam_player = app.rollback_data.cached_current_state.players[0].clone();
-            let diff_from_mid: Point3<i32> = (cam_player.pos.map(|c| c as i32)
-                - (Vector3::from(sim_data.start_pos)
-                    + Vector3::from(RENDER_SIZE).map(|c| c as i32) / 2)
-                    * (CHUNK_SIZE as i32))
-                / (CHUNK_SIZE as i32);
-            if diff_from_mid != Point3::new(0, 0, 0) {
-                app.voxel_compute
-                    .move_start_pos(&mut sim_data, diff_from_mid.into());
-            }
-            chunk_time = Instant::now();
+            app.rollback_data.end_frame();
         }
     }
 }
@@ -249,13 +189,9 @@ fn main() {
 fn handle_events(
     event_loop: &mut EventLoop<()>,
     app: &mut RenderPipeline,
-    cursor_pos: &mut Vector2<f32>,
     sim_settings: &mut SimSettings,
-    controls: &mut PlayerAction,
     window_props: &mut WindowProperties,
     gui_state: &mut GuiState,
-    player_deck: &mut Vec<BaseCard>,
-    network_connection: &mut NetworkConnection,
 ) -> bool {
     let mut is_running = true;
 
@@ -270,6 +206,7 @@ fn handle_events(
                 if gui_event {
                     return;
                 }
+                app.rollback_data.process_event(event, &app.settings, gui_state, &window_props);
                 match event {
                     WindowEvent::CloseRequested => {
                         is_running = false;
@@ -280,7 +217,7 @@ fn handle_events(
                         window_props.height = new_size.height;
                     }
                     // Handle mouse position events.
-                    WindowEvent::CursorMoved { position, .. } => {
+                    WindowEvent::CursorMoved { .. } => {
                         if gui_state.menu_stack.len() == 0 {
                             let window = app
                                 .vulkano_interface
@@ -296,48 +233,11 @@ fn handle_events(
                                         (window_props.height / 2) as f64,
                                     ))
                                     .unwrap_or_else(|_| println!("Failed to set cursor position"));
-                                // turn camera
-                                let delta = app.settings.movement_controls.sensitivity
-                                    * (Vector2::new(position.x as f32, position.y as f32)
-                                        - Vector2::new(
-                                            (window_props.width / 2) as f32,
-                                            (window_props.height / 2) as f32,
-                                        ));
-                                controls.aim[0] += delta.x;
-                                controls.aim[1] += delta.y;
-                                *cursor_pos = Vector2::new(position.x as f32, position.y as f32)
                             }
                         }
                     }
                     // Handle mouse button events.
-                    WindowEvent::MouseInput { state, button, .. } => {
-                        macro_rules! mouse_match {
-                            ($property:ident) => {
-                                if let Control::Mouse(mouse_code) =
-                                    app.settings.movement_controls.$property
-                                {
-                                    if button == &mouse_code {
-                                        controls.$property = state == &ElementState::Pressed;
-                                    }
-                                }
-                            };
-                        }
-                        mouse_match!(jump);
-                        mouse_match!(crouch);
-                        mouse_match!(right);
-                        mouse_match!(left);
-                        mouse_match!(forward);
-                        mouse_match!(backward);
-                        for (ability_idx, ability_key) in
-                            app.settings.ability_controls.iter().enumerate()
-                        {
-                            if let Control::Mouse(mouse_code) = ability_key {
-                                if button == mouse_code {
-                                    controls.activate_ability[ability_idx] =
-                                        state == &ElementState::Pressed;
-                                }
-                            }
-                        }
+                    WindowEvent::MouseInput { .. } => {
                     }
                     WindowEvent::KeyboardInput { input, .. } => {
                         input.virtual_keycode.map(|key| {
@@ -360,48 +260,11 @@ fn handle_events(
                                     window.set_fullscreen(None);
                                 }
                             }
-
-                            macro_rules! key_match {
-                                ($property:ident) => {
-                                    if let Control::Key(key_code) =
-                                        app.settings.movement_controls.$property
-                                    {
-                                        if key == key_code {
-                                            controls.$property =
-                                                input.state == ElementState::Pressed;
-                                        }
-                                    }
-                                };
-                            }
-                            key_match!(jump);
-                            key_match!(crouch);
-                            key_match!(right);
-                            key_match!(left);
-                            key_match!(forward);
-                            key_match!(backward);
-                            for (ability_idx, ability_key) in
-                                app.settings.ability_controls.iter().enumerate()
-                            {
-                                if let Control::Key(key_code) = ability_key {
-                                    if key == *key_code {
-                                        controls.activate_ability[ability_idx] =
-                                            input.state == ElementState::Pressed;
-                                    }
-                                }
-                            }
                             match key {
                                 winit::event::VirtualKeyCode::Escape => {
                                     if input.state == ElementState::Released {
                                         if gui_state.menu_stack.len() > 0 && !gui_state.menu_stack.last().is_some_and(|gui| *gui == GuiElement::MainMenu) {
-                                            let exited_ui = gui_state.menu_stack.pop().unwrap();
-                                            match exited_ui {
-                                                GuiElement::CardEditor => {
-                                                    *player_deck = gui_state.gui_cards.clone();
-                                                    app.rollback_data.send_deck_update(player_deck.clone(), 0, app.rollback_data.current_time);
-                                                    network_connection.queue_packet(NetworkPacket::DeckUpdate(app.rollback_data.current_time, player_deck.clone()));
-                                                }
-                                                _ => (),
-                                            }
+                                            let _exited_ui = gui_state.menu_stack.pop().unwrap();
                                         } else {
                                             gui_state.menu_stack.push(GuiElement::EscMenu);
                                         }
@@ -428,11 +291,9 @@ fn handle_events(
                                 winit::event::VirtualKeyCode::R => {
                                     if input.state == ElementState::Released {
                                         let cam_player =
-                                            app.rollback_data.cached_current_state.players[0]
-                                                .clone();
+                                            app.rollback_data.get_camera();
                                         println!("cam_pos: {:?}", cam_player.pos);
-                                        println!("cam_dir: {:?}", cam_player.dir);
-                                        println!("cam_vel: {:?}", cam_player.vel);
+                                        println!("cam_rot: {:?}", cam_player.rot);
                                     }
                                 }
                                 _ => (),
@@ -457,7 +318,6 @@ fn compute_then_render(
     recreate_swapchain: &mut bool,
     previous_frame_end: &mut Option<Box<dyn GpuFuture>>,
     gui_state: &mut GuiState,
-    action: PlayerAction,
     skip_render: bool,
 ) {
     puffin::profile_function!();
@@ -472,7 +332,7 @@ fn compute_then_render(
     if dimensions.width == 0 || dimensions.height == 0 {
         return;
     }
-    let time_step = pipeline.rollback_data.delta_time;
+    let time_step = pipeline.rollback_data.get_delta_time();
 
     if *recreate_swapchain {
         let (new_swapchain, new_images) =
@@ -513,9 +373,9 @@ fn compute_then_render(
 
     let future = previous_frame_end.take().unwrap().join(acquire_future);
 
-    let view_matrix = if pipeline.rollback_data.cached_current_state.players.len() > 0 {
-        let cam_player = pipeline.rollback_data.cached_current_state.players[0].clone();
-        (Matrix4::from_translation(cam_player.pos.to_vec()) * Matrix4::from(cam_player.rot))
+    let view_matrix = if pipeline.rollback_data.player_count() > 0 {
+        let camera = pipeline.rollback_data.get_camera();
+        (Matrix4::from_translation(camera.pos.to_vec()) * Matrix4::from(camera.rot))
             .invert()
             .unwrap()
     } else {
@@ -535,9 +395,6 @@ fn compute_then_render(
             &pipeline.projectile_compute,
             &mut pipeline.voxel_compute,
         );
-        pipeline
-            .rollback_data
-            .send_action(action, 0, pipeline.rollback_data.current_time);
         pipeline.rollback_data.step(
             &mut pipeline.card_manager,
             time_step,
@@ -545,7 +402,7 @@ fn compute_then_render(
         );
         pipeline
             .projectile_compute
-            .upload(&pipeline.rollback_data.rollback_state.projectiles);
+            .upload(pipeline.rollback_data.get_projectiles());
         let after_proj_compute = pipeline.projectile_compute.compute(
             future,
             &pipeline.voxel_compute,
@@ -572,15 +429,15 @@ fn compute_then_render(
                 Pass::Deferred(mut draw_pass) => {
                     puffin::profile_scope!("rasterize");
                     if gui_state.in_game {
-                        let cam_player = pipeline.rollback_data.cached_current_state.players[0].clone();
-                        let view_matrix = (Matrix4::from_translation(-cam_player.pos.to_vec())
-                            * Matrix4::from(cam_player.rot))
+                        let camera = pipeline.rollback_data.get_camera();
+                        let view_matrix = (Matrix4::from_translation(-camera.pos.to_vec())
+                            * Matrix4::from(camera.rot))
                         .invert()
                         .unwrap();
                         let cb = pipeline.vulkano_interface.rasterizer_system.draw(
                             draw_pass.viewport_dimensions(),
                             view_matrix,
-                            &pipeline.rollback_data.cached_current_state,
+                            &pipeline.rollback_data.get_current_state(),
                         );
                         draw_pass.execute(cb);
                     }

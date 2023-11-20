@@ -3,3 +3,4 @@ projectile health system problems
     some eat abilities basically need infinite health
 players need a way to make some of their abilities more powerful than others
 damage taken modifiers modify healing as well
+Add practice range

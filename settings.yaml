@@ -27,6 +27,6 @@ graphics_settings:
 delta_time: 0.03
 replay_settings:
     replay_file: replay.txt
-    record_replay: false
+    replay_mode: None
 do_profiling: false
 crash_log: crash_log.txt

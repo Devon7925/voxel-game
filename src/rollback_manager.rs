@@ -1,32 +1,80 @@
 use std::{
-    collections::VecDeque, f32::consts::PI, fs::File, io::Write, ops::ControlFlow, sync::Arc,
+    collections::{VecDeque, HashMap}, f32::consts::PI, fs::File, io::Write, sync::Arc,
 };
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{
     EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation, Rotation3, Vector2, Vector3,
 };
+use matchbox_socket::{PeerState, PeerId};
 use serde::{Deserialize, Serialize};
 use vulkano::{
     buffer::{subbuffer::BufferReadGuard, Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
 };
+use winit::event::{ElementState, WindowEvent};
 
 use crate::{
     card_system::{
-        BaseCard, CardManager, Effect, ReferencedBaseCard, ReferencedBaseCardType, StatusEffect,
-        VoxelMaterial, ReferencedEffect, ReferencedStatusEffect,
+        BaseCard, CardManager, ReferencedBaseCard, ReferencedBaseCardType,
+        ReferencedEffect, ReferencedStatusEffect, VoxelMaterial,
     },
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
-    settings_manager::Settings,
+    settings_manager::{Settings, ReplayMode, Control},
     voxel_sim_manager::VoxelComputePipeline,
-    CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, SPAWN_LOCATION,
+    CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, SPAWN_LOCATION, networking::{NetworkConnection, NetworkPacket}, gui::{GuiElement, GuiState}, WindowProperties,
 };
 
 #[derive(Clone, Debug)]
 pub struct WorldState {
     pub players: Vec<Player>,
     pub projectiles: Vec<Projectile>,
+}
+
+pub struct Camera {
+    pub pos: Point3<f32>,
+    pub rot: Quaternion<f32>,
+}
+
+pub trait PlayerSim {
+    fn update_rollback_state(
+        &mut self,
+        card_manager: &mut CardManager,
+        time_step: f32,
+        vox_compute: &mut VoxelComputePipeline,
+    );
+
+    fn get_current_state(&self) -> &WorldState;
+
+    fn step(
+        &mut self,
+        card_manager: &mut CardManager,
+        time_step: f32,
+        vox_compute: &mut VoxelComputePipeline,
+    );
+
+    fn download_projectiles(
+        &mut self,
+        card_manager: &CardManager,
+        projectile_compute: &ProjectileComputePipeline,
+        vox_compute: &mut VoxelComputePipeline,
+    );
+
+    fn get_camera(&self) -> Camera;
+    fn get_spectate_player(&self) -> Option<Player>;
+
+    fn get_delta_time(&self) -> f32;
+    fn get_projectiles(&self) -> &Vec<Projectile>;
+    fn get_players(&self) -> &Vec<Player>;
+    fn player_count(&self) -> usize;
+
+    fn projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]>;
+    fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]>;
+
+    fn update(&mut self);
+
+    fn process_event(&mut self, event: &winit::event::WindowEvent<'_>, settings: &Settings, gui_state: &mut GuiState, window_props: &WindowProperties);
+    fn end_frame(&mut self);
 }
 
 #[derive(Debug)]
@@ -41,6 +89,20 @@ pub struct RollbackData {
     pub projectile_buffer: Subbuffer<[Projectile; 1024]>,
     pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
     replay_file: Option<File>,
+    network_connection: NetworkConnection,
+    player_action: PlayerAction,
+    player_deck: Vec<BaseCard>,
+    player_idx_map: HashMap<PeerId, usize>,
+}
+
+pub struct ReplayData {
+    pub current_time: u64,
+    pub delta_time: f32,
+    pub state: WorldState,
+    pub actions: VecDeque<Vec<Option<PlayerAction>>>,
+    pub meta_actions: VecDeque<Vec<Option<MetaAction>>>,
+    pub projectile_buffer: Subbuffer<[Projectile; 1024]>,
+    pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -162,11 +224,325 @@ impl Default for Player {
     }
 }
 
+impl PlayerSim for RollbackData {
+    fn update_rollback_state(
+        &mut self,
+        card_manager: &mut CardManager,
+        time_step: f32,
+        vox_compute: &mut VoxelComputePipeline,
+    ) {
+        if let Some(replay_file) = self.replay_file.as_mut() {
+            write!(replay_file, "\nTIME {}", self.current_time).unwrap();
+        }
+        self.rollback_time += 1;
+        {
+            let meta_actions = self.meta_actions.pop_front().unwrap();
+            if let Some(replay_file) = self.replay_file.as_mut() {
+                replay_file.write_all(b"\n").unwrap();
+                ron::ser::to_writer(replay_file, &meta_actions).unwrap();
+            }
+            for (player_idx, meta_action) in meta_actions.into_iter().enumerate() {
+                if let Some(MetaAction {
+                    adjust_dt,
+                    deck_update,
+                }) = meta_action
+                {
+                    if let Some(adjust_dt) = adjust_dt {
+                        self.delta_time = self.delta_time.max(adjust_dt);
+                    }
+                    if let Some(new_deck) = deck_update {
+                        self.rollback_state.players[player_idx].abilities = new_deck
+                            .into_iter()
+                            .map(|card| PlayerAbility {
+                                value: card.evaluate_value(true),
+                                ability: card_manager.register_base_card(card),
+                                cooldown: 0.0,
+                            })
+                            .collect();
+                    }
+                }
+            }
+        }
+        if self.rollback_time < 50 {
+            return;
+        }
+        {
+            let player_actions = self.actions.pop_front().unwrap();
+            assert!(player_actions.iter().all(|x| x.is_some()));
+            if let Some(replay_file) = self.replay_file.as_mut() {
+                replay_file.write_all(b"\n").unwrap();
+                ron::ser::to_writer(replay_file, &player_actions).unwrap();
+            }
+            self.rollback_state.step_sim(
+                &player_actions,
+                true,
+                card_manager,
+                time_step,
+                vox_compute,
+            );
+        }
+    }
+
+    fn get_current_state(&self) -> &WorldState {
+        &self.cached_current_state
+    }
+
+    fn step(
+        &mut self,
+        card_manager: &mut CardManager,
+        time_step: f32,
+        vox_compute: &mut VoxelComputePipeline,
+    ) {
+        self.send_action(self.player_action.clone(), 0, self.current_time);
+        puffin::profile_function!();
+        self.update_rollback_state(card_manager, time_step, vox_compute);
+        self.current_time += 1;
+        self.actions
+            .push_back(vec![None; self.rollback_state.players.len()]);
+        self.meta_actions
+            .push_back(vec![None; self.rollback_state.players.len()]);
+        self.cached_current_state = self.gen_current_state(card_manager, time_step, vox_compute);
+        //send projectiles
+        let projectile_count = 128.min(self.cached_current_state.projectiles.len());
+        {
+            let mut projectiles_buffer = self.projectile_buffer.write().unwrap();
+            for i in 0..projectile_count {
+                let projectile = self.cached_current_state.projectiles.get(i).unwrap();
+                projectiles_buffer[i] = projectile.clone();
+            }
+        }
+        //send players
+        let player_count = 128.min(self.cached_current_state.players.len());
+        {
+            let mut player_buffer = self.player_buffer.write().unwrap();
+            for i in 0..player_count {
+                let player = self.cached_current_state.players.get(i).unwrap();
+                player_buffer[i] = UploadPlayer {
+                    pos: [player.pos.x, player.pos.y, player.pos.z, 0.0],
+                    rot: [
+                        player.rot.v[0],
+                        player.rot.v[1],
+                        player.rot.v[2],
+                        player.rot.s,
+                    ],
+                    size: [player.size, player.size, player.size, 0.0],
+                    vel: [player.vel.x, player.vel.y, player.vel.z, 0.0],
+                    dir: [player.dir.x, player.dir.y, player.dir.z, 0.0],
+                    up: [player.up.x, player.up.y, player.up.z, 0.0],
+                    right: [player.right.x, player.right.y, player.right.z, 0.0],
+                };
+            }
+        }
+    }
+
+    fn download_projectiles(
+        &mut self,
+        card_manager: &CardManager,
+        projectile_compute: &ProjectileComputePipeline,
+        vox_compute: &mut VoxelComputePipeline,
+    ) {
+        self.rollback_state.projectiles =
+            projectile_compute.download_projectiles(card_manager, vox_compute);
+    }
+
+    fn get_camera(&self) -> Camera {
+        let player = self.get_spectate_player().unwrap_or_else(|| Player::default());
+        Camera {
+            pos: player.pos,
+            rot: player.rot,
+        }
+    }
+
+    fn get_delta_time(&self) -> f32 {
+        self.delta_time
+    }
+
+    
+    fn get_projectiles(&self) -> &Vec<Projectile> {
+        &self.rollback_state.projectiles
+    }
+
+    fn get_players(&self) -> &Vec<Player> {
+        &self.rollback_state.players
+    }
+
+    fn player_count(&self) -> usize {
+        self.rollback_state.players.len()
+    }
+
+    fn update(&mut self) {
+        let packet_data = NetworkPacket::Action(self.current_time, self.player_action.clone());
+        self.network_connection.queue_packet(packet_data);
+        let (connection_changes, recieved_packets) = self.network_connection.network_update(self.player_count());
+        for (peer, state) in connection_changes {
+            match state {
+                PeerState::Connected => {
+                    println!("Peer joined: {:?}", peer);
+
+                    self.player_idx_map.insert(peer, self.player_count());
+
+                    self.player_join(Player {
+                        pos: SPAWN_LOCATION,
+                        ..Default::default()
+                    });
+
+                    {
+                        let deck_packet = NetworkPacket::DeckUpdate(self.current_time, self.player_deck.clone());
+                        self.network_connection.send_packet(peer, deck_packet);
+                    }
+                    {
+                        let dt_packet = NetworkPacket::DeltatimeUpdate(self.current_time, self.delta_time);
+                        self.network_connection.send_packet(peer, dt_packet);
+                    }
+                }
+                PeerState::Disconnected => {
+                    println!("Peer left: {:?}", peer);
+                }
+            }
+        }
+
+        for (peer, packet) in recieved_packets {
+            let player_idx = self.player_idx_map.get(&peer).unwrap().clone();
+            match packet {
+                NetworkPacket::Action(time, action) => {
+                    self.send_action(action, player_idx, time);
+                }
+                NetworkPacket::DeckUpdate(time, cards) => {
+                    self.send_deck_update(cards, player_idx, time);
+                }
+                NetworkPacket::DeltatimeUpdate(time, delta_time) => {
+                    self.send_dt_update(delta_time, player_idx, time);
+                }
+            }
+        }
+
+        let peers = self.player_idx_map.keys().collect();
+        self.network_connection.send_packet_queue(peers);
+    }
+
+    fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
+        self.player_buffer.clone()
+    }
+
+    fn projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]> {
+        self.projectile_buffer.clone()
+    }
+
+    fn get_spectate_player(&self) -> Option<Player> {
+        self.cached_current_state.players.get(0).cloned()
+    }
+
+    fn process_event(&mut self, event: &winit::event::WindowEvent<'_>, settings: &Settings, gui_state: &mut GuiState, window_props: &WindowProperties) {
+        match event {
+            // Handle mouse position events.
+            WindowEvent::CursorMoved { position, .. } => {
+                if gui_state.menu_stack.len() == 0 {
+                    // turn camera
+                    let delta = settings.movement_controls.sensitivity
+                        * (Vector2::new(position.x as f32, position.y as f32)
+                            - Vector2::new(
+                                (window_props.width / 2) as f32,
+                                (window_props.height / 2) as f32,
+                            ));
+                    self.player_action.aim[0] += delta.x;
+                    self.player_action.aim[1] += delta.y;
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                macro_rules! mouse_match {
+                    ($property:ident) => {
+                        if let Control::Mouse(mouse_code) =
+                            settings.movement_controls.$property
+                        {
+                            if button == &mouse_code {
+                                self.player_action.$property = state == &ElementState::Pressed;
+                            }
+                        }
+                    };
+                }
+                mouse_match!(jump);
+                mouse_match!(crouch);
+                mouse_match!(right);
+                mouse_match!(left);
+                mouse_match!(forward);
+                mouse_match!(backward);
+                for (ability_idx, ability_key) in
+                    settings.ability_controls.iter().enumerate()
+                {
+                    if let Control::Mouse(mouse_code) = ability_key {
+                        if button == mouse_code {
+                            self.player_action.activate_ability[ability_idx] =
+                                state == &ElementState::Pressed;
+                        }
+                    }
+                }
+            }
+            WindowEvent::KeyboardInput { input, .. } => {
+                input.virtual_keycode.map(|key| {
+                    macro_rules! key_match {
+                        ($property:ident) => {
+                            if let Control::Key(key_code) =
+                                settings.movement_controls.$property
+                            {
+                                if key == key_code {
+                                    self.player_action.$property =
+                                        input.state == ElementState::Pressed;
+                                }
+                            }
+                        };
+                    }
+                    key_match!(jump);
+                    key_match!(crouch);
+                    key_match!(right);
+                    key_match!(left);
+                    key_match!(forward);
+                    key_match!(backward);
+                    for (ability_idx, ability_key) in
+                        settings.ability_controls.iter().enumerate()
+                    {
+                        if let Control::Key(key_code) = ability_key {
+                            if key == *key_code {
+                                self.player_action.activate_ability[ability_idx] =
+                                    input.state == ElementState::Pressed;
+                            }
+                        }
+                    }
+                    match key {
+                        winit::event::VirtualKeyCode::Escape => {
+                            if input.state == ElementState::Released {
+                                if gui_state.menu_stack.len() > 0 && !gui_state.menu_stack.last().is_some_and(|gui| *gui == GuiElement::MainMenu) {
+                                    let exited_ui = gui_state.menu_stack.last().unwrap();
+                                    match exited_ui {
+                                        GuiElement::CardEditor => {
+                                            self.player_deck.clear();
+                                            self.player_deck.extend(gui_state.gui_cards.clone());
+                                            self.send_deck_update(self.player_deck.clone(), 0, self.current_time);
+                                            self.network_connection.queue_packet(NetworkPacket::DeckUpdate(self.current_time, self.player_deck.clone()));
+                                        }
+                                        _ => (),
+                                    }
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
+                });
+            }
+            _ => {}
+        }
+    }
+
+    fn end_frame(&mut self) {
+        self.player_action.aim = [0.0, 0.0];
+    }
+}
+
 impl RollbackData {
     pub fn new(
         memory_allocator: &Arc<StandardMemoryAllocator>,
         settings: &Settings,
         deck: &Vec<BaseCard>,
+        card_manager: &mut CardManager,
     ) -> Self {
         let projectile_buffer = Buffer::new_sized(
             memory_allocator,
@@ -194,9 +570,7 @@ impl RollbackData {
         )
         .unwrap();
 
-        let mut replay_file = settings
-            .replay_settings
-            .record_replay
+        let mut replay_file = (settings.replay_settings.replay_mode == ReplayMode::Record)
             .then(|| std::fs::File::create(settings.replay_settings.replay_file.clone()).unwrap());
 
         if let Some(replay_file) = replay_file.as_mut() {
@@ -211,32 +585,82 @@ impl RollbackData {
         let current_time: u64 = 5;
         let rollback_time: u64 = 0;
 
+        let mut rollback_state = WorldState::new();
+        let mut actions = VecDeque::from(vec![
+            Vec::new();
+            (current_time - rollback_time + 15) as usize
+        ]);
+        let mut meta_actions = VecDeque::from(vec![
+            Vec::new();
+            (current_time - rollback_time + 15) as usize
+        ]);
+
+        let first_player = Player {
+            pos: SPAWN_LOCATION,
+            abilities: deck
+                .iter()
+                .map(|card| PlayerAbility {
+                    value: card.evaluate_value(true),
+                    ability: card_manager.register_base_card(card.clone()),
+                    cooldown: 0.0,
+                })
+                .collect(),
+            ..Default::default()
+        };
+        rollback_state.players.push(first_player);
+        actions.iter_mut().for_each(|x| {
+            x.push(Some(PlayerAction {
+                ..Default::default()
+            }))
+        });
+        meta_actions.iter_mut().for_each(|x| x.push(None));
+
+        let network_connection = NetworkConnection::new(settings);
+
+        let player_action = PlayerAction {
+            activate_ability: vec![false; settings.ability_controls.len()],
+            ..Default::default()
+        };
+
         RollbackData {
             current_time,
             rollback_time,
             delta_time: settings.delta_time,
-            rollback_state: WorldState::new(),
+            rollback_state,
             cached_current_state: WorldState::new(),
-            actions: VecDeque::from(vec![
-                Vec::new();
-                (current_time - rollback_time + 15) as usize
-            ]),
-            meta_actions: VecDeque::from(vec![
-                Vec::new();
-                (current_time - rollback_time + 15) as usize
-            ]),
+            actions,
+            meta_actions,
             player_buffer,
             projectile_buffer,
             replay_file,
+            network_connection,
+            player_action,
+            player_deck: deck.clone(),
+            player_idx_map: HashMap::new(),
         }
     }
 
-    pub fn projectiles(&self) -> Subbuffer<[Projectile; 1024]> {
-        self.projectile_buffer.clone()
-    }
-
-    pub fn players(&self) -> Subbuffer<[UploadPlayer; 128]> {
-        self.player_buffer.clone()
+    fn gen_current_state(
+        &self,
+        card_manager: &CardManager,
+        time_step: f32,
+        vox_compute: &mut VoxelComputePipeline,
+    ) -> WorldState {
+        let mut state = self.rollback_state.clone();
+        for i in self.rollback_time..self.current_time {
+            let actions = self
+                .actions
+                .get((i - self.rollback_time) as usize)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "cannot access index {} in action deque of length {}",
+                        i - self.rollback_time,
+                        self.actions.len()
+                    )
+                });
+            state.step_sim(actions, false, card_manager, time_step, vox_compute);
+        }
+        state
     }
 
     pub fn send_dt_update(&mut self, delta_time: f32, player_idx: usize, time_stamp: u64) {
@@ -330,144 +754,6 @@ impl RollbackData {
         });
         self.meta_actions.iter_mut().for_each(|x| x.push(None));
     }
-
-    fn update_rollback_state(
-        &mut self,
-        card_manager: &mut CardManager,
-        time_step: f32,
-        vox_compute: &mut VoxelComputePipeline,
-    ) {
-        if let Some(replay_file) = self.replay_file.as_mut() {
-            write!(replay_file, "\nTIME {}", self.current_time).unwrap();
-        }
-        self.rollback_time += 1;
-        {
-            let meta_actions = self.meta_actions.pop_front().unwrap();
-            if let Some(replay_file) = self.replay_file.as_mut() {
-                replay_file.write_all(b"\n").unwrap();
-                ron::ser::to_writer(replay_file, &meta_actions).unwrap();
-            }
-            for (player_idx, meta_action) in meta_actions.into_iter().enumerate() {
-                if let Some(MetaAction {
-                    adjust_dt,
-                    deck_update,
-                }) = meta_action
-                {
-                    if let Some(adjust_dt) = adjust_dt {
-                        self.delta_time = self.delta_time.max(adjust_dt);
-                    }
-                    if let Some(new_deck) = deck_update {
-                        self.rollback_state.players[player_idx].abilities = new_deck
-                            .into_iter()
-                            .map(|card| PlayerAbility {
-                                value: card.evaluate_value(true),
-                                ability: card_manager.register_base_card(card),
-                                cooldown: 0.0,
-                            })
-                            .collect();
-                    }
-                }
-            }
-        }
-        if self.rollback_time < 50 {
-            return;
-        }
-        {
-            let player_actions = self.actions.pop_front().unwrap();
-            assert!(player_actions.iter().all(|x| x.is_some()));
-            if let Some(replay_file) = self.replay_file.as_mut() {
-                replay_file.write_all(b"\n").unwrap();
-                ron::ser::to_writer(replay_file, &player_actions).unwrap();
-            }
-            self.rollback_state.step_sim(
-                &player_actions,
-                true,
-                card_manager,
-                time_step,
-                vox_compute,
-            );
-        }
-    }
-
-    fn get_current_state(
-        &self,
-        card_manager: &CardManager,
-        time_step: f32,
-        vox_compute: &mut VoxelComputePipeline,
-    ) -> WorldState {
-        let mut state = self.rollback_state.clone();
-        for i in self.rollback_time..self.current_time {
-            let actions = self
-                .actions
-                .get((i - self.rollback_time) as usize)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "cannot access index {} in action deque of length {}",
-                        i - self.rollback_time,
-                        self.actions.len()
-                    )
-                });
-            state.step_sim(actions, false, card_manager, time_step, vox_compute);
-        }
-        state
-    }
-
-    pub fn step(
-        &mut self,
-        card_manager: &mut CardManager,
-        time_step: f32,
-        vox_compute: &mut VoxelComputePipeline,
-    ) {
-        puffin::profile_function!();
-        self.update_rollback_state(card_manager, time_step, vox_compute);
-        self.current_time += 1;
-        self.actions
-            .push_back(vec![None; self.rollback_state.players.len()]);
-        self.meta_actions
-            .push_back(vec![None; self.rollback_state.players.len()]);
-        self.cached_current_state = self.get_current_state(card_manager, time_step, vox_compute);
-        //send projectiles
-        let projectile_count = 128.min(self.cached_current_state.projectiles.len());
-        {
-            let mut projectiles_buffer = self.projectile_buffer.write().unwrap();
-            for i in 0..projectile_count {
-                let projectile = self.cached_current_state.projectiles.get(i).unwrap();
-                projectiles_buffer[i] = projectile.clone();
-            }
-        }
-        //send players
-        let player_count = 128.min(self.cached_current_state.players.len());
-        {
-            let mut player_buffer = self.player_buffer.write().unwrap();
-            for i in 0..player_count {
-                let player = self.cached_current_state.players.get(i).unwrap();
-                player_buffer[i] = UploadPlayer {
-                    pos: [player.pos.x, player.pos.y, player.pos.z, 0.0],
-                    rot: [
-                        player.rot.v[0],
-                        player.rot.v[1],
-                        player.rot.v[2],
-                        player.rot.s,
-                    ],
-                    size: [player.size, player.size, player.size, 0.0],
-                    vel: [player.vel.x, player.vel.y, player.vel.z, 0.0],
-                    dir: [player.dir.x, player.dir.y, player.dir.z, 0.0],
-                    up: [player.up.x, player.up.y, player.up.z, 0.0],
-                    right: [player.right.x, player.right.y, player.right.z, 0.0],
-                };
-            }
-        }
-    }
-
-    pub fn download_projectiles(
-        &mut self,
-        card_manager: &CardManager,
-        projectile_compute: &ProjectileComputePipeline,
-        vox_compute: &mut VoxelComputePipeline,
-    ) {
-        self.rollback_state.projectiles =
-            projectile_compute.download_projectiles(card_manager, vox_compute);
-    }
 }
 
 impl WorldState {
@@ -489,7 +775,7 @@ impl WorldState {
         let voxels = vox_compute.voxels();
         let mut new_projectiles = Vec::new();
         let mut voxels_to_write: Vec<(Point3<i32>, [u32; 2])> = Vec::new();
-        let mut new_effects:Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)> = Vec::new();
+        let mut new_effects: Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)> = Vec::new();
 
         let player_stats: Vec<PlayerEffectStats> = self
             .players
@@ -641,8 +927,7 @@ impl WorldState {
                 let projectile_rot =
                     Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
                 let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
-                let projectile_right =
-                    projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
+                let projectile_right = projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
                 let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
                 let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
                 let projectile_size = Vector3::new(proj.size[0], proj.size[1], proj.size[2]);
@@ -700,8 +985,8 @@ impl WorldState {
                                     proj_rot[1],
                                     proj_rot[2],
                                 );
-                                let (on_hit_projectiles, on_hit_voxels, effects) =
-                                    card_manager.get_effects_from_base_card(
+                                let (on_hit_projectiles, on_hit_voxels, effects) = card_manager
+                                    .get_effects_from_base_card(
                                         card_ref,
                                         &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
                                         &proj_rot,
@@ -722,7 +1007,7 @@ impl WorldState {
             }
         }
 
-        let mut player_player_collision_pairs:Vec<(usize, usize)> = vec![];
+        let mut player_player_collision_pairs: Vec<(usize, usize)> = vec![];
         for i in 0..self.players.len() {
             let player1 = self.players.get(i).unwrap();
             for j in 0..self.players.len() {
@@ -730,9 +1015,7 @@ impl WorldState {
                     continue;
                 }
                 let player2 = self.players.get(j).unwrap();
-                if 5.0 * (player1.size + player2.size)
-                    > (player1.pos - player2.pos).magnitude()
-                {
+                if 5.0 * (player1.size + player2.size) > (player1.pos - player2.pos).magnitude() {
                     for si in 0..Player::HITSPHERES.len() {
                         for sj in 0..Player::HITSPHERES.len() {
                             let pos1 = player1.pos + player1.size * Player::HITSPHERES[si].0;
@@ -753,17 +1036,25 @@ impl WorldState {
             let player2_pos = self.players.get(j).unwrap().pos;
             let hit_effects = {
                 let player1 = self.players.get(i).unwrap();
-                player1.status_effects.iter().filter_map(|effect| match effect {
-                    AppliedStatusEffect { effect: ReferencedStatusEffect::OnHit(hit_card), time_left: _ } => Some(hit_card),
-                    _ => None,
-                }).map(|hit_effect| {
-                    card_manager.get_effects_from_base_card(
-                        *hit_effect,
-                        &player1.pos,
-                        &player1.rot,
-                        i as u32,
-                    )
-                }).collect::<Vec<_>>()
+                player1
+                    .status_effects
+                    .iter()
+                    .filter_map(|effect| match effect {
+                        AppliedStatusEffect {
+                            effect: ReferencedStatusEffect::OnHit(hit_card),
+                            time_left: _,
+                        } => Some(hit_card),
+                        _ => None,
+                    })
+                    .map(|hit_effect| {
+                        card_manager.get_effects_from_base_card(
+                            *hit_effect,
+                            &player1.pos,
+                            &player1.rot,
+                            i as u32,
+                        )
+                    })
+                    .collect::<Vec<_>>()
             };
             for (on_hit_projectiles, on_hit_voxels, effects) in hit_effects {
                 new_projectiles.extend(on_hit_projectiles);
@@ -798,32 +1089,36 @@ impl WorldState {
             let player = self.players.get_mut(player_idx).unwrap();
             match effect {
                 ReferencedEffect::Damage(damage) => {
-                    player.adjust_health(-player_stats[player_idx]
-                        .damage_taken
-                        * damage as f32);
+                    player.adjust_health(-player_stats[player_idx].damage_taken * damage as f32);
                 }
                 ReferencedEffect::Knockback(knockback) => {
                     let knockback = 10.0 * knockback as f32;
                     let knockback_dir = effect_direction;
                     if knockback_dir.magnitude() > 0.0 {
-                        player.vel +=
-                            knockback * (knockback_dir).normalize();
+                        player.vel += knockback * (knockback_dir).normalize();
                     } else {
                         player.vel.y += knockback;
                     }
                 }
-                ReferencedEffect::StatusEffect(effect, duration) => player
-                    .status_effects
-                    .push(AppliedStatusEffect {
+                ReferencedEffect::StatusEffect(effect, duration) => {
+                    match effect {
+                        ReferencedStatusEffect::Overheal => {
+                            player.health.push(HealthSection::Overhealth(10.0, duration as f32));
+                        }
+                        _ => {}
+                    }
+                    player.status_effects.push(AppliedStatusEffect {
                         effect,
                         time_left: duration as f32,
-                    }),
+                    })
+                }
                 ReferencedEffect::Cleanse => {
                     player.status_effects.clear();
                 }
                 ReferencedEffect::Teleport => {
                     player.pos = effect_pos;
-                    player.pos.y += player.size * (PLAYER_HITBOX_SIZE[1]/2.0 - PLAYER_HITBOX_OFFSET[1]);
+                    player.pos.y +=
+                        player.size * (PLAYER_HITBOX_SIZE[1] / 2.0 - PLAYER_HITBOX_OFFSET[1]);
                     player.vel = Vector3::new(0.0, 0.0, 0.0);
                 }
             }
@@ -1014,7 +1309,12 @@ impl Projectile {
                     voxels_to_write.push((pos, material.to_memory()));
                 }
                 for effect in effects {
-                    new_effects.push((self.owner as usize, Point3::new(self.pos[0], self.pos[1], self.pos[2]), projectile_dir, effect));
+                    new_effects.push((
+                        self.owner as usize,
+                        Point3::new(self.pos[0], self.pos[1], self.pos[2]),
+                        projectile_dir,
+                        effect,
+                    ));
                 }
             }
         }
@@ -1032,7 +1332,12 @@ impl Projectile {
                     voxels_to_write.push((pos, material.to_memory()));
                 }
                 for effect in effects {
-                    new_effects.push((self.owner as usize, Point3::new(self.pos[0], self.pos[1], self.pos[2]), projectile_dir, effect));
+                    new_effects.push((
+                        self.owner as usize,
+                        Point3::new(self.pos[0], self.pos[1], self.pos[2]),
+                        projectile_dir,
+                        effect,
+                    ));
                 }
             }
         }
@@ -1054,7 +1359,7 @@ pub fn get_index(global_pos: Point3<i32>) -> i32 {
 }
 
 impl Player {
-    const HITSPHERES:[(Vector3<f32>, f32); 6] = [
+    const HITSPHERES: [(Vector3<f32>, f32); 6] = [
         (Vector3::new(0.0, 0.0, 0.0), 0.6),
         (Vector3::new(0.0, -1.3, 0.0), 0.6),
         (Vector3::new(0.0, -1.9, 0.0), 0.9),
@@ -1140,19 +1445,19 @@ impl Player {
                     .zip(Vector3::new(0.3, 13.0, 0.3), |c, m| c as f32 * m);
             }
 
-            let mut health_adjustment = 0.0;
             for (ability_idx, ability) in self.abilities.iter_mut().enumerate() {
                 if ability_idx < action.activate_ability.len()
                     && action.activate_ability[ability_idx]
                     && ability.cooldown <= 0.0
                 {
                     ability.cooldown = ability.value;
-                    let (proj_effects, vox_effects, effects) = card_manager.get_effects_from_base_card(
-                        ability.ability,
-                        &self.pos,
-                        &self.rot,
-                        player_idx as u32,
-                    );
+                    let (proj_effects, vox_effects, effects) = card_manager
+                        .get_effects_from_base_card(
+                            ability.ability,
+                            &self.pos,
+                            &self.rot,
+                            player_idx as u32,
+                        );
                     new_projectiles.extend(proj_effects);
                     for (pos, material) in vox_effects {
                         voxels_to_write.push((pos, material.to_memory()));
@@ -1161,9 +1466,6 @@ impl Player {
                         new_effects.push((player_idx, self.pos, self.dir, effect));
                     }
                 }
-            }
-            if health_adjustment != 0.0 {
-                self.adjust_health(health_adjustment);
             }
         }
         for ability in self.abilities.iter_mut() {
@@ -1359,11 +1661,8 @@ impl Player {
         }
         true
     }
-    
-    fn adjust_health(
-        &mut self,
-        adjustment: f32,
-    ) {
+
+    fn adjust_health(&mut self, adjustment: f32) {
         println!("adjusting health by {}", adjustment);
         if adjustment > 0.0 {
             let mut healing_left = adjustment;

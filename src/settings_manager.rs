@@ -68,8 +68,15 @@ pub struct GraphicsSettings {
     pub ao_ray_dist: u32,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub enum ReplayMode {
+    Record,
+    Playback,
+    None,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReplaySettings {
     pub replay_file: String,
-    pub record_replay: bool,
+    pub replay_mode: ReplayMode,
 }

@@ -37,7 +37,7 @@ use vulkano::{
 };
 
 use crate::{
-    multipass_system::LightingVertex, rollback_manager::RollbackData,
+    multipass_system::LightingVertex, rollback_manager::{RollbackData, PlayerSim},
     settings_manager::GraphicsSettings, SimData,
 };
 
@@ -135,13 +135,13 @@ impl PointLightingSystem {
         &self,
         voxels: Subbuffer<[[u32; 2]]>,
         sim_data: &mut SimData,
-        rollback_manager: &RollbackData,
+        rollback_manager: &Box<dyn PlayerSim>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(1).unwrap();
         let sim_uniform_buffer_subbuffer = {
             let uniform_data = fs::SimData {
                 render_size: sim_data.render_size.into(),
-                projectile_count: (rollback_manager.cached_current_state.projectiles.len() as u32)
+                projectile_count: (rollback_manager.get_projectiles().len() as u32)
                     .into(),
                 max_dist: sim_data.max_dist.into(),
                 start_pos: sim_data.start_pos.into(),
@@ -159,8 +159,8 @@ impl PointLightingSystem {
             [
                 WriteDescriptorSet::buffer(0, voxels.clone()),
                 WriteDescriptorSet::buffer(1, sim_uniform_buffer_subbuffer),
-                WriteDescriptorSet::buffer(2, rollback_manager.players()),
-                WriteDescriptorSet::buffer(3, rollback_manager.projectiles()),
+                WriteDescriptorSet::buffer(2, rollback_manager.player_buffer()),
+                WriteDescriptorSet::buffer(3, rollback_manager.projectile_buffer()),
             ],
         )
         .unwrap()
@@ -202,7 +202,7 @@ impl PointLightingSystem {
         depth_input: Arc<dyn ImageViewAbstract + 'static>,
         screen_to_world: Matrix4<f32>,
         voxels: Subbuffer<[[u32; 2]]>,
-        rollback_manager: &RollbackData,
+        rollback_manager: &Box<dyn PlayerSim>,
         sim_data: &mut SimData,
         graphics_settings: &GraphicsSettings,
     ) -> SecondaryAutoCommandBuffer {

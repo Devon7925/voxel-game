@@ -34,7 +34,7 @@ use winit::event_loop::EventLoop;
 use crate::{
     gui::{cooldown, drag_source, draw_base_card, drop_target, GuiElement},
     raytracer::PointLightingSystem,
-    rollback_manager::{RollbackData, HealthSection},
+    rollback_manager::{RollbackData, HealthSection, PlayerSim},
     settings_manager::Settings,
     GuiState, SimData, voxel_sim_manager::VoxelComputePipeline, card_system::{ProjectileModifier, BaseCard, ProjectileModifierType},
 };
@@ -504,7 +504,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     pub fn raytrace(
         &mut self,
         voxels: Subbuffer<[[u32; 2]]>,
-        rollback_manager: &RollbackData,
+        rollback_manager: &Box<dyn PlayerSim>,
         sim_data: &mut SimData,
         settings: &Settings,
     ) {
@@ -534,7 +534,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     pub fn gui(
         &mut self,
         voxel_compute: &mut VoxelComputePipeline,
-        rollback_manager: &RollbackData,
+        rollback_manager: &Box<dyn PlayerSim>,
         gui_state: &mut GuiState,
         sim_data: &mut SimData,
         settings: &Settings,
@@ -545,7 +545,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
             let screen_size = ctx.screen_rect().size();
             // Fill egui UI layout here
             if gui_state.in_game {
-                let spectate_player = &rollback_manager.cached_current_state.players[0];
+                let spectate_player = &rollback_manager.get_spectate_player();
                 egui::Area::new("crosshair").show(&ctx, |ui| {
                     let center = screen_size / 2.0;
                     let thickness = 1.0;
@@ -568,103 +568,105 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                     ));
                 });
 
-                let corner_offset = 10.0;
-                egui::Area::new("healthbar")
-                    .anchor(
-                        Align2::LEFT_BOTTOM,
-                        Vec2::new(corner_offset, -corner_offset),
-                    )
-                    .show(&ctx, |ui| {
-                        let thickness = 1.0;
-                        let color = Color32::from_additive_luminance(255);
-                        let (player_health, player_max_health) = spectate_player.get_health_stats();
-
-                        ui.label(
-                            RichText::new(format!("{} / {}", player_health, player_max_health))
-                                .color(Color32::WHITE),
-                        );
-                        let desired_size = egui::vec2(200.0, 30.0);
-                        let (_id, rect) = ui.allocate_space(desired_size);
-
-                        let to_screen = emath::RectTransform::from_to(
-                            Rect::from_x_y_ranges(0.0..=1.0, 0.0..=1.0),
-                            rect,
-                        );
-
-                        let healthbar_size =
-                            Rect::from_min_max(to_screen * pos2(0.0, 0.0), to_screen * pos2(1.0, 1.0));
-                        let mut health_rendered = 0.0;
-                        for health_section in spectate_player.health.iter() {
-                            let (health_size, health_color) = match health_section {
-                                HealthSection::Health(current, _max) => {
-                                    let prev_health_rendered = health_rendered;
-                                    health_rendered += current;
-                                    (
-                                        Rect::from_min_max(
-                                            to_screen * pos2(prev_health_rendered / player_max_health, 0.0),
-                                            to_screen * pos2(health_rendered / player_max_health, 1.0),
-                                        ),
-                                        Color32::WHITE,
-                                    )
-
-                                }
-                                HealthSection::Overhealth(current, _time) => {
-                                    let prev_health_rendered = health_rendered;
-                                    health_rendered += current;
-                                    (
-                                        Rect::from_min_max(
-                                            to_screen * pos2(prev_health_rendered / player_max_health, 0.0),
-                                            to_screen * pos2(health_rendered / player_max_health, 1.0),
-                                        ),
-                                        Color32::GREEN,
-                                    )
-
-                                }
-                            };
-                            ui.painter().add(epaint::Shape::rect_filled(
-                                health_size,
-                                Rounding::none(),
-                                health_color,
-                            ));
-                        }
-
-                        ui.painter().add(epaint::Shape::rect_stroke(
-                            healthbar_size,
-                            Rounding::none(),
-                            Stroke::new(thickness, color),
-                        ));
-                    });
-
-                let respawn_time = spectate_player.respawn_timer;
-                if respawn_time > 0.0 {
-                    egui::Area::new("respawn")
-                        .anchor(Align2::LEFT_TOP, Vec2::new(corner_offset, corner_offset))
+                if let Some(spectate_player) = spectate_player {
+                    let corner_offset = 10.0;
+                    egui::Area::new("healthbar")
+                        .anchor(
+                            Align2::LEFT_BOTTOM,
+                            Vec2::new(corner_offset, -corner_offset),
+                        )
                         .show(&ctx, |ui| {
-                            ui.label(RichText::new("You have died").color(Color32::WHITE));
+                            let thickness = 1.0;
+                            let color = Color32::from_additive_luminance(255);
+                            let (player_health, player_max_health) = spectate_player.get_health_stats();
+
                             ui.label(
-                                RichText::new(format!("Respawn in {}", respawn_time))
+                                RichText::new(format!("{} / {}", player_health, player_max_health))
                                     .color(Color32::WHITE),
                             );
+                            let desired_size = egui::vec2(200.0, 30.0);
+                            let (_id, rect) = ui.allocate_space(desired_size);
+
+                            let to_screen = emath::RectTransform::from_to(
+                                Rect::from_x_y_ranges(0.0..=1.0, 0.0..=1.0),
+                                rect,
+                            );
+
+                            let healthbar_size =
+                                Rect::from_min_max(to_screen * pos2(0.0, 0.0), to_screen * pos2(1.0, 1.0));
+                            let mut health_rendered = 0.0;
+                            for health_section in spectate_player.health.iter() {
+                                let (health_size, health_color) = match health_section {
+                                    HealthSection::Health(current, _max) => {
+                                        let prev_health_rendered = health_rendered;
+                                        health_rendered += current;
+                                        (
+                                            Rect::from_min_max(
+                                                to_screen * pos2(prev_health_rendered / player_max_health, 0.0),
+                                                to_screen * pos2(health_rendered / player_max_health, 1.0),
+                                            ),
+                                            Color32::WHITE,
+                                        )
+
+                                    }
+                                    HealthSection::Overhealth(current, _time) => {
+                                        let prev_health_rendered = health_rendered;
+                                        health_rendered += current;
+                                        (
+                                            Rect::from_min_max(
+                                                to_screen * pos2(prev_health_rendered / player_max_health, 0.0),
+                                                to_screen * pos2(health_rendered / player_max_health, 1.0),
+                                            ),
+                                            Color32::GREEN,
+                                        )
+
+                                    }
+                                };
+                                ui.painter().add(epaint::Shape::rect_filled(
+                                    health_size,
+                                    Rounding::none(),
+                                    health_color,
+                                ));
+                            }
+
+                            ui.painter().add(epaint::Shape::rect_stroke(
+                                healthbar_size,
+                                Rounding::none(),
+                                Stroke::new(thickness, color),
+                            ));
+                        });
+
+                    let respawn_time = spectate_player.respawn_timer;
+                    if respawn_time > 0.0 {
+                        egui::Area::new("respawn")
+                            .anchor(Align2::LEFT_TOP, Vec2::new(corner_offset, corner_offset))
+                            .show(&ctx, |ui| {
+                                ui.label(RichText::new("You have died").color(Color32::WHITE));
+                                ui.label(
+                                    RichText::new(format!("Respawn in {}", respawn_time))
+                                        .color(Color32::WHITE),
+                                );
+                            });
+                    }
+
+                    egui::Area::new("cooldowns")
+                        .anchor(
+                            Align2::RIGHT_BOTTOM,
+                            Vec2::new(-corner_offset, -corner_offset),
+                        )
+                        .show(&ctx, |ui| {
+                            for (ability_idx, ability) in spectate_player
+                                .abilities
+                                .iter()
+                                .enumerate()
+                            {
+                                ui.add(cooldown(
+                                    format!("{}", settings.ability_controls[ability_idx]).as_str(),
+                                    ability,
+                                ));
+                            }
                         });
                 }
-
-                egui::Area::new("cooldowns")
-                    .anchor(
-                        Align2::RIGHT_BOTTOM,
-                        Vec2::new(-corner_offset, -corner_offset),
-                    )
-                    .show(&ctx, |ui| {
-                        for (ability_idx, ability) in spectate_player
-                            .abilities
-                            .iter()
-                            .enumerate()
-                        {
-                            ui.add(cooldown(
-                                format!("{}", settings.ability_controls[ability_idx]).as_str(),
-                                ability,
-                            ));
-                        }
-                    });
             }
             match gui_state.menu_stack.last() {
                 Some(&GuiElement::MainMenu) => {

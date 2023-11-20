@@ -1,12 +1,18 @@
-use std::{sync::Arc, fs::File, io::BufReader};
-use bytemuck::{Zeroable, Pod};
-use cgmath::{Rad, Matrix4, Quaternion, Vector3, Rotation3, Point3, InnerSpace};
-use obj::{Obj, load_obj};
+use bytemuck::{Pod, Zeroable};
+use cgmath::{InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation3, Vector3};
+use obj::{load_obj, Obj};
+use std::{fs::File, io::BufReader, sync::Arc};
 use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer, allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}},
+    buffer::{
+        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
+        Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer,
+    },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
         CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
+    },
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
@@ -19,7 +25,7 @@ use vulkano::{
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
-    render_pass::Subpass, descriptor_set::{PersistentDescriptorSet, allocator::StandardDescriptorSetAllocator, WriteDescriptorSet},
+    render_pass::Subpass,
 };
 
 use crate::rollback_manager::WorldState;
@@ -149,7 +155,11 @@ impl RasterizerSystem {
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
 
             GraphicsPipeline::start()
-                .vertex_input_state([TrianglePos::per_vertex(), TriangleNormal::per_vertex(), ProjectileInstanceData::per_instance()])
+                .vertex_input_state([
+                    TrianglePos::per_vertex(),
+                    TriangleNormal::per_vertex(),
+                    ProjectileInstanceData::per_instance(),
+                ])
                 .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -185,17 +195,16 @@ impl RasterizerSystem {
     }
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
-    pub fn draw(&self, viewport_dimensions: [u32; 2], view_matrix: Matrix4<f32>, world_state: &WorldState) -> SecondaryAutoCommandBuffer {
-
+    pub fn draw(
+        &self,
+        viewport_dimensions: [u32; 2],
+        view_matrix: Matrix4<f32>,
+        world_state: &WorldState,
+    ) -> SecondaryAutoCommandBuffer {
         let uniform_buffer_subbuffer = {
-            let aspect_ratio =
-                viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32;
-            let proj = cgmath::perspective(
-                Rad(std::f32::consts::FRAC_PI_2),
-                aspect_ratio,
-                0.1,
-                100.0,
-            );  
+            let aspect_ratio = viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32;
+            let proj =
+                cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), aspect_ratio, 0.1, 100.0);
 
             let uniform_data = vs::Data {
                 view: view_matrix.into(),
@@ -209,14 +218,27 @@ impl RasterizerSystem {
         };
 
         let mut projectile_writer = self.proj_instance_data.write().unwrap();
-        for (i, projectile) in world_state.projectiles.iter().filter(|proj| {
-            let proj_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
-            let proj_max_size = proj.size.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-            proj.owner > 0 || proj.lifetime > 0.3 || (proj_pos - world_state.players[0].pos).magnitude() > 0.5 + proj_max_size
-        }).enumerate() {
-            projectile_writer[i].instance_position = [projectile.pos[0], projectile.pos[1], projectile.pos[2]];
+        for (i, projectile) in world_state
+            .projectiles
+            .iter()
+            .filter(|proj| {
+                let proj_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
+                let proj_max_size = proj
+                    .size
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap();
+                proj.owner > 0
+                    || proj.lifetime > 0.3
+                    || (proj_pos - world_state.players[0].pos).magnitude() > 0.5 + proj_max_size
+            })
+            .enumerate()
+        {
+            projectile_writer[i].instance_position =
+                [projectile.pos[0], projectile.pos[1], projectile.pos[2]];
             projectile_writer[i].instance_rotation = projectile.dir;
-            projectile_writer[i].instance_scale = [projectile.size[0], projectile.size[1], projectile.size[2]];
+            projectile_writer[i].instance_scale =
+                [projectile.size[0], projectile.size[1], projectile.size[2]];
         }
 
         let mut player_writer = self.player_instance_data.write().unwrap();
@@ -225,10 +247,18 @@ impl RasterizerSystem {
             if player.get_health_stats().0 <= 0.0 {
                 continue;
             }
-            player_writer[player_buffer_idx].instance_position = [player.pos[0], player.pos[1], player.pos[2]];
-            let render_rotation = Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]));
-            player_writer[player_buffer_idx].instance_rotation = [render_rotation.v[0], render_rotation.v[1], render_rotation.v[2], render_rotation.s];
-            player_writer[player_buffer_idx].instance_scale = [player.size, player.size, player.size];
+            player_writer[player_buffer_idx].instance_position =
+                [player.pos[0], player.pos[1], player.pos[2]];
+            let render_rotation =
+                Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]));
+            player_writer[player_buffer_idx].instance_rotation = [
+                render_rotation.v[0],
+                render_rotation.v[1],
+                render_rotation.v[2],
+                render_rotation.s,
+            ];
+            player_writer[player_buffer_idx].instance_scale =
+                [player.size, player.size, player.size];
             player_buffer_idx += 1;
         }
 
@@ -299,8 +329,20 @@ impl RasterizerSystem {
                 0,
                 proj_descriptor_set,
             )
-            .bind_vertex_buffers(0, (self.proj_vertex_buffer.clone(), self.proj_normal_buffer.clone(), self.proj_instance_data.clone()))
-            .draw(self.proj_vertex_buffer.len() as u32, world_state.projectiles.len() as u32, 0, 0)
+            .bind_vertex_buffers(
+                0,
+                (
+                    self.proj_vertex_buffer.clone(),
+                    self.proj_normal_buffer.clone(),
+                    self.proj_instance_data.clone(),
+                ),
+            )
+            .draw(
+                self.proj_vertex_buffer.len() as u32,
+                world_state.projectiles.len() as u32,
+                0,
+                0,
+            )
             .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
@@ -308,8 +350,20 @@ impl RasterizerSystem {
                 0,
                 player_descriptor_set,
             )
-            .bind_vertex_buffers(0, (self.player_vertex_buffer.clone(), self.player_normal_buffer.clone(), self.player_instance_data.clone()))
-            .draw(self.player_vertex_buffer.len() as u32, player_buffer_idx as u32, 0, 0)
+            .bind_vertex_buffers(
+                0,
+                (
+                    self.player_vertex_buffer.clone(),
+                    self.player_normal_buffer.clone(),
+                    self.player_instance_data.clone(),
+                ),
+            )
+            .draw(
+                self.player_vertex_buffer.len() as u32,
+                player_buffer_idx as u32,
+                0,
+                0,
+            )
             .unwrap();
         builder.build().unwrap()
     }
@@ -365,34 +419,89 @@ fn load_obj_to_vecs(path: &str) -> (Vec<TrianglePos>, Vec<TriangleNormal>) {
 fn cube_vecs() -> (Vec<TrianglePos>, Vec<TriangleNormal>) {
     (
         vec![
-            [-1.0, -1.0, -1.0], [-1.0, -1.0,  1.0], [ 1.0, -1.0, -1.0],
-            [ 1.0, -1.0,  1.0], [-1.0, -1.0,  1.0], [ 1.0, -1.0, -1.0],
-            [-1.0, -1.0, -1.0], [-1.0, -1.0,  1.0], [-1.0,  1.0, -1.0],
-            [-1.0,  1.0,  1.0], [-1.0, -1.0,  1.0], [-1.0,  1.0, -1.0],
-            [-1.0, -1.0, -1.0], [-1.0,  1.0, -1.0], [ 1.0, -1.0, -1.0],
-            [ 1.0,  1.0, -1.0], [-1.0,  1.0, -1.0], [ 1.0, -1.0, -1.0],
-
-            [ 1.0,  1.0,  1.0], [ 1.0,  1.0, -1.0], [-1.0,  1.0,  1.0],
-            [-1.0,  1.0, -1.0], [ 1.0,  1.0, -1.0], [-1.0,  1.0,  1.0],
-            [ 1.0,  1.0,  1.0], [ 1.0,  1.0, -1.0], [ 1.0, -1.0,  1.0],
-            [ 1.0, -1.0, -1.0], [ 1.0,  1.0, -1.0], [ 1.0, -1.0,  1.0],
-            [ 1.0,  1.0,  1.0], [ 1.0, -1.0,  1.0], [-1.0,  1.0,  1.0],
-            [-1.0, -1.0,  1.0], [ 1.0, -1.0,  1.0], [-1.0,  1.0,  1.0],
-        ].iter().map(|&[x, y, z]| TrianglePos { position: [x, y, z] }).collect(),
+            [-1.0, -1.0, -1.0],
+            [-1.0, -1.0, 1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, -1.0, 1.0],
+            [-1.0, -1.0, 1.0],
+            [1.0, -1.0, -1.0],
+            [-1.0, -1.0, -1.0],
+            [-1.0, -1.0, 1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, 1.0, 1.0],
+            [-1.0, -1.0, 1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, -1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, 1.0, 1.0],
+            [1.0, 1.0, -1.0],
+            [-1.0, 1.0, 1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [-1.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [1.0, 1.0, -1.0],
+            [1.0, -1.0, 1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [1.0, -1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [-1.0, 1.0, 1.0],
+            [-1.0, -1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [-1.0, 1.0, 1.0],
+        ]
+        .iter()
+        .map(|&[x, y, z]| TrianglePos {
+            position: [x, y, z],
+        })
+        .collect(),
         vec![
-            [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
-            [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
-            [0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
-            [0.0,  1.0, 0.0], [0.0,  1.0, 0.0], [0.0,  1.0, 0.0],
-            [0.0,  1.0, 0.0], [0.0,  1.0, 0.0], [0.0,  1.0, 0.0],
-            [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0],
-            [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0],
-            [0.0, 0.0,  1.0], [0.0, 0.0,  1.0], [0.0, 0.0,  1.0],
-            [0.0, 0.0,  1.0], [0.0, 0.0,  1.0], [0.0, 0.0,  1.0],
-        ].iter().map(|&[x, y, z]| TriangleNormal { normal: [x, y, z] }).collect()
+            [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+        ]
+        .iter()
+        .map(|&[x, y, z]| TriangleNormal { normal: [x, y, z] })
+        .collect(),
     )
 }
 
