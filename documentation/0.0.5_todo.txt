@@ -1,4 +1,2 @@
-Replays
-    Add playback
 Tuning
     balance 1 shots

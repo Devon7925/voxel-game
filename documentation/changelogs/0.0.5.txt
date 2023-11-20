@@ -20,3 +20,5 @@ New Cards
         Player piercing
         Lock to Player
         Terrain bounce
+Replays
+    Add playback

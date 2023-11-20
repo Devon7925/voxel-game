@@ -34,7 +34,7 @@ use winit::event_loop::EventLoop;
 use crate::{
     gui::{cooldown, drag_source, draw_base_card, drop_target, GuiElement},
     raytracer::PointLightingSystem,
-    rollback_manager::{RollbackData, HealthSection, PlayerSim},
+    rollback_manager::{HealthSection, PlayerSim},
     settings_manager::Settings,
     GuiState, SimData, voxel_sim_manager::VoxelComputePipeline, card_system::{ProjectileModifier, BaseCard, ProjectileModifierType},
 };

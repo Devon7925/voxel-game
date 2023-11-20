@@ -1,5 +1,5 @@
 use std::{
-    collections::{VecDeque, HashMap}, f32::consts::PI, fs::File, io::Write, sync::Arc,
+    collections::{VecDeque, HashMap}, f32::consts::PI, fs::File, io::{Write, BufReader, BufRead}, sync::Arc,
 };
 
 use bytemuck::{Pod, Zeroable};
@@ -753,6 +753,247 @@ impl RollbackData {
             }))
         });
         self.meta_actions.iter_mut().for_each(|x| x.push(None));
+    }
+}
+
+impl PlayerSim for ReplayData {
+    fn update_rollback_state(
+        &mut self,
+        card_manager: &mut CardManager,
+        time_step: f32,
+        vox_compute: &mut VoxelComputePipeline,
+    ) {
+        self.current_time += 1;
+        {
+            let meta_actions = self.meta_actions.pop_front().unwrap();
+            for (player_idx, meta_action) in meta_actions.into_iter().enumerate() {
+                if let Some(MetaAction {
+                    adjust_dt,
+                    deck_update,
+                }) = meta_action
+                {
+                    if let Some(adjust_dt) = adjust_dt {
+                        self.delta_time = self.delta_time.max(adjust_dt);
+                    }
+                    if let Some(new_deck) = deck_update {
+                        self.state.players[player_idx].abilities = new_deck
+                            .into_iter()
+                            .map(|card| PlayerAbility {
+                                value: card.evaluate_value(true),
+                                ability: card_manager.register_base_card(card),
+                                cooldown: 0.0,
+                            })
+                            .collect();
+                    }
+                }
+            }
+        }
+        if self.current_time < 50 {
+            return;
+        }
+        {
+            let player_actions = self.actions.pop_front().unwrap();
+            assert!(player_actions.iter().all(|x| x.is_some()));
+            self.state.step_sim(
+                &player_actions,
+                true,
+                card_manager,
+                time_step,
+                vox_compute,
+            );
+        }
+    }
+
+    fn get_current_state(&self) -> &WorldState {
+        &self.state
+    }
+
+    fn step(
+        &mut self,
+        card_manager: &mut CardManager,
+        time_step: f32,
+        vox_compute: &mut VoxelComputePipeline,
+    ) {
+        puffin::profile_function!();
+        self.update_rollback_state(card_manager, time_step, vox_compute);
+        //send projectiles
+        let projectile_count = 128.min(self.state.projectiles.len());
+        {
+            let mut projectiles_buffer = self.projectile_buffer.write().unwrap();
+            for i in 0..projectile_count {
+                let projectile = self.state.projectiles.get(i).unwrap();
+                projectiles_buffer[i] = projectile.clone();
+            }
+        }
+        //send players
+        let player_count = 128.min(self.state.players.len());
+        {
+            let mut player_buffer = self.player_buffer.write().unwrap();
+            for i in 0..player_count {
+                let player = self.state.players.get(i).unwrap();
+                player_buffer[i] = UploadPlayer {
+                    pos: [player.pos.x, player.pos.y, player.pos.z, 0.0],
+                    rot: [
+                        player.rot.v[0],
+                        player.rot.v[1],
+                        player.rot.v[2],
+                        player.rot.s,
+                    ],
+                    size: [player.size, player.size, player.size, 0.0],
+                    vel: [player.vel.x, player.vel.y, player.vel.z, 0.0],
+                    dir: [player.dir.x, player.dir.y, player.dir.z, 0.0],
+                    up: [player.up.x, player.up.y, player.up.z, 0.0],
+                    right: [player.right.x, player.right.y, player.right.z, 0.0],
+                };
+            }
+        }
+    }
+
+    fn download_projectiles(
+        &mut self,
+        card_manager: &CardManager,
+        projectile_compute: &ProjectileComputePipeline,
+        vox_compute: &mut VoxelComputePipeline,
+    ) {
+        self.state.projectiles =
+            projectile_compute.download_projectiles(card_manager, vox_compute);
+    }
+
+    fn get_camera(&self) -> Camera {
+        let player = self.get_spectate_player().unwrap_or_else(|| Player::default());
+        Camera {
+            pos: player.pos,
+            rot: player.rot,
+        }
+    }
+
+    fn get_delta_time(&self) -> f32 {
+        self.delta_time
+    }
+
+    
+    fn get_projectiles(&self) -> &Vec<Projectile> {
+        &self.state.projectiles
+    }
+
+    fn get_players(&self) -> &Vec<Player> {
+        &self.state.players
+    }
+
+    fn player_count(&self) -> usize {
+        self.state.players.len()
+    }
+
+    fn update(&mut self) {
+    }
+
+    fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
+        self.player_buffer.clone()
+    }
+
+    fn projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]> {
+        self.projectile_buffer.clone()
+    }
+
+    fn get_spectate_player(&self) -> Option<Player> {
+        self.state.players.get(0).cloned()
+    }
+
+    fn process_event(&mut self, event: &winit::event::WindowEvent<'_>, _settings: &Settings, _gui_state: &mut GuiState, _window_props: &WindowProperties) {
+        match event {
+            _ => {}
+        }
+    }
+
+    fn end_frame(&mut self) {
+    }
+}
+
+impl ReplayData {
+    pub fn new(
+        memory_allocator: &Arc<StandardMemoryAllocator>,
+        settings: &Settings,
+        card_manager: &mut CardManager,
+    ) -> Self {
+        let projectile_buffer = Buffer::new_sized(
+            memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let player_buffer = Buffer::new_sized(
+            memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let current_time: u64 = 0;
+
+        let mut state = WorldState::new();
+        let replay_file = std::fs::File::open(settings.replay_settings.replay_file.clone()).unwrap();
+        let reader = BufReader::new(replay_file);
+        let mut actions = VecDeque::new();
+        let mut meta_actions = VecDeque::new();
+        let mut delta_time = settings.delta_time;
+        let mut lines = reader.lines();
+        while let Some(line) = lines.next() {
+            let Ok(line) = line else {
+                continue;
+            };
+            if line.starts_with("PLAYER COUNT ") {
+                
+            } else if let Some(deck_string) = line.strip_prefix("PLAYER DECK ") {
+                let deck: Vec<BaseCard> = ron::de::from_str(deck_string).unwrap();
+                state.players.push(Player {
+                    pos: SPAWN_LOCATION,
+                    abilities: deck
+                        .iter()
+                        .map(|card| PlayerAbility {
+                            value: card.evaluate_value(true),
+                            ability: card_manager.register_base_card(card.clone()),
+                            cooldown: 0.0,
+                        })
+                        .collect(),
+                    ..Default::default()
+                });
+            } else if let Some(dt_string) = line.strip_prefix("PERSONAL DT ") {
+                delta_time = dt_string.parse().unwrap();
+            } else if let Some(time_stamp_string) = line.strip_prefix("TIME ") {
+                let time_stamp: u64 = time_stamp_string.parse().unwrap();
+                let meta_actions_string = lines.next().unwrap().unwrap();
+                let line_meta_actions: Vec<Option<MetaAction>> = ron::de::from_str(&meta_actions_string).unwrap();
+                meta_actions.push_back(line_meta_actions);
+                if time_stamp >= 54 {
+                    let actions_string = lines.next().unwrap().unwrap();
+                    let line_actions: Vec<Option<PlayerAction>> = ron::de::from_str(&actions_string).unwrap();
+                    actions.push_back(line_actions);
+                }
+            }
+        }
+
+        ReplayData {
+            current_time,
+            delta_time,
+            state,
+            actions,
+            meta_actions,
+            player_buffer,
+            projectile_buffer,
+        }
     }
 }
 

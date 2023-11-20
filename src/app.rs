@@ -8,8 +8,8 @@
 // according to those terms.
 
 use crate::{
-    multipass_system::FrameSystem, rasterizer::RasterizerSystem, rollback_manager::{RollbackData, PlayerSim},
-    voxel_sim_manager::VoxelComputePipeline, WINDOW_HEIGHT, WINDOW_WIDTH, projectile_sim_manager::ProjectileComputePipeline, card_system::{CardManager, BaseCard}, settings_manager::Settings,
+    multipass_system::FrameSystem, rasterizer::RasterizerSystem, rollback_manager::{RollbackData, PlayerSim, ReplayData},
+    voxel_sim_manager::VoxelComputePipeline, WINDOW_HEIGHT, WINDOW_WIDTH, projectile_sim_manager::ProjectileComputePipeline, card_system::{CardManager, BaseCard}, settings_manager::{Settings, ReplayMode},
 };
 use std::sync::Arc;
 use vulkano::{
@@ -193,7 +193,11 @@ impl RenderPipeline {
 
         let mut card_manager =  CardManager::default();
 
-        let rollback_data = RollbackData::new(&memory_allocator, &settings, deck, &mut card_manager);
+        let rollback_data: Box<dyn PlayerSim> = if settings.replay_settings.replay_mode == ReplayMode::Playback {
+            Box::new(ReplayData::new(&memory_allocator, &settings, &mut card_manager))
+        } else {
+            Box::new(RollbackData::new(&memory_allocator, &settings, deck, &mut card_manager))
+        };
 
         let vulkano_interface = VulkanoInterface {
             memory_allocator,
@@ -211,7 +215,7 @@ impl RenderPipeline {
         RenderPipeline {
             voxel_compute: VoxelComputePipeline::new(&vulkano_interface, compute_queue.clone()),
             projectile_compute: ProjectileComputePipeline::new(&vulkano_interface, compute_queue.clone()),
-            rollback_data: Box::new(rollback_data),
+            rollback_data,
             vulkano_interface,
             card_manager,
             settings,

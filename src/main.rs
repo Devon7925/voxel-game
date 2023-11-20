@@ -160,7 +160,7 @@ fn main() {
                     (Instant::now() - time).as_secs_f32()
                 );
             }
-            sim_settings.do_compute = app.rollback_data.player_count() >= app.settings.player_count as usize;
+            sim_settings.do_compute = app.rollback_data.player_count() >= app.settings.player_count as usize && gui_state.in_game;
             compute_then_render(
                 &mut app,
                 &sim_settings,
