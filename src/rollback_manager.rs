@@ -75,6 +75,8 @@ pub trait PlayerSim {
 
     fn process_event(&mut self, event: &winit::event::WindowEvent<'_>, settings: &Settings, gui_state: &mut GuiState, window_props: &WindowProperties);
     fn end_frame(&mut self);
+
+    fn is_sim_behind(&self) -> bool;
 }
 
 #[derive(Debug)]
@@ -93,6 +95,7 @@ pub struct RollbackData {
     player_action: PlayerAction,
     player_deck: Vec<BaseCard>,
     player_idx_map: HashMap<PeerId, usize>,
+    most_future_time_recorded: u64,
 }
 
 pub struct ReplayData {
@@ -268,7 +271,7 @@ impl PlayerSim for RollbackData {
         }
         {
             let player_actions = self.actions.pop_front().unwrap();
-            assert!(player_actions.iter().all(|x| x.is_some()));
+            assert!(player_actions.iter().all(|x| x.is_some()), "missing action at timestamp {}", self.rollback_time);
             if let Some(replay_file) = self.replay_file.as_mut() {
                 replay_file.write_all(b"\n").unwrap();
                 ron::ser::to_writer(replay_file, &player_actions).unwrap();
@@ -535,6 +538,10 @@ impl PlayerSim for RollbackData {
     fn end_frame(&mut self) {
         self.player_action.aim = [0.0, 0.0];
     }
+
+    fn is_sim_behind(&self) -> bool {
+        self.most_future_time_recorded > self.current_time
+    }
 }
 
 impl RollbackData {
@@ -637,6 +644,7 @@ impl RollbackData {
             player_action,
             player_deck: deck.clone(),
             player_idx_map: HashMap::new(),
+            most_future_time_recorded: 0,
         }
     }
 
@@ -727,6 +735,9 @@ impl RollbackData {
     }
 
     pub fn send_action(&mut self, action: PlayerAction, player_idx: usize, time_stamp: u64) {
+        if time_stamp > self.most_future_time_recorded {
+            self.most_future_time_recorded = time_stamp;
+        }
         if time_stamp < self.rollback_time {
             println!(
                 "cannot send action with timestamp {} when rollback time is {}",
@@ -906,6 +917,10 @@ impl PlayerSim for ReplayData {
     }
 
     fn end_frame(&mut self) {
+    }
+
+    fn is_sim_behind(&self) -> bool {
+        false
     }
 }
 

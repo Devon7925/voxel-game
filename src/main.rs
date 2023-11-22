@@ -149,11 +149,14 @@ fn main() {
         if (Instant::now() - time).as_secs_f32() > 0.0 {
             puffin::GlobalProfiler::lock().new_frame();
             previous_frame_end.as_mut().unwrap().cleanup_finished();
-            if app.settings.player_count > 1 && gui_state.in_game {
-                app.rollback_data.update();
-            }
             time += std::time::Duration::from_secs_f32(app.rollback_data.get_delta_time());
             let skip_render = (Instant::now() - time).as_secs_f32() > 0.0;
+            if app.settings.player_count > 1 && gui_state.in_game && !skip_render {
+                app.rollback_data.update();
+            }
+            if app.rollback_data.is_sim_behind() {
+                time += std::time::Duration::from_secs_f32(app.rollback_data.get_delta_time());
+            }
             if skip_render {
                 println!(
                     "skipping render: behind by {}s",
