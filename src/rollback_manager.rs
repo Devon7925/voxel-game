@@ -647,7 +647,6 @@ impl RollbackData {
                 .collect(),
             ..Default::default()
         };
-        println!("first player: {:?}", first_player);
         rollback_state.players.push(first_player);
         actions.iter_mut().for_each(|x| {
             x.push(Some(PlayerAction {

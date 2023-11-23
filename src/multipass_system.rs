@@ -826,16 +826,14 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 let item = if source_action_idx == 0 {
                                                     dock_card.take_modifier(source_path)
                                                 } else {
-                                                    gui_state.gui_cards[source_action_idx - 1].take_modifier(source_path)
+                                                    gui_state.gui_cards[source_action_idx - 1].take_modifier(&mut source_path.clone())
                                                 };
                                                 if drop_action_idx > 0 {
                                                     gui_state.gui_cards[drop_action_idx - 1].insert_modifier(drop_path, item);
                                                 }
                                                 if source_action_idx > 0 {
-                                                    gui_state.gui_cards[source_action_idx - 1].cleanup();
-                                                }
-                                                if drop_action_idx > 0 {
-                                                    gui_state.gui_cards[drop_action_idx - 1].cleanup();
+                                                    source_path.pop_back();
+                                                    gui_state.gui_cards[source_action_idx - 1].cleanup(source_path);
                                                 }
                                             }
                                         }

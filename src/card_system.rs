@@ -199,12 +199,10 @@ impl BaseCard {
                 if card_value.damage == 0.0 {
                     return card_value.generic;
                 }
-                println!("{} {:?}", card_value.damage, card_value.range_probabilities);
                 let damage_value: f32 = card_value
                     .range_probabilities
                     .iter()
                     .map(|accuracy| gen_cooldown_for_ttk(*accuracy, card_value.damage, 3.5))
-                    .map(|cooldown| {println!("{}", cooldown);cooldown})
                     .sum::<f32>()
                     / card_value.range_probabilities.len() as f32;
                 damage_value + card_value.generic
@@ -688,7 +686,31 @@ impl BaseCard {
         match self {
             BaseCard::Projectile(modifiers) => {
                 if path.is_empty() {
-                    modifiers.push(item);
+                    if let ProjectileModifier::SimpleModify(last_ty, last_s) = item.clone() {
+                        let mut combined = false;
+                        for modifier in modifiers.iter_mut() {
+                            match modifier {
+                                ProjectileModifier::SimpleModify(ty, s) => {
+                                    if last_ty == *ty {
+                                        *s += last_s;
+                                        combined = true;
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        if !combined {
+                            modifiers.push(item.clone());
+                        }
+                    } else {
+                        modifiers.push(item.clone());
+                    }
+                    
+                    modifiers.retain(|modifier| match modifier {
+                        ProjectileModifier::SimpleModify(_, s) => *s != 0,
+                        _ => true,
+                    });
                 } else {
                     let idx = path.pop_front().unwrap() as usize;
                     match modifiers[idx] {
@@ -715,54 +737,37 @@ impl BaseCard {
         }
     }
 
-    pub fn cleanup(&mut self) {
+    pub fn cleanup(&mut self, path: &mut VecDeque<u32>) {
         match self {
             BaseCard::Projectile(modifiers) => {
-                // cleanup sub cards
-                for modifier in modifiers.iter_mut() {
-                    match modifier {
-                        ProjectileModifier::OnHit(card) => card.cleanup(),
-                        ProjectileModifier::OnExpiry(card) => card.cleanup(),
-                        _ => {}
-                    }
-                }
-                // combine modifiers
-                let mut new_modifiers = Vec::new();
-                for modifier in modifiers.iter() {
-                    match modifier {
-                        ProjectileModifier::SimpleModify(ty, s) => {
-                            if let Some(ProjectileModifier::SimpleModify(last_ty, last_s)) =
-                                new_modifiers.last_mut()
-                            {
-                                if *last_ty == *ty {
-                                    *last_s += s;
-                                    if *last_s == 0 {
-                                        new_modifiers.pop();
-                                    }
-                                } else if *s != 0 {
-                                    new_modifiers
-                                        .push(ProjectileModifier::SimpleModify(ty.clone(), *s));
-                                }
-                            } else if *s != 0 {
-                                new_modifiers
-                                    .push(ProjectileModifier::SimpleModify(ty.clone(), *s));
-                            }
+                if path.is_empty() {                    
+                    modifiers.retain(|modifier| match modifier {
+                        ProjectileModifier::SimpleModify(_, s) => *s != 0,
+                        _ => true,
+                    });
+                } else {
+                    let idx = path.pop_front().unwrap() as usize;
+                    match modifiers[idx] {
+                        ProjectileModifier::OnHit(ref mut card) => card.cleanup(path),
+                        ProjectileModifier::OnExpiry(ref mut card) => {
+                            card.cleanup(path)
                         }
-                        uncombinable => new_modifiers.push(uncombinable.clone()),
+                        ProjectileModifier::Trail(_freqency, ref mut card) => {
+                            card.cleanup(path)
+                        }
+                        ref invalid => panic!("Invalid state: cannot follow path {} into {:?}", idx, invalid),
                     }
                 }
-                *modifiers = new_modifiers;
             }
-            BaseCard::MultiCast(cards, modifiers) => {
-                modifiers.retain(|modifier| match modifier {
-                    MultiCastModifier::Spread(s) => *s != 0,
-                    MultiCastModifier::Duplication(d) => *d != 0,
-                });
-                for card in cards.iter_mut() {
-                    card.cleanup();
+            BaseCard::MultiCast(cards, _modifiers) => {
+                if path.is_empty() {
+                    panic!("Invalid state")
+                } else {
+                    let idx = path.pop_front().unwrap() as usize;
+                    cards[idx].cleanup(path)
                 }
             }
-            _ => {}
+            _ => panic!("Invalid state"),
         }
     }
 }

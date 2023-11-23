@@ -1,0 +1,2 @@
+Finish card editor
+    Make non adjacent modifiers stack
