@@ -1,2 +1,0 @@
-Tuning
-    balance 1 shots

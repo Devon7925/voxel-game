@@ -3,6 +3,7 @@ Hover for modifiers
 Increased gravity
 Main menu
 Adjusted on hit when hitting terrain to be more accurate
+Balanced 1 shots (pseudo wip)
 New Cards
     Effects
         Teleport

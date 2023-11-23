@@ -1,12 +1,16 @@
 use std::{
-    collections::{VecDeque, HashMap}, f32::consts::PI, fs::File, io::{Write, BufReader, BufRead}, sync::Arc,
+    collections::{HashMap, VecDeque},
+    f32::consts::PI,
+    fs::File,
+    io::{BufRead, BufReader, Write},
+    sync::Arc,
 };
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{
     EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation, Rotation3, Vector2, Vector3,
 };
-use matchbox_socket::{PeerState, PeerId};
+use matchbox_socket::{PeerId, PeerState};
 use serde::{Deserialize, Serialize};
 use vulkano::{
     buffer::{subbuffer::BufferReadGuard, Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -16,13 +20,16 @@ use winit::event::{ElementState, WindowEvent};
 
 use crate::{
     card_system::{
-        BaseCard, CardManager, ReferencedBaseCard, ReferencedBaseCardType,
-        ReferencedEffect, ReferencedStatusEffect, VoxelMaterial,
+        BaseCard, CardManager, ReferencedBaseCard, ReferencedBaseCardType, ReferencedEffect,
+        ReferencedStatusEffect, VoxelMaterial,
     },
+    gui::{GuiElement, GuiState},
+    networking::{NetworkConnection, NetworkPacket},
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
-    settings_manager::{Settings, ReplayMode, Control},
+    settings_manager::{Control, ReplayMode, Settings},
     voxel_sim_manager::VoxelComputePipeline,
-    CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE, SPAWN_LOCATION, networking::{NetworkConnection, NetworkPacket}, gui::{GuiElement, GuiState}, WindowProperties,
+    WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE,
+    SPAWN_LOCATION,
 };
 
 #[derive(Clone, Debug)]
@@ -73,7 +80,13 @@ pub trait PlayerSim {
 
     fn update(&mut self);
 
-    fn process_event(&mut self, event: &winit::event::WindowEvent<'_>, settings: &Settings, gui_state: &mut GuiState, window_props: &WindowProperties);
+    fn process_event(
+        &mut self,
+        event: &winit::event::WindowEvent<'_>,
+        settings: &Settings,
+        gui_state: &mut GuiState,
+        window_props: &WindowProperties,
+    );
     fn end_frame(&mut self);
 
     fn is_sim_behind(&self) -> bool;
@@ -257,7 +270,7 @@ impl PlayerSim for RollbackData {
                         self.rollback_state.players[player_idx].abilities = new_deck
                             .into_iter()
                             .map(|card| PlayerAbility {
-                                value: card.evaluate_value(true),
+                                value: card.get_cooldown(),
                                 ability: card_manager.register_base_card(card),
                                 cooldown: 0.0,
                             })
@@ -271,7 +284,11 @@ impl PlayerSim for RollbackData {
         }
         {
             let player_actions = self.actions.pop_front().unwrap();
-            assert!(player_actions.iter().all(|x| x.is_some()), "missing action at timestamp {}", self.rollback_time);
+            assert!(
+                player_actions.iter().all(|x| x.is_some()),
+                "missing action at timestamp {}",
+                self.rollback_time
+            );
             if let Some(replay_file) = self.replay_file.as_mut() {
                 replay_file.write_all(b"\n").unwrap();
                 ron::ser::to_writer(replay_file, &player_actions).unwrap();
@@ -349,7 +366,9 @@ impl PlayerSim for RollbackData {
     }
 
     fn get_camera(&self) -> Camera {
-        let player = self.get_spectate_player().unwrap_or_else(|| Player::default());
+        let player = self
+            .get_spectate_player()
+            .unwrap_or_else(|| Player::default());
         Camera {
             pos: player.pos,
             rot: player.rot,
@@ -360,7 +379,6 @@ impl PlayerSim for RollbackData {
         self.delta_time
     }
 
-    
     fn get_projectiles(&self) -> &Vec<Projectile> {
         &self.rollback_state.projectiles
     }
@@ -376,7 +394,8 @@ impl PlayerSim for RollbackData {
     fn update(&mut self) {
         let packet_data = NetworkPacket::Action(self.current_time, self.player_action.clone());
         self.network_connection.queue_packet(packet_data);
-        let (connection_changes, recieved_packets) = self.network_connection.network_update(self.player_count());
+        let (connection_changes, recieved_packets) =
+            self.network_connection.network_update(self.player_count());
         for (peer, state) in connection_changes {
             match state {
                 PeerState::Connected => {
@@ -390,11 +409,13 @@ impl PlayerSim for RollbackData {
                     });
 
                     {
-                        let deck_packet = NetworkPacket::DeckUpdate(self.current_time, self.player_deck.clone());
+                        let deck_packet =
+                            NetworkPacket::DeckUpdate(self.current_time, self.player_deck.clone());
                         self.network_connection.send_packet(peer, deck_packet);
                     }
                     {
-                        let dt_packet = NetworkPacket::DeltatimeUpdate(self.current_time, self.delta_time);
+                        let dt_packet =
+                            NetworkPacket::DeltatimeUpdate(self.current_time, self.delta_time);
                         self.network_connection.send_packet(peer, dt_packet);
                     }
                 }
@@ -435,7 +456,13 @@ impl PlayerSim for RollbackData {
         self.cached_current_state.players.get(0).cloned()
     }
 
-    fn process_event(&mut self, event: &winit::event::WindowEvent<'_>, settings: &Settings, gui_state: &mut GuiState, window_props: &WindowProperties) {
+    fn process_event(
+        &mut self,
+        event: &winit::event::WindowEvent<'_>,
+        settings: &Settings,
+        gui_state: &mut GuiState,
+        window_props: &WindowProperties,
+    ) {
         match event {
             // Handle mouse position events.
             WindowEvent::CursorMoved { position, .. } => {
@@ -454,9 +481,7 @@ impl PlayerSim for RollbackData {
             WindowEvent::MouseInput { state, button, .. } => {
                 macro_rules! mouse_match {
                     ($property:ident) => {
-                        if let Control::Mouse(mouse_code) =
-                            settings.movement_controls.$property
-                        {
+                        if let Control::Mouse(mouse_code) = settings.movement_controls.$property {
                             if button == &mouse_code {
                                 self.player_action.$property = state == &ElementState::Pressed;
                             }
@@ -469,9 +494,7 @@ impl PlayerSim for RollbackData {
                 mouse_match!(left);
                 mouse_match!(forward);
                 mouse_match!(backward);
-                for (ability_idx, ability_key) in
-                    settings.ability_controls.iter().enumerate()
-                {
+                for (ability_idx, ability_key) in settings.ability_controls.iter().enumerate() {
                     if let Control::Mouse(mouse_code) = ability_key {
                         if button == mouse_code {
                             self.player_action.activate_ability[ability_idx] =
@@ -484,9 +507,7 @@ impl PlayerSim for RollbackData {
                 input.virtual_keycode.map(|key| {
                     macro_rules! key_match {
                         ($property:ident) => {
-                            if let Control::Key(key_code) =
-                                settings.movement_controls.$property
-                            {
+                            if let Control::Key(key_code) = settings.movement_controls.$property {
                                 if key == key_code {
                                     self.player_action.$property =
                                         input.state == ElementState::Pressed;
@@ -500,9 +521,7 @@ impl PlayerSim for RollbackData {
                     key_match!(left);
                     key_match!(forward);
                     key_match!(backward);
-                    for (ability_idx, ability_key) in
-                        settings.ability_controls.iter().enumerate()
-                    {
+                    for (ability_idx, ability_key) in settings.ability_controls.iter().enumerate() {
                         if let Control::Key(key_code) = ability_key {
                             if key == *key_code {
                                 self.player_action.activate_ability[ability_idx] =
@@ -513,14 +532,28 @@ impl PlayerSim for RollbackData {
                     match key {
                         winit::event::VirtualKeyCode::Escape => {
                             if input.state == ElementState::Released {
-                                if gui_state.menu_stack.len() > 0 && !gui_state.menu_stack.last().is_some_and(|gui| *gui == GuiElement::MainMenu) {
+                                if gui_state.menu_stack.len() > 0
+                                    && !gui_state
+                                        .menu_stack
+                                        .last()
+                                        .is_some_and(|gui| *gui == GuiElement::MainMenu)
+                                {
                                     let exited_ui = gui_state.menu_stack.last().unwrap();
                                     match exited_ui {
                                         GuiElement::CardEditor => {
                                             self.player_deck.clear();
                                             self.player_deck.extend(gui_state.gui_cards.clone());
-                                            self.send_deck_update(self.player_deck.clone(), 0, self.current_time);
-                                            self.network_connection.queue_packet(NetworkPacket::DeckUpdate(self.current_time, self.player_deck.clone()));
+                                            self.send_deck_update(
+                                                self.player_deck.clone(),
+                                                0,
+                                                self.current_time,
+                                            );
+                                            self.network_connection.queue_packet(
+                                                NetworkPacket::DeckUpdate(
+                                                    self.current_time,
+                                                    self.player_deck.clone(),
+                                                ),
+                                            );
                                         }
                                         _ => (),
                                     }
@@ -607,13 +640,14 @@ impl RollbackData {
             abilities: deck
                 .iter()
                 .map(|card| PlayerAbility {
-                    value: card.evaluate_value(true),
+                    value: card.get_cooldown(),
                     ability: card_manager.register_base_card(card.clone()),
                     cooldown: 0.0,
                 })
                 .collect(),
             ..Default::default()
         };
+        println!("first player: {:?}", first_player);
         rollback_state.players.push(first_player);
         actions.iter_mut().for_each(|x| {
             x.push(Some(PlayerAction {
@@ -790,7 +824,7 @@ impl PlayerSim for ReplayData {
                         self.state.players[player_idx].abilities = new_deck
                             .into_iter()
                             .map(|card| PlayerAbility {
-                                value: card.evaluate_value(true),
+                                value: card.get_cooldown(),
                                 ability: card_manager.register_base_card(card),
                                 cooldown: 0.0,
                             })
@@ -805,13 +839,8 @@ impl PlayerSim for ReplayData {
         {
             let player_actions = self.actions.pop_front().unwrap();
             assert!(player_actions.iter().all(|x| x.is_some()));
-            self.state.step_sim(
-                &player_actions,
-                true,
-                card_manager,
-                time_step,
-                vox_compute,
-            );
+            self.state
+                .step_sim(&player_actions, true, card_manager, time_step, vox_compute);
         }
     }
 
@@ -866,12 +895,13 @@ impl PlayerSim for ReplayData {
         projectile_compute: &ProjectileComputePipeline,
         vox_compute: &mut VoxelComputePipeline,
     ) {
-        self.state.projectiles =
-            projectile_compute.download_projectiles(card_manager, vox_compute);
+        self.state.projectiles = projectile_compute.download_projectiles(card_manager, vox_compute);
     }
 
     fn get_camera(&self) -> Camera {
-        let player = self.get_spectate_player().unwrap_or_else(|| Player::default());
+        let player = self
+            .get_spectate_player()
+            .unwrap_or_else(|| Player::default());
         Camera {
             pos: player.pos,
             rot: player.rot,
@@ -882,7 +912,6 @@ impl PlayerSim for ReplayData {
         self.delta_time
     }
 
-    
     fn get_projectiles(&self) -> &Vec<Projectile> {
         &self.state.projectiles
     }
@@ -895,8 +924,7 @@ impl PlayerSim for ReplayData {
         self.state.players.len()
     }
 
-    fn update(&mut self) {
-    }
+    fn update(&mut self) {}
 
     fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
         self.player_buffer.clone()
@@ -910,14 +938,19 @@ impl PlayerSim for ReplayData {
         self.state.players.get(0).cloned()
     }
 
-    fn process_event(&mut self, event: &winit::event::WindowEvent<'_>, _settings: &Settings, _gui_state: &mut GuiState, _window_props: &WindowProperties) {
+    fn process_event(
+        &mut self,
+        event: &winit::event::WindowEvent<'_>,
+        _settings: &Settings,
+        _gui_state: &mut GuiState,
+        _window_props: &WindowProperties,
+    ) {
         match event {
             _ => {}
         }
     }
 
-    fn end_frame(&mut self) {
-    }
+    fn end_frame(&mut self) {}
 
     fn is_sim_behind(&self) -> bool {
         false
@@ -959,7 +992,8 @@ impl ReplayData {
         let current_time: u64 = 0;
 
         let mut state = WorldState::new();
-        let replay_file = std::fs::File::open(settings.replay_settings.replay_file.clone()).unwrap();
+        let replay_file =
+            std::fs::File::open(settings.replay_settings.replay_file.clone()).unwrap();
         let reader = BufReader::new(replay_file);
         let mut actions = VecDeque::new();
         let mut meta_actions = VecDeque::new();
@@ -970,7 +1004,6 @@ impl ReplayData {
                 continue;
             };
             if line.starts_with("PLAYER COUNT ") {
-                
             } else if let Some(deck_string) = line.strip_prefix("PLAYER DECK ") {
                 let deck: Vec<BaseCard> = ron::de::from_str(deck_string).unwrap();
                 state.players.push(Player {
@@ -978,7 +1011,7 @@ impl ReplayData {
                     abilities: deck
                         .iter()
                         .map(|card| PlayerAbility {
-                            value: card.evaluate_value(true),
+                            value: card.get_cooldown(),
                             ability: card_manager.register_base_card(card.clone()),
                             cooldown: 0.0,
                         })
@@ -990,11 +1023,13 @@ impl ReplayData {
             } else if let Some(time_stamp_string) = line.strip_prefix("TIME ") {
                 let time_stamp: u64 = time_stamp_string.parse().unwrap();
                 let meta_actions_string = lines.next().unwrap().unwrap();
-                let line_meta_actions: Vec<Option<MetaAction>> = ron::de::from_str(&meta_actions_string).unwrap();
+                let line_meta_actions: Vec<Option<MetaAction>> =
+                    ron::de::from_str(&meta_actions_string).unwrap();
                 meta_actions.push_back(line_meta_actions);
                 if time_stamp >= 54 {
                     let actions_string = lines.next().unwrap().unwrap();
-                    let line_actions: Vec<Option<PlayerAction>> = ron::de::from_str(&actions_string).unwrap();
+                    let line_actions: Vec<Option<PlayerAction>> =
+                        ron::de::from_str(&actions_string).unwrap();
                     actions.push_back(line_actions);
                 }
             }
@@ -1359,7 +1394,9 @@ impl WorldState {
                 ReferencedEffect::StatusEffect(effect, duration) => {
                     match effect {
                         ReferencedStatusEffect::Overheal => {
-                            player.health.push(HealthSection::Overhealth(10.0, duration as f32));
+                            player
+                                .health
+                                .push(HealthSection::Overhealth(10.0, duration as f32));
                         }
                         _ => {}
                     }
