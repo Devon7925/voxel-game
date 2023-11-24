@@ -15,7 +15,7 @@ UI
     Add status effect ui
     Exit to main menu button
 Finish card editor
-    scrolling
-    clip out of area
     bugfixes
+        on hit inner card drag on self
+        invalid drag types
 Update dependencies
