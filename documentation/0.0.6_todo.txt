@@ -15,7 +15,7 @@ UI
     Add status effect ui
     Exit to main menu button
 Finish card editor
-    select palette type
     scrolling
     clip out of area
+    bugfixes
 Update dependencies

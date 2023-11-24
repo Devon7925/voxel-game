@@ -3,3 +3,4 @@ Finish card editor
     allow dragging
         multi modifiers
         base cards
+    select palette type

@@ -15,7 +15,7 @@ mod world_gen;
 use crate::{
     app::RenderPipeline,
     card_system::BaseCard,
-    gui::{GuiElement, GuiState},
+    gui::{GuiElement, GuiState, PaletteState},
     settings_manager::Settings,
 };
 use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
@@ -129,6 +129,7 @@ fn main() {
         gui_cards: player_deck.clone(),
         in_game: false,
         should_exit: false,
+        palette_state: PaletteState::ProjectileModifiers
     };
 
     let mut time = Instant::now();
