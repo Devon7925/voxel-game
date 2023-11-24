@@ -820,6 +820,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     if let Some(source_path) = source_path.as_mut() {
                                         if let Some(drop_path) = drop_path.as_mut() {
                                             if ui.input(|i| i.pointer.any_released()) {
+                                                println!("source: {:?}, drop: {:?}", source_path, drop_path);
                                                 let source_action_idx = source_path.pop_front().unwrap() as usize;
                                                 let drop_action_idx = drop_path.pop_front().unwrap() as usize;
                                                 // do the drop:
@@ -832,7 +833,6 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                     gui_state.gui_cards[drop_action_idx - 1].insert_modifier(drop_path, item);
                                                 }
                                                 if source_action_idx > 0 {
-                                                    source_path.pop_back();
                                                     gui_state.gui_cards[source_action_idx - 1].cleanup(source_path);
                                                 }
                                             }

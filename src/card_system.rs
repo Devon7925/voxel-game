@@ -11,6 +11,7 @@ pub enum BaseCard {
     MultiCast(Vec<BaseCard>, Vec<MultiCastModifier>),
     CreateMaterial(VoxelMaterial),
     Effect(Effect),
+    None,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -570,6 +571,7 @@ impl BaseCard {
                     }
                 },
             },
+            BaseCard::None => vec![],
         }
     }
 
@@ -646,11 +648,17 @@ impl BaseCard {
                 Effect::Cleanse => {}
                 Effect::Teleport => {}
             },
+            BaseCard::None => {}
         }
         return true;
     }
 
-    pub fn take_modifier(&mut self, path: &mut VecDeque<u32>) -> ProjectileModifier {
+    pub fn take_modifier(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {
+        if path.is_empty() {
+            let result = DraggableCard::BaseCard(self.clone());
+            *self = BaseCard::None;
+            return result;
+        }
         match self {
             BaseCard::Projectile(modifiers) => {
                 let idx = path.pop_front().unwrap() as usize;
@@ -658,34 +666,65 @@ impl BaseCard {
                     let value = modifiers[idx].clone();
                     modifiers[idx] =
                         ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, 0);
-                    value
+                    DraggableCard::ProjectileModifier(value)
                 } else {
-                    match modifiers[idx] {
-                        ProjectileModifier::OnHit(ref mut card) => card.take_modifier(path),
-                        ProjectileModifier::OnExpiry(ref mut card) => card.take_modifier(path),
-                        ProjectileModifier::Trail(_freqency, ref mut card) => {
-                            card.take_modifier(path)
+                    assert!(path.pop_front().unwrap() == 0);
+                    if path.is_empty() {
+                        let card_ref = match modifiers.get_mut(idx).unwrap() {
+                            ProjectileModifier::OnHit(ref mut card) => card,
+                            ProjectileModifier::OnExpiry(ref mut card) => card,
+                            ProjectileModifier::Trail(_freqency, ref mut card) => {
+                                card
+                            }
+                            invalid_take_modifier => panic!("Invalid state: cannot take from {:?}", invalid_take_modifier),
+                        };
+                        let result = DraggableCard::BaseCard(card_ref.clone());
+                        *card_ref = BaseCard::None;
+                        result
+                    } else {
+                        match modifiers[idx] {
+                            ProjectileModifier::OnHit(ref mut card) => card.take_modifier(path),
+                            ProjectileModifier::OnExpiry(ref mut card) => card.take_modifier(path),
+                            ProjectileModifier::Trail(_freqency, ref mut card) => {
+                                card.take_modifier(path)
+                            }
+                            _ => panic!("Invalid state"),
                         }
-                        _ => panic!("Invalid state"),
                     }
                 }
             }
-            BaseCard::MultiCast(cards, _modifiers) => {
-                let idx = path.pop_front().unwrap() as usize;
-                if path.is_empty() {
-                    panic!("Invalid state")
+            BaseCard::MultiCast(cards, modifiers) => {
+                let type_idx = path.pop_front().unwrap() as usize;
+                if type_idx == 0 {
+                    let idx = path.pop_front().unwrap() as usize;
+                    assert!(path.is_empty());
+                    let multicast_modifier = modifiers[idx].clone();
+                    modifiers[idx] = MultiCastModifier::Spread(0);
+                    DraggableCard::MultiCastModifier(multicast_modifier)
+                } else if type_idx == 1 {
+                    let idx = path.pop_front().unwrap() as usize;
+                    if path.is_empty() {
+                        let value = cards[idx].clone();
+                        cards[idx] = BaseCard::None;
+                        DraggableCard::BaseCard(value)
+                    } else {
+                        cards[idx].take_modifier(path)
+                    }
                 } else {
-                    cards[idx].take_modifier(path)
+                    panic!("Invalid state");
                 }
             }
-            _ => panic!("Invalid state"),
+            invalid_take => panic!("Invalid state: cannot take from {:?}", invalid_take),
         }
     }
 
-    pub fn insert_modifier(&mut self, path: &mut VecDeque<u32>, item: ProjectileModifier) {
+    pub fn insert_modifier(&mut self, path: &mut VecDeque<u32>, item: DraggableCard) {
         match self {
             BaseCard::Projectile(modifiers) => {
                 if path.is_empty() {
+                    let DraggableCard::ProjectileModifier(item) = item else {
+                        panic!("Invalid state")
+                    };
                     if let ProjectileModifier::SimpleModify(last_ty, last_s) = item.clone() {
                         let mut combined = false;
                         for modifier in modifiers.iter_mut() {
@@ -713,6 +752,7 @@ impl BaseCard {
                     });
                 } else {
                     let idx = path.pop_front().unwrap() as usize;
+                    assert!(path.pop_front().unwrap() == 0);
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => card.insert_modifier(path, item),
                         ProjectileModifier::OnExpiry(ref mut card) => {
@@ -725,13 +765,57 @@ impl BaseCard {
                     }
                 }
             }
-            BaseCard::MultiCast(cards, _modifiers) => {
+            BaseCard::MultiCast(cards, modifiers) => {
                 if path.is_empty() {
-                    panic!("Invalid state")
+                    if let DraggableCard::BaseCard(item) = item {
+                        cards.push(item);
+                    } else if let DraggableCard::MultiCastModifier(modifier_item) = item {
+                        let mut combined = false;
+                        match modifier_item.clone() {
+                            MultiCastModifier::Duplication(last_s) => {
+                                for modifier in modifiers.iter_mut() {
+                                    match modifier {
+                                        MultiCastModifier::Duplication(s) => {
+                                            *s += last_s;
+                                            combined = true;
+                                            break;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            MultiCastModifier::Spread(last_s) => {
+                                for modifier in modifiers.iter_mut() {
+                                    match modifier {
+                                        MultiCastModifier::Spread(s) => {
+                                            *s += last_s;
+                                            combined = true;
+                                            break;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+
+                        if !combined {
+                            modifiers.push(modifier_item.clone());
+                        }
+                    } else {
+                        panic!("Invalid state")
+                    }
                 } else {
+                    assert!(path.pop_front().unwrap() == 1);
                     let idx = path.pop_front().unwrap() as usize;
                     cards[idx].insert_modifier(path, item)
                 }
+            }
+            BaseCard::None => {
+                assert!(path.is_empty(), "Invalid state: should not have nonempty path {:?} when inserting into None", path);
+                let DraggableCard::BaseCard(item) = item else {
+                    panic!("Invalid state")
+                };
+                *self = item;
             }
             _ => panic!("Invalid state"),
         }
@@ -740,13 +824,14 @@ impl BaseCard {
     pub fn cleanup(&mut self, path: &mut VecDeque<u32>) {
         match self {
             BaseCard::Projectile(modifiers) => {
-                if path.is_empty() {                    
+                if path.len() <= 1 {                    
                     modifiers.retain(|modifier| match modifier {
                         ProjectileModifier::SimpleModify(_, s) => *s != 0,
                         _ => true,
                     });
                 } else {
                     let idx = path.pop_front().unwrap() as usize;
+                    assert!(path.pop_front().unwrap() == 0);
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => card.cleanup(path),
                         ProjectileModifier::OnExpiry(ref mut card) => {
@@ -759,22 +844,58 @@ impl BaseCard {
                     }
                 }
             }
-            BaseCard::MultiCast(cards, _modifiers) => {
+            BaseCard::MultiCast(cards, modifiers) => {
                 if path.is_empty() {
-                    panic!("Invalid state")
+                    cards.retain(|card| !matches!(card, BaseCard::None));
                 } else {
-                    let idx = path.pop_front().unwrap() as usize;
-                    cards[idx].cleanup(path)
+                    let idx_type = path.pop_front().unwrap();
+                    if idx_type == 0 {
+                        let idx = path.pop_front().unwrap() as usize;
+                        assert!(path.is_empty());
+                        match modifiers[idx] {
+                            MultiCastModifier::Duplication(s) => {
+                                if s == 0 {
+                                    modifiers.remove(idx);
+                                }
+                            }
+                            MultiCastModifier::Spread(s) => {
+                                if s == 0 {
+                                    modifiers.remove(idx);
+                                }
+                            }
+                        }
+                    } else if idx_type == 1 {
+                        let idx = path.pop_front().unwrap() as usize;
+                        if path.is_empty() {
+                            if matches!(cards[idx], BaseCard::None) {
+                                cards.remove(idx);
+                            }
+                        } else {
+                            cards[idx].cleanup(path);
+                        }
+                    } else {
+                        panic!("Invalid state");
+                    }
                 }
+            }
+            BaseCard::None => {
+                assert!(path.is_empty(), "Invalid state");
             }
             _ => panic!("Invalid state"),
         }
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum DraggableCard {
+    ProjectileModifier(ProjectileModifier),
+    MultiCastModifier(MultiCastModifier),
+    BaseCard(BaseCard),
+}
+
 impl Default for BaseCard {
     fn default() -> Self {
-        BaseCard::MultiCast(vec![], vec![])
+        BaseCard::None
     }
 }
 
@@ -1125,6 +1246,10 @@ impl CardManager {
                     card_idx: self.referenced_effects.len() - 1,
                 }
             }
+            BaseCard::None => ReferencedBaseCard {
+                card_type: ReferencedBaseCardType::None,
+                card_idx: 0,
+            },
         }
     }
 
