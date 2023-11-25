@@ -8,15 +8,14 @@ edition = "2021"
 [dependencies]
 
 cgmath = "0.18"
-winit = { version = "0.28", features = ["serde"] }
-vulkano = "0.33.0"
-vulkano-util = "0.33.0"
-vulkano-win = "0.33.0"
-vulkano-shaders = "0.33.0"
+winit = { version = "0.28.2", features = ["serde"] }
+vulkano = "0.34.1"
+vulkano-util = "0.34.1"
+vulkano-shaders = "0.34.0"
 rand = "0.8.4"
 noise = "0.8.2"
 bytemuck = "1.13.1"
-matchbox_socket = "0.7.0"
+matchbox_socket = "0.8.0"
 futures = "0.3"
 tokio = "1.29"
 futures-timer = { version = "3" }
@@ -25,6 +24,6 @@ ron = "0.8"
 serde_yaml = "0.9.25"
 serde = { version = "1", features = ["derive"] }
 rayon = "1.8"
-egui_winit_vulkano = "0.25.0"
-puffin = "0.17"
-puffin_http = "0.14"
+egui_winit_vulkano = "0.26.0"
+puffin = "0.18"
+puffin_http = "0.15"

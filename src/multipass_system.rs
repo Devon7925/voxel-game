@@ -8,7 +8,10 @@
 // according to those terms.
 use cgmath::{Matrix4, SquareMatrix};
 use egui_winit_vulkano::{
-    egui::{self, emath, epaint, pos2, Align2, Color32, Rect, RichText, Rounding, Stroke, Vec2, ScrollArea},
+    egui::{
+        self, emath, epaint, pos2, Align2, Color32, Rect, RichText, Rounding, ScrollArea, Stroke,
+        Vec2,
+    },
     Gui, GuiConfig,
 };
 use std::sync::Arc;
@@ -17,13 +20,13 @@ use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryCommandBufferAbstract,
-        SubpassContents,
+        SubpassBeginInfo, SubpassContents,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::Queue,
     format::Format,
-    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract},
-    memory::allocator::StandardMemoryAllocator,
+    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
+    memory::allocator::{AllocationCreateInfo, StandardMemoryAllocator},
     pipeline::graphics::vertex_input::Vertex,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::Surface,
@@ -65,14 +68,14 @@ pub struct FrameSystem {
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
 
     // Intermediate render target that will contain the albedo of each pixel of the scene.
-    diffuse_buffer: Arc<ImageView<AttachmentImage>>,
+    diffuse_buffer: Arc<ImageView>,
     // Intermediate render target that will contain the normal vector in world coordinates of each
     // pixel of the scene.
     // The normal vector is the vector perpendicular to the surface of the object at this point.
-    normals_buffer: Arc<ImageView<AttachmentImage>>,
+    normals_buffer: Arc<ImageView>,
     // Intermediate render target that will contain the depth of each pixel of the scene.
     // This is a traditional depth buffer. `0.0` means "near", and `1.0` means "far".
-    depth_buffer: Arc<ImageView<AttachmentImage>>,
+    depth_buffer: Arc<ImageView>,
 
     // Will allow us to add an ambient lighting to a scene during the second subpass.
     ambient_lighting_system: PointLightingSystem,
@@ -128,31 +131,31 @@ impl FrameSystem {
                 // The image that will contain the final rendering (in this example the swapchain
                 // image, but it could be another image).
                 final_color: {
-                    load: Clear,
-                    store: Store,
                     format: final_output_format,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
                 },
                 // Will be bound to `self.diffuse_buffer`.
                 diffuse: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::A2B10G10R10_UNORM_PACK32,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
                 // Will be bound to `self.normals_buffer`.
                 normals: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::R16G16B16A16_SFLOAT,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
                 // Will be bound to `self.depth_buffer`.
                 depth: {
-                    load: Clear,
-                    store: DontCare,
                     format: Format::D32_SFLOAT,
                     samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             passes: [
@@ -175,31 +178,48 @@ impl FrameSystem {
         // For now we create three temporary images with a dimension of 1 by 1 pixel. These images
         // will be replaced the first time we call `frame()`.
         let diffuse_buffer = ImageView::new_default(
-            AttachmentImage::with_usage(
-                &memory_allocator,
-                [1, 1],
-                Format::A2B10G10R10_UNORM_PACK32,
-                ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+            Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::A2B10G10R10_UNORM_PACK32,
+                    extent: [1, 1, 1],
+                    usage: ImageUsage::TRANSIENT_ATTACHMENT
+                        | ImageUsage::INPUT_ATTACHMENT
+                        | ImageUsage::COLOR_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
         let normals_buffer = ImageView::new_default(
-            AttachmentImage::with_usage(
-                &memory_allocator,
-                [1, 1],
-                Format::R16G16B16A16_SFLOAT,
-                ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+            Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::R16G16B16A16_SFLOAT,
+                    extent: [1, 1, 1],
+                    usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
         .unwrap();
         let depth_buffer = ImageView::new_default(
-            AttachmentImage::with_usage(
-                &memory_allocator,
-                [1, 1],
-                Format::D32_SFLOAT,
-                ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+            Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::D32_SFLOAT,
+                    extent: [1, 1, 1],
+                    usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
             )
             .unwrap(),
         )
@@ -207,6 +227,7 @@ impl FrameSystem {
 
         let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             gfx_queue.device().clone(),
+            Default::default(),
         ));
 
         // Initialize the three lighting systems. Note that we need to pass to them the subpass
@@ -265,7 +286,7 @@ impl FrameSystem {
     pub fn frame<F>(
         &mut self,
         before_future: F,
-        final_image: Arc<dyn ImageViewAbstract + 'static>,
+        final_image: Arc<ImageView>,
         world_to_framebuffer: Matrix4<f32>,
     ) -> Frame
     where
@@ -274,38 +295,56 @@ impl FrameSystem {
         puffin::profile_function!();
         // First of all we recreate `self.diffuse_buffer`, `self.normals_buffer` and
         // `self.depth_buffer` if their dimensions doesn't match the dimensions of the final image.
-        let img_dims = final_image.image().dimensions().width_height();
-        if self.diffuse_buffer.image().dimensions().width_height() != img_dims {
+        let extent = final_image.image().extent();
+        if self.diffuse_buffer.image().extent() != extent {
             // Note that we create "transient" images here. This means that the content of the
             // image is only defined when within a render pass. In other words you can draw to
             // them in a subpass then read them in another subpass, but as soon as you leave the
             // render pass their content becomes undefined.
             self.diffuse_buffer = ImageView::new_default(
-                AttachmentImage::with_usage(
-                    &self.memory_allocator,
-                    img_dims,
-                    Format::A2B10G10R10_UNORM_PACK32,
-                    ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                Image::new(
+                    self.memory_allocator.clone(),
+                    ImageCreateInfo {
+                        extent,
+                        format: Format::A2B10G10R10_UNORM_PACK32,
+                        usage: ImageUsage::TRANSIENT_ATTACHMENT
+                            | ImageUsage::INPUT_ATTACHMENT
+                            | ImageUsage::COLOR_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
                 )
                 .unwrap(),
             )
             .unwrap();
             self.normals_buffer = ImageView::new_default(
-                AttachmentImage::with_usage(
-                    &self.memory_allocator,
-                    img_dims,
-                    Format::R16G16B16A16_SFLOAT,
-                    ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                Image::new(
+                    self.memory_allocator.clone(),
+                    ImageCreateInfo {
+                        extent,
+                        format: Format::R16G16B16A16_SFLOAT,
+                        usage: ImageUsage::TRANSIENT_ATTACHMENT
+                            | ImageUsage::INPUT_ATTACHMENT
+                            | ImageUsage::COLOR_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
                 )
                 .unwrap(),
             )
             .unwrap();
             self.depth_buffer = ImageView::new_default(
-                AttachmentImage::with_usage(
-                    &self.memory_allocator,
-                    img_dims,
-                    Format::D32_SFLOAT,
-                    ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
+                Image::new(
+                    self.memory_allocator.clone(),
+                    ImageCreateInfo {
+                        extent,
+                        format: Format::D32_SFLOAT,
+                        usage: ImageUsage::TRANSIENT_ATTACHMENT
+                            | ImageUsage::INPUT_ATTACHMENT
+                            | ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
                 )
                 .unwrap(),
             )
@@ -330,7 +369,7 @@ impl FrameSystem {
 
         // Start the command buffer builder that will be filled throughout the frame handling.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -346,7 +385,10 @@ impl FrameSystem {
                     ],
                     ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
                 },
-                SubpassContents::SecondaryCommandBuffers,
+                SubpassBeginInfo {
+                    contents: SubpassContents::SecondaryCommandBuffers,
+                    ..Default::default()
+                },
             )
             .unwrap();
 
@@ -382,9 +424,7 @@ pub struct Frame<'a> {
     // Framebuffer that was used when starting the render pass.
     framebuffer: Arc<Framebuffer>,
     // The command buffer builder that will be built during the lifetime of this object.
-    command_buffer_builder: Option<
-        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, Arc<StandardCommandBufferAllocator>>,
-    >,
+    command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
     // Matrix that was passed to `frame()`.
     world_to_framebuffer: Matrix4<f32>,
 }
@@ -413,7 +453,13 @@ impl<'a> Frame<'a> {
                 self.command_buffer_builder
                     .as_mut()
                     .unwrap()
-                    .next_subpass(SubpassContents::SecondaryCommandBuffers)
+                    .next_subpass(
+                        Default::default(),
+                        SubpassBeginInfo {
+                            contents: SubpassContents::SecondaryCommandBuffers,
+                            ..Default::default()
+                        },
+                    )
                     .unwrap();
 
                 // And returning an object that will allow the user to apply lighting to the scene.
@@ -427,7 +473,7 @@ impl<'a> Frame<'a> {
                 self.command_buffer_builder
                     .as_mut()
                     .unwrap()
-                    .end_render_pass()
+                    .end_render_pass(Default::default())
                     .unwrap();
                 let command_buffer = self.command_buffer_builder.take().unwrap().build().unwrap();
 
@@ -471,10 +517,7 @@ pub struct DrawPass<'f, 's: 'f> {
 
 impl<'f, 's: 'f> DrawPass<'f, 's> {
     /// Appends a command that executes a secondary command buffer that performs drawing.
-    pub fn execute<C>(&mut self, command_buffer: C)
-    where
-        C: SecondaryCommandBufferAbstract + 'static,
-    {
+    pub fn execute(&mut self, command_buffer: Arc<dyn SecondaryCommandBufferAbstract>) {
         self.frame
             .command_buffer_builder
             .as_mut()
@@ -646,14 +689,14 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 };
                                 ui.painter().add(epaint::Shape::rect_filled(
                                     health_size,
-                                    Rounding::none(),
+                                    Rounding::ZERO,
                                     health_color,
                                 ));
                             }
 
                             ui.painter().add(epaint::Shape::rect_stroke(
                                 healthbar_size,
-                                Rounding::none(),
+                                Rounding::ZERO,
                                 Stroke::new(thickness, color),
                             ));
                         });
@@ -778,206 +821,243 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     Color32::BLACK,
                                 );
                                 ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
-                                .show(ui, |ui| {
-                                    ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-                                        ui.label(RichText::new("Card Editor").color(Color32::WHITE));
-                                        ui.horizontal(|ui| {
-                                            ui.selectable_value(
-                                                &mut gui_state.palette_state,
-                                                PaletteState::ProjectileModifiers,
-                                                "Projectile Modifiers",
-                                            );
-                                            ui.selectable_value(
-                                                &mut gui_state.palette_state,
-                                                PaletteState::BaseCards,
-                                                "Base Cards",
-                                            );
-                                            ui.selectable_value(
-                                                &mut gui_state.palette_state,
-                                                PaletteState::AdvancedProjectileModifiers,
-                                                "Advanced Projectile Modifiers",
-                                            );
-                                            ui.selectable_value(
-                                                &mut gui_state.palette_state,
-                                                PaletteState::MultiCastModifiers,
-                                                "Multicast Modifiers",
-                                            );
-                                        });
-
-                                        let mut source_path = None;
-                                        let mut drop_path = None;
-                                        let mut dock_card = match gui_state.palette_state {
-                                            PaletteState::ProjectileModifiers => {
-                                                BaseCard::Projectile(vec![
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Gravity,
-                                                        -1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Gravity,
-                                                        1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Health,
-                                                        -1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Health,
-                                                        1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Length,
-                                                        -1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Length,
-                                                        1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Width,
-                                                        -1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Width,
-                                                        1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Height,
-                                                        -1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Height,
-                                                        1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Speed,
-                                                        -1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Speed,
-                                                        1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Lifetime,
-                                                        -1,
-                                                    ),
-                                                    ProjectileModifier::SimpleModify(
-                                                        ProjectileModifierType::Lifetime,
-                                                        1,
-                                                    ),
-                                                    ProjectileModifier::NoEnemyFire,
-                                                    ProjectileModifier::FriendlyFire,
-                                                    ProjectileModifier::LockToOwner,
-                                                    ProjectileModifier::PiercePlayers,
-                                                ])
-                                            }
-                                            PaletteState::BaseCards => BaseCard::MultiCast(
-                                                vec![
-                                                    BaseCard::Projectile(vec![]),
-                                                    BaseCard::MultiCast(vec![], vec![]),
-                                                    BaseCard::Effect(Effect::Damage(1)),
-                                                    BaseCard::Effect(Effect::Damage(-1)),
-                                                    BaseCard::Effect(Effect::Knockback(1)),
-                                                    BaseCard::Effect(Effect::Knockback(-1)),
-                                                    BaseCard::Effect(Effect::Cleanse),
-                                                    BaseCard::Effect(Effect::Teleport),
-                                                    BaseCard::CreateMaterial(VoxelMaterial::Dirt),
-                                                    BaseCard::CreateMaterial(VoxelMaterial::Stone),
-                                                    BaseCard::CreateMaterial(VoxelMaterial::Ice),
-                                                ],
-                                                vec![],
-                                            ),
-                                            PaletteState::AdvancedProjectileModifiers => {
-                                                BaseCard::Projectile(vec![
-                                                    ProjectileModifier::OnHit(BaseCard::None),
-                                                    ProjectileModifier::OnExpiry(BaseCard::None),
-                                                    ProjectileModifier::Trail(1, BaseCard::None),
-                                                ])
-                                            }
-                                            PaletteState::MultiCastModifiers => BaseCard::MultiCast(
-                                                vec![],
-                                                vec![
-                                                    MultiCastModifier::Spread(1),
-                                                    MultiCastModifier::Duplication(1),
-                                                ],
-                                            ),
-                                        };
-                                        draw_base_card(
-                                            ui,
-                                            &dock_card,
-                                            &mut vec![0].into(),
-                                            &mut source_path,
-                                            &mut drop_path,
-                                        );
-
-                                        for (ability_idx, card) in
-                                            gui_state.gui_cards.iter().enumerate()
-                                        {
-                                            ui.horizontal_top(|ui| {
-                                                {
-                                                    let desired_size = ui.spacing().interact_size.y
-                                                        * egui::vec2(3.0, 3.0);
-                                                    let (rect, _response) = ui.allocate_exact_size(
-                                                        desired_size,
-                                                        egui::Sense::click(),
+                                    .auto_shrink([false, false])
+                                    .scroll_bar_visibility(
+                                        egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                                    )
+                                    .show(ui, |ui| {
+                                        ui.with_layout(
+                                            egui::Layout::top_down(egui::Align::LEFT),
+                                            |ui| {
+                                                ui.label(
+                                                    RichText::new("Card Editor")
+                                                        .color(Color32::WHITE),
+                                                );
+                                                ui.horizontal(|ui| {
+                                                    ui.selectable_value(
+                                                        &mut gui_state.palette_state,
+                                                        PaletteState::ProjectileModifiers,
+                                                        "Projectile Modifiers",
                                                     );
-                                                    let font = egui::FontId::proportional(24.0);
-                                                    ui.painter().rect_filled(
-                                                        rect,
-                                                        0.0,
-                                                        Color32::LIGHT_GRAY,
+                                                    ui.selectable_value(
+                                                        &mut gui_state.palette_state,
+                                                        PaletteState::BaseCards,
+                                                        "Base Cards",
                                                     );
-                                                    ui.painter().text(
-                                                        rect.center(),
-                                                        Align2::CENTER_CENTER,
-                                                        format!(
-                                                            "{}",
-                                                            settings.ability_controls[ability_idx]
+                                                    ui.selectable_value(
+                                                        &mut gui_state.palette_state,
+                                                        PaletteState::AdvancedProjectileModifiers,
+                                                        "Advanced Projectile Modifiers",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut gui_state.palette_state,
+                                                        PaletteState::MultiCastModifiers,
+                                                        "Multicast Modifiers",
+                                                    );
+                                                });
+
+                                                let mut source_path = None;
+                                                let mut drop_path = None;
+                                                let mut dock_card = match gui_state.palette_state {
+                                                    PaletteState::ProjectileModifiers => {
+                                                        BaseCard::Projectile(vec![
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Gravity,
+                                                                -1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Gravity,
+                                                                1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Health,
+                                                                -1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Health,
+                                                                1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Length,
+                                                                -1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Length,
+                                                                1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Width,
+                                                                -1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Width,
+                                                                1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Height,
+                                                                -1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Height,
+                                                                1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Speed,
+                                                                -1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Speed,
+                                                                1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Lifetime,
+                                                                -1,
+                                                            ),
+                                                            ProjectileModifier::SimpleModify(
+                                                                ProjectileModifierType::Lifetime,
+                                                                1,
+                                                            ),
+                                                            ProjectileModifier::NoEnemyFire,
+                                                            ProjectileModifier::FriendlyFire,
+                                                            ProjectileModifier::LockToOwner,
+                                                            ProjectileModifier::PiercePlayers,
+                                                        ])
+                                                    }
+                                                    PaletteState::BaseCards => BaseCard::MultiCast(
+                                                        vec![
+                                                            BaseCard::Projectile(vec![]),
+                                                            BaseCard::MultiCast(vec![], vec![]),
+                                                            BaseCard::Effect(Effect::Damage(1)),
+                                                            BaseCard::Effect(Effect::Damage(-1)),
+                                                            BaseCard::Effect(Effect::Knockback(1)),
+                                                            BaseCard::Effect(Effect::Knockback(-1)),
+                                                            BaseCard::Effect(Effect::Cleanse),
+                                                            BaseCard::Effect(Effect::Teleport),
+                                                            BaseCard::CreateMaterial(
+                                                                VoxelMaterial::Dirt,
+                                                            ),
+                                                            BaseCard::CreateMaterial(
+                                                                VoxelMaterial::Stone,
+                                                            ),
+                                                            BaseCard::CreateMaterial(
+                                                                VoxelMaterial::Ice,
+                                                            ),
+                                                        ],
+                                                        vec![],
+                                                    ),
+                                                    PaletteState::AdvancedProjectileModifiers => {
+                                                        BaseCard::Projectile(vec![
+                                                            ProjectileModifier::OnHit(
+                                                                BaseCard::None,
+                                                            ),
+                                                            ProjectileModifier::OnExpiry(
+                                                                BaseCard::None,
+                                                            ),
+                                                            ProjectileModifier::Trail(
+                                                                1,
+                                                                BaseCard::None,
+                                                            ),
+                                                        ])
+                                                    }
+                                                    PaletteState::MultiCastModifiers => {
+                                                        BaseCard::MultiCast(
+                                                            vec![],
+                                                            vec![
+                                                                MultiCastModifier::Spread(1),
+                                                                MultiCastModifier::Duplication(1),
+                                                            ],
                                                         )
-                                                        .as_str(),
-                                                        font,
-                                                        Color32::BLACK,
-                                                    );
-                                                }
+                                                    }
+                                                };
                                                 draw_base_card(
                                                     ui,
-                                                    &card,
-                                                    &mut vec![ability_idx as u32 + 1].into(),
+                                                    &dock_card,
+                                                    &mut vec![0].into(),
                                                     &mut source_path,
                                                     &mut drop_path,
                                                 );
-                                            });
-                                        }
 
-                                        if let Some(source_path) = source_path.as_mut() {
-                                            if let Some(drop_path) = drop_path.as_mut() {
-                                                if ui.input(|i| i.pointer.any_released()) {
-                                                    let source_action_idx =
-                                                        source_path.pop_front().unwrap() as usize;
-                                                    let drop_action_idx =
-                                                        drop_path.pop_front().unwrap() as usize;
-                                                    // do the drop:
-                                                    let item = if source_action_idx == 0 {
-                                                        dock_card.take_modifier(source_path)
-                                                    } else {
-                                                        gui_state.gui_cards[source_action_idx - 1]
-                                                            .take_modifier(&mut source_path.clone())
-                                                    };
-                                                    if drop_action_idx > 0 {
-                                                        gui_state.gui_cards[drop_action_idx - 1]
-                                                            .insert_modifier(drop_path, item);
-                                                    }
-                                                    if source_action_idx > 0 {
-                                                        gui_state.gui_cards[source_action_idx - 1]
-                                                            .cleanup(source_path);
+                                                for (ability_idx, card) in
+                                                    gui_state.gui_cards.iter().enumerate()
+                                                {
+                                                    ui.horizontal_top(|ui| {
+                                                        {
+                                                            let desired_size =
+                                                                ui.spacing().interact_size.y
+                                                                    * egui::vec2(3.0, 3.0);
+                                                            let (rect, _response) = ui
+                                                                .allocate_exact_size(
+                                                                    desired_size,
+                                                                    egui::Sense::click(),
+                                                                );
+                                                            let font =
+                                                                egui::FontId::proportional(24.0);
+                                                            ui.painter().rect_filled(
+                                                                rect,
+                                                                0.0,
+                                                                Color32::LIGHT_GRAY,
+                                                            );
+                                                            ui.painter().text(
+                                                                rect.center(),
+                                                                Align2::CENTER_CENTER,
+                                                                format!(
+                                                                    "{}",
+                                                                    settings.ability_controls
+                                                                        [ability_idx]
+                                                                )
+                                                                .as_str(),
+                                                                font,
+                                                                Color32::BLACK,
+                                                            );
+                                                        }
+                                                        draw_base_card(
+                                                            ui,
+                                                            &card,
+                                                            &mut vec![ability_idx as u32 + 1]
+                                                                .into(),
+                                                            &mut source_path,
+                                                            &mut drop_path,
+                                                        );
+                                                    });
+                                                }
+
+                                                if let Some(source_path) = source_path.as_mut() {
+                                                    if let Some(drop_path) = drop_path.as_mut() {
+                                                        if ui.input(|i| i.pointer.any_released()) {
+                                                            let source_action_idx =
+                                                                source_path.pop_front().unwrap()
+                                                                    as usize;
+                                                            let drop_action_idx =
+                                                                drop_path.pop_front().unwrap()
+                                                                    as usize;
+                                                            // do the drop:
+                                                            let item = if source_action_idx == 0 {
+                                                                dock_card.take_modifier(source_path)
+                                                            } else {
+                                                                gui_state.gui_cards
+                                                                    [source_action_idx - 1]
+                                                                    .take_modifier(
+                                                                        &mut source_path.clone(),
+                                                                    )
+                                                            };
+                                                            if drop_action_idx > 0 {
+                                                                gui_state.gui_cards
+                                                                    [drop_action_idx - 1]
+                                                                    .insert_modifier(
+                                                                        drop_path, item,
+                                                                    );
+                                                            }
+                                                            if source_action_idx > 0 {
+                                                                gui_state.gui_cards
+                                                                    [source_action_idx - 1]
+                                                                    .cleanup(source_path);
+                                                            }
+                                                        }
                                                     }
                                                 }
-                                            }
-                                        }
+                                            },
+                                        );
                                     });
-                                });
                             });
                         });
                 }

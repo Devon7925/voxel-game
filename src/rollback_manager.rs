@@ -14,7 +14,7 @@ use matchbox_socket::{PeerId, PeerState};
 use serde::{Deserialize, Serialize};
 use vulkano::{
     buffer::{subbuffer::BufferReadGuard, Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
 };
 use winit::event::{ElementState, WindowEvent};
 
@@ -82,7 +82,7 @@ pub trait PlayerSim {
 
     fn process_event(
         &mut self,
-        event: &winit::event::WindowEvent<'_>,
+        event: &winit::event::WindowEvent,
         settings: &Settings,
         gui_state: &mut GuiState,
         window_props: &WindowProperties,
@@ -458,7 +458,7 @@ impl PlayerSim for RollbackData {
 
     fn process_event(
         &mut self,
-        event: &winit::event::WindowEvent<'_>,
+        event: &winit::event::WindowEvent,
         settings: &Settings,
         gui_state: &mut GuiState,
         window_props: &WindowProperties,
@@ -585,26 +585,28 @@ impl RollbackData {
         card_manager: &mut CardManager,
     ) -> Self {
         let projectile_buffer = Buffer::new_sized(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         )
         .unwrap();
 
         let player_buffer = Buffer::new_sized(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         )
@@ -939,7 +941,7 @@ impl PlayerSim for ReplayData {
 
     fn process_event(
         &mut self,
-        event: &winit::event::WindowEvent<'_>,
+        event: &winit::event::WindowEvent,
         _settings: &Settings,
         _gui_state: &mut GuiState,
         _window_props: &WindowProperties,
@@ -963,26 +965,28 @@ impl ReplayData {
         card_manager: &mut CardManager,
     ) -> Self {
         let projectile_buffer = Buffer::new_sized(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         )
         .unwrap();
 
         let player_buffer = Buffer::new_sized(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         )

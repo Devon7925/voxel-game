@@ -2,11 +2,14 @@ use std::collections::VecDeque;
 
 use egui_winit_vulkano::egui::{
     self, epaint, text::LayoutJob, Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse,
-    LayerId, Order, Rect, Sense, Shape, Stroke, TextFormat, Ui, Rounding,
+    LayerId, Order, Rect, Rounding, Sense, Shape, Stroke, TextFormat, Ui,
 };
 
 use crate::{
-    card_system::{BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType, StatusEffect},
+    card_system::{
+        BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType,
+        StatusEffect,
+    },
     rollback_manager::PlayerAbility,
 };
 
@@ -82,7 +85,7 @@ pub fn drag_source(ui: &mut Ui, id: Id, body: impl FnOnce(&mut Ui)) {
         }
         let response = ui.scope(body).response;
         //store for next frame
-        ui.data_mut(|d| d.insert_temp(id, response.rect));  
+        ui.data_mut(|d| d.insert_temp(id, response.rect));
     } else {
         ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
 
@@ -127,21 +130,16 @@ pub fn drop_target<R>(
         ui.visuals().widgets.inactive
     };
 
-    let mut fill = style.bg_fill;
+    let mut fill_color = style.bg_fill;
     let mut stroke = style.bg_stroke;
     if is_being_dragged && !can_accept_what_is_being_dragged {
-        fill = ui.visuals().gray_out(fill);
+        fill_color = ui.visuals().gray_out(fill_color);
         stroke.color = ui.visuals().gray_out(stroke.color);
     }
 
     ui.painter().set(
         where_to_put_background,
-        epaint::RectShape {
-            rounding: style.rounding,
-            fill,
-            stroke,
-            rect,
-        },
+        epaint::RectShape::new(rect, style.rounding, fill_color, stroke),
     );
 
     InnerResponse::new(ret, response)
@@ -149,9 +147,15 @@ pub fn drop_target<R>(
 
 const CARD_UI_SPACING: f32 = 3.0;
 const CARD_UI_ROUNDING: f32 = 3.0;
-pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, source_path: &mut Option<VecDeque<u32>>, dest_path: &mut Option<VecDeque<u32>>) {
+pub fn draw_base_card(
+    ui: &mut Ui,
+    card: &BaseCard,
+    path: &mut VecDeque<u32>,
+    source_path: &mut Option<VecDeque<u32>>,
+    dest_path: &mut Option<VecDeque<u32>>,
+) {
     let id_source = "my_drag_and_drop_demo";
-    
+
     let item_id = egui::Id::new(id_source).with(path.clone());
     let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
     drag_source(ui, item_id, |ui| {
@@ -163,7 +167,8 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                 match card {
                     BaseCard::Projectile(modifiers) => {
                         ui.visuals_mut().widgets.active.rounding = Rounding::from(CARD_UI_ROUNDING);
-                        ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(0.5, Color32::WHITE);
+                        ui.visuals_mut().widgets.inactive.bg_stroke =
+                            Stroke::new(0.5, Color32::WHITE);
                         let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
                             ui.horizontal(|ui| {
                                 ui.add_space(CARD_UI_SPACING);
@@ -171,7 +176,7 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                 for (modifier_idx, modifier) in modifiers.iter().enumerate() {
                                     path.push_back(modifier_idx as u32);
                                     let item_id = egui::Id::new(id_source).with(path.clone());
-                                    
+
                                     match modifier {
                                         ProjectileModifier::SimpleModify(ty, v) => {
                                             let name = match ty {
@@ -181,7 +186,7 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                                 ProjectileModifierType::Length => "Length",
                                                 ProjectileModifierType::Lifetime => "Lifetime",
                                                 ProjectileModifierType::Speed => "Speed",
-                                                ProjectileModifierType::Width => "Width",                                            
+                                                ProjectileModifierType::Width => "Width",
                                             };
                                             add_hoverable_basic_modifer(
                                                 ui,
@@ -190,43 +195,55 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                                 *v,
                                                 modifier.get_hover_text(),
                                             )
-                                        },
-                                        ProjectileModifier::NoEnemyFire => add_hoverable_basic_modifer(
-                                            ui,
-                                            item_id,
-                                            "No Enemy Fire",
-                                            "",
-                                            modifier.get_hover_text(),
-                                        ),
-                                        ProjectileModifier::FriendlyFire => add_hoverable_basic_modifer(
-                                            ui,
-                                            item_id,
-                                            "Friendly Fire",
-                                            "",
-                                            modifier.get_hover_text(),
-                                        ),
-                                        ProjectileModifier::LockToOwner => add_hoverable_basic_modifer(
-                                            ui,
-                                            item_id,
-                                            "Lock To Owner",
-                                            "",
-                                            modifier.get_hover_text(),
-                                        ),
-                                        ProjectileModifier::PiercePlayers => add_hoverable_basic_modifer(
-                                            ui,
-                                            item_id,
-                                            "Pierce Players",
-                                            "",
-                                            modifier.get_hover_text(),
-                                        ),
-                                        ProjectileModifier::WallBounce => add_hoverable_basic_modifer(
-                                            ui,
-                                            item_id,
-                                            "Wall Bounce",
-                                            "",
-                                            modifier.get_hover_text(),
-                                        ),
-                                        ProjectileModifier::OnExpiry(_) | ProjectileModifier::OnHit(_) | ProjectileModifier::Trail(_, _) => {}
+                                        }
+                                        ProjectileModifier::NoEnemyFire => {
+                                            add_hoverable_basic_modifer(
+                                                ui,
+                                                item_id,
+                                                "No Enemy Fire",
+                                                "",
+                                                modifier.get_hover_text(),
+                                            )
+                                        }
+                                        ProjectileModifier::FriendlyFire => {
+                                            add_hoverable_basic_modifer(
+                                                ui,
+                                                item_id,
+                                                "Friendly Fire",
+                                                "",
+                                                modifier.get_hover_text(),
+                                            )
+                                        }
+                                        ProjectileModifier::LockToOwner => {
+                                            add_hoverable_basic_modifer(
+                                                ui,
+                                                item_id,
+                                                "Lock To Owner",
+                                                "",
+                                                modifier.get_hover_text(),
+                                            )
+                                        }
+                                        ProjectileModifier::PiercePlayers => {
+                                            add_hoverable_basic_modifer(
+                                                ui,
+                                                item_id,
+                                                "Pierce Players",
+                                                "",
+                                                modifier.get_hover_text(),
+                                            )
+                                        }
+                                        ProjectileModifier::WallBounce => {
+                                            add_hoverable_basic_modifer(
+                                                ui,
+                                                item_id,
+                                                "Wall Bounce",
+                                                "",
+                                                modifier.get_hover_text(),
+                                            )
+                                        }
+                                        ProjectileModifier::OnExpiry(_)
+                                        | ProjectileModifier::OnHit(_)
+                                        | ProjectileModifier::Trail(_, _) => {}
                                     }
 
                                     path.pop_back();
@@ -244,7 +261,13 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                             drag_source(ui, item_id, |ui| {
                                                 ui.label("On Expiry");
                                                 path.push_back(0);
-                                                draw_base_card(ui, base_card, path, source_path, dest_path);
+                                                draw_base_card(
+                                                    ui,
+                                                    base_card,
+                                                    path,
+                                                    source_path,
+                                                    dest_path,
+                                                );
                                                 path.pop_back();
                                             });
                                         }
@@ -252,7 +275,13 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                             drag_source(ui, item_id, |ui| {
                                                 ui.label("On Hit");
                                                 path.push_back(0);
-                                                draw_base_card(ui, base_card, path, source_path, dest_path);
+                                                draw_base_card(
+                                                    ui,
+                                                    base_card,
+                                                    path,
+                                                    source_path,
+                                                    dest_path,
+                                                );
                                                 path.pop_back();
                                             });
                                         }
@@ -277,7 +306,13 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                                 );
                                                 ui.label(job);
                                                 path.push_back(0);
-                                                draw_base_card(ui, base_card, path, source_path, dest_path);
+                                                draw_base_card(
+                                                    ui,
+                                                    base_card,
+                                                    path,
+                                                    source_path,
+                                                    dest_path,
+                                                );
                                                 path.pop_back();
                                             });
                                         }
@@ -293,17 +328,23 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                             for (modifier_idx, _modifier) in modifiers.iter().enumerate() {
                                 path.push_back(modifier_idx as u32);
                                 let item_id = egui::Id::new(id_source).with(path.clone());
-                                if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                                if source_path.is_none()
+                                    && ui.memory(|mem| mem.is_being_dragged(item_id))
+                                {
                                     *source_path = Some(path.clone());
                                 }
                                 path.pop_back();
                             }
                             ui.add_space(CARD_UI_SPACING);
-                        }).response;
+                        })
+                        .response;
 
                         if dest_path.is_none() {
                             let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
-                            if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
+                            if is_being_dragged
+                                && can_accept_what_is_being_dragged
+                                && response.hovered()
+                            {
                                 *dest_path = Some(path.clone());
                             }
                         }
@@ -317,12 +358,12 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                 for (mod_idx, modifier) in modifiers.iter().enumerate() {
                                     path.push_back(mod_idx as u32);
                                     let item_id = egui::Id::new(id_source).with(path.clone());
-                                    drag_source(ui, item_id, |ui| {
-                                        match modifier {
-                                            MultiCastModifier::Spread(v) => add_basic_modifer(ui, "Spread", *v),
-                                            MultiCastModifier::Duplication(v) => {
-                                                add_basic_modifer(ui, "Duplication", *v)
-                                            }
+                                    drag_source(ui, item_id, |ui| match modifier {
+                                        MultiCastModifier::Spread(v) => {
+                                            add_basic_modifer(ui, "Spread", *v)
+                                        }
+                                        MultiCastModifier::Duplication(v) => {
+                                            add_basic_modifer(ui, "Duplication", *v)
                                         }
                                     });
                                     path.pop_back();
@@ -347,17 +388,23 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                             for (modifier_idx, _modifier) in modifiers.iter().enumerate() {
                                 path.push_back(modifier_idx as u32);
                                 let item_id = egui::Id::new(id_source).with(path.clone());
-                                if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                                if source_path.is_none()
+                                    && ui.memory(|mem| mem.is_being_dragged(item_id))
+                                {
                                     *source_path = Some(path.clone());
                                 }
                                 path.pop_back();
                             }
                             path.pop_back();
-                        }).response;
+                        })
+                        .response;
 
                         if dest_path.is_none() {
                             let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
-                            if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
+                            if is_being_dragged
+                                && can_accept_what_is_being_dragged
+                                && response.hovered()
+                            {
                                 *dest_path = Some(path.clone());
                             }
                         }
@@ -385,7 +432,7 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                 Effect::Knockback(v) => add_basic_modifer(ui, "Knockback", *v),
                                 Effect::Cleanse => add_basic_modifer(ui, "Cleanse", ""),
                                 Effect::Teleport => add_basic_modifer(ui, "Teleport", ""),
-                                Effect::StatusEffect(e,t) => {
+                                Effect::StatusEffect(e, t) => {
                                     if let StatusEffect::OnHit(base_card) = e {
                                         ui.label("On Hit");
                                         draw_base_card(ui, base_card, path, source_path, dest_path)
@@ -393,19 +440,25 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                         let effect_name = match e {
                                             StatusEffect::DamageOverTime => "Damage Over Time",
                                             StatusEffect::HealOverTime => "Heal Over Time",
-                                            StatusEffect::DecreaceDamageTaken => "Decreace Damage Taken",
-                                            StatusEffect::IncreaceDamageTaken => "Increace Damage Taken",
+                                            StatusEffect::DecreaceDamageTaken => {
+                                                "Decreace Damage Taken"
+                                            }
+                                            StatusEffect::IncreaceDamageTaken => {
+                                                "Increace Damage Taken"
+                                            }
                                             StatusEffect::Slow => "Slow",
                                             StatusEffect::Speed => "Speed Up",
                                             StatusEffect::DecreaceGravity => "Decreace Gravity",
                                             StatusEffect::IncreaceGravity => "Increace Gravity",
                                             StatusEffect::Overheal => "Overheal",
                                             StatusEffect::Invincibility => "Invincibility",
-                                            StatusEffect::OnHit(_base_card) => panic!("OnHit should be handled above"),
+                                            StatusEffect::OnHit(_base_card) => {
+                                                panic!("OnHit should be handled above")
+                                            }
                                         };
                                         add_basic_modifer(ui, effect_name, *t)
                                     }
-                                },
+                                }
                             }
                             ui.add_space(CARD_UI_SPACING);
                         });
@@ -418,7 +471,8 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                     }
                     BaseCard::None => {
                         ui.visuals_mut().widgets.active.rounding = Rounding::from(CARD_UI_ROUNDING);
-                        ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, Color32::GREEN);
+                        ui.visuals_mut().widgets.inactive.bg_stroke =
+                            Stroke::new(1.0, Color32::GREEN);
                         let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
                             ui.horizontal(|ui| {
                                 ui.add_space(CARD_UI_SPACING);
@@ -426,11 +480,15 @@ pub fn draw_base_card(ui: &mut Ui, card: &BaseCard, path: &mut VecDeque<u32>, so
                                 ui.add_space(CARD_UI_SPACING);
                             });
                             ui.add_space(CARD_UI_SPACING);
-                        }).response;
+                        })
+                        .response;
 
                         if dest_path.is_none() {
                             let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
-                            if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
+                            if is_being_dragged
+                                && can_accept_what_is_being_dragged
+                                && response.hovered()
+                            {
                                 *dest_path = Some(path.clone());
                             }
                         }

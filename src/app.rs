@@ -8,26 +8,34 @@
 // according to those terms.
 
 use crate::{
-    multipass_system::FrameSystem, rasterizer::RasterizerSystem, rollback_manager::{RollbackData, PlayerSim, ReplayData},
-    voxel_sim_manager::VoxelComputePipeline, WINDOW_HEIGHT, WINDOW_WIDTH, projectile_sim_manager::ProjectileComputePipeline, card_system::{CardManager, BaseCard}, settings_manager::{Settings, ReplayMode},
+    card_system::{BaseCard, CardManager},
+    multipass_system::FrameSystem,
+    projectile_sim_manager::ProjectileComputePipeline,
+    rasterizer::RasterizerSystem,
+    rollback_manager::{PlayerSim, ReplayData, RollbackData},
+    settings_manager::{ReplayMode, Settings},
+    voxel_sim_manager::VoxelComputePipeline,
+    WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use std::sync::Arc;
 use vulkano::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator,
+    command_buffer::allocator::{
+        StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
+    },
+    descriptor_set::allocator::{
+        StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo,
+    },
     device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
         QueueCreateInfo, QueueFlags,
     },
-    image::swapchain::SwapchainImage,
     image::{view::ImageView, ImageUsage},
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
     VulkanLibrary,
 };
 
-use vulkano_win::VkSurfaceBuild;
 use winit::{
     dpi::PhysicalSize,
     event_loop::EventLoop,
@@ -39,7 +47,7 @@ pub struct VulkanoInterface {
     pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     pub descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     pub swapchain: Arc<Swapchain>,
-    pub images: Vec<Arc<ImageView<SwapchainImage>>>,
+    pub images: Vec<Arc<ImageView>>,
     pub surface: Arc<Surface>,
     pub queue: Arc<Queue>,
     pub device: Arc<Device>,
@@ -57,26 +65,33 @@ pub struct RenderPipeline {
 }
 
 impl RenderPipeline {
-    pub fn new(event_loop: &EventLoop<()>, settings: Settings, deck: &Vec<BaseCard>) -> RenderPipeline {
+    pub fn new(
+        event_loop: &EventLoop<()>,
+        settings: Settings,
+        deck: &Vec<BaseCard>,
+    ) -> RenderPipeline {
         // Basic initialization. See the triangle example if you want more details about this.
 
         let library = VulkanLibrary::new().unwrap();
-        let required_extensions = vulkano_win::required_extensions(&library);
+        let required_extensions = Surface::required_extensions(event_loop);
         let instance = Instance::new(
             library,
             InstanceCreateInfo {
                 enabled_extensions: required_extensions,
-                enumerate_portability: true,
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 ..Default::default()
             },
         )
         .unwrap();
 
-        let surface = WindowBuilder::new()
-            .with_inner_size(PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
-            .with_title("Voxel game")
-            .build_vk_surface(&event_loop, instance.clone())
-            .unwrap();
+        let window = Arc::new(
+            WindowBuilder::new()
+                .with_inner_size(PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
+                .with_title("Voxel game")
+                .build(&event_loop)
+                .unwrap(),
+        );
+        let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
@@ -131,13 +146,11 @@ impl RenderPipeline {
                 .physical_device()
                 .surface_capabilities(&surface, Default::default())
                 .unwrap();
-            let image_format = Some(
-                device
-                    .physical_device()
-                    .surface_formats(&surface, Default::default())
-                    .unwrap()[0]
-                    .0,
-            );
+            let image_format = device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0]
+                .0;
             let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
             let (swapchain, images) = Swapchain::new(
@@ -167,10 +180,15 @@ impl RenderPipeline {
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             device.clone(),
-            Default::default(),
+            StandardCommandBufferAllocatorCreateInfo {
+                secondary_buffer_count: 32,
+                ..Default::default()
+            },
         ));
-        let descriptor_set_allocator =
-            Arc::new(StandardDescriptorSetAllocator::new(device.clone()));
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            StandardDescriptorSetAllocatorCreateInfo::default(),
+        ));
 
         // Here is the basic initialization for the deferred system.
         let frame_system = FrameSystem::new(
@@ -191,13 +209,23 @@ impl RenderPipeline {
 
         let compute_queue: Arc<Queue> = queue.clone();
 
-        let mut card_manager =  CardManager::default();
+        let mut card_manager = CardManager::default();
 
-        let rollback_data: Box<dyn PlayerSim> = if settings.replay_settings.replay_mode == ReplayMode::Playback {
-            Box::new(ReplayData::new(&memory_allocator, &settings, &mut card_manager))
-        } else {
-            Box::new(RollbackData::new(&memory_allocator, &settings, deck, &mut card_manager))
-        };
+        let rollback_data: Box<dyn PlayerSim> =
+            if settings.replay_settings.replay_mode == ReplayMode::Playback {
+                Box::new(ReplayData::new(
+                    &memory_allocator,
+                    &settings,
+                    &mut card_manager,
+                ))
+            } else {
+                Box::new(RollbackData::new(
+                    &memory_allocator,
+                    &settings,
+                    deck,
+                    &mut card_manager,
+                ))
+            };
 
         let vulkano_interface = VulkanoInterface {
             memory_allocator,
@@ -214,7 +242,10 @@ impl RenderPipeline {
 
         RenderPipeline {
             voxel_compute: VoxelComputePipeline::new(&vulkano_interface, compute_queue.clone()),
-            projectile_compute: ProjectileComputePipeline::new(&vulkano_interface, compute_queue.clone()),
+            projectile_compute: ProjectileComputePipeline::new(
+                &vulkano_interface,
+                compute_queue.clone(),
+            ),
             rollback_data,
             vulkano_interface,
             card_manager,

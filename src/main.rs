@@ -24,11 +24,9 @@ use std::io::Write;
 use std::{fs, panic, time::Instant};
 use vulkano::{
     image::view::ImageView,
-    swapchain::{
-        acquire_next_image, AcquireError, SwapchainCreateInfo, SwapchainCreationError,
-        SwapchainPresentInfo,
-    },
-    sync::{self, FlushError, GpuFuture},
+    swapchain::{acquire_next_image, SwapchainCreateInfo, SwapchainPresentInfo},
+    sync::{self, GpuFuture},
+    Validated, VulkanError,
 };
 use winit::{
     dpi::PhysicalPosition,
@@ -81,11 +79,27 @@ fn main() {
         let settings = Settings::from_string(fs::read_to_string("settings.yaml").unwrap().as_str());
         let mut crash_log = std::fs::File::create(settings.crash_log).unwrap();
         if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-            eprintln!("panic occurred: {s:?} at {}", panic_info.location().unwrap());
-            write!(crash_log, "panic occurred: {s:?} at {}", panic_info.location().unwrap()).unwrap();
+            eprintln!(
+                "panic occurred: {s:?} at {}",
+                panic_info.location().unwrap()
+            );
+            write!(
+                crash_log,
+                "panic occurred: {s:?} at {}",
+                panic_info.location().unwrap()
+            )
+            .unwrap();
         } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-            eprintln!("panic occurred: {s:?} at {}", panic_info.location().unwrap());
-            write!(crash_log, "panic occurred: {s:?} at {}", panic_info.location().unwrap()).unwrap();
+            eprintln!(
+                "panic occurred: {s:?} at {}",
+                panic_info.location().unwrap()
+            );
+            write!(
+                crash_log,
+                "panic occurred: {s:?} at {}",
+                panic_info.location().unwrap()
+            )
+            .unwrap();
         } else {
             write!(crash_log, "panic occurred").unwrap();
         }
@@ -129,7 +143,7 @@ fn main() {
         gui_cards: player_deck.clone(),
         in_game: false,
         should_exit: false,
-        palette_state: PaletteState::ProjectileModifiers
+        palette_state: PaletteState::ProjectileModifiers,
     };
 
     let mut time = Instant::now();
@@ -164,7 +178,9 @@ fn main() {
                     (Instant::now() - time).as_secs_f32()
                 );
             }
-            sim_settings.do_compute = app.rollback_data.player_count() >= app.settings.player_count as usize && gui_state.in_game;
+            sim_settings.do_compute = app.rollback_data.player_count()
+                >= app.settings.player_count as usize
+                && gui_state.in_game;
             compute_then_render(
                 &mut app,
                 &sim_settings,
@@ -208,7 +224,8 @@ fn handle_events(
                 if gui_event {
                     return;
                 }
-                app.rollback_data.process_event(event, &app.settings, gui_state, &window_props);
+                app.rollback_data
+                    .process_event(event, &app.settings, gui_state, &window_props);
                 match event {
                     WindowEvent::CloseRequested => {
                         is_running = false;
@@ -239,8 +256,7 @@ fn handle_events(
                         }
                     }
                     // Handle mouse button events.
-                    WindowEvent::MouseInput { .. } => {
-                    }
+                    WindowEvent::MouseInput { .. } => {}
                     WindowEvent::KeyboardInput { input, .. } => {
                         input.virtual_keycode.map(|key| {
                             let window = app
@@ -265,7 +281,12 @@ fn handle_events(
                             match key {
                                 winit::event::VirtualKeyCode::Escape => {
                                     if input.state == ElementState::Released {
-                                        if gui_state.menu_stack.len() > 0 && !gui_state.menu_stack.last().is_some_and(|gui| *gui == GuiElement::MainMenu) {
+                                        if gui_state.menu_stack.len() > 0
+                                            && !gui_state
+                                                .menu_stack
+                                                .last()
+                                                .is_some_and(|gui| *gui == GuiElement::MainMenu)
+                                        {
                                             let _exited_ui = gui_state.menu_stack.pop().unwrap();
                                         } else {
                                             gui_state.menu_stack.push(GuiElement::EscMenu);
@@ -292,8 +313,7 @@ fn handle_events(
                                 }
                                 winit::event::VirtualKeyCode::R => {
                                     if input.state == ElementState::Released {
-                                        let cam_player =
-                                            app.rollback_data.get_camera();
+                                        let cam_player = app.rollback_data.get_camera();
                                         println!("cam_pos: {:?}", cam_player.pos);
                                         println!("cam_rot: {:?}", cam_player.rot);
                                     }
@@ -337,18 +357,14 @@ fn compute_then_render(
     let time_step = pipeline.rollback_data.get_delta_time();
 
     if *recreate_swapchain {
-        let (new_swapchain, new_images) =
-            match pipeline
-                .vulkano_interface
-                .swapchain
-                .recreate(SwapchainCreateInfo {
-                    image_extent: dimensions.into(),
-                    ..pipeline.vulkano_interface.swapchain.create_info()
-                }) {
-                Ok(r) => r,
-                Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                Err(e) => panic!("failed to recreate swapchain: {e}"),
-            };
+        let (new_swapchain, new_images) = pipeline
+            .vulkano_interface
+            .swapchain
+            .recreate(SwapchainCreateInfo {
+                image_extent: dimensions.into(),
+                ..pipeline.vulkano_interface.swapchain.create_info()
+            })
+            .expect("failed to recreate swapchain");
         let new_images = new_images
             .into_iter()
             .map(|image| ImageView::new_default(image).unwrap())
@@ -360,9 +376,11 @@ fn compute_then_render(
     }
 
     let (image_index, suboptimal, acquire_future) =
-        match acquire_next_image(pipeline.vulkano_interface.swapchain.clone(), None) {
+        match acquire_next_image(pipeline.vulkano_interface.swapchain.clone(), None)
+            .map_err(Validated::unwrap)
+        {
             Ok(r) => r,
-            Err(AcquireError::OutOfDate) => {
+            Err(VulkanError::OutOfDate) => {
                 *recreate_swapchain = true;
                 return;
             }
@@ -415,7 +433,7 @@ fn compute_then_render(
     } else {
         future.boxed()
     };
-    
+
     let future = if skip_render {
         future
     } else {
@@ -483,7 +501,7 @@ fn compute_then_render(
             .then_signal_fence_and_flush()
     };
 
-    match future {
+    match future.map_err(Validated::unwrap) {
         Ok(future) => {
             puffin::profile_scope!("wait for gpu resources");
             match future.wait(None) {
@@ -493,7 +511,7 @@ fn compute_then_render(
 
             *previous_frame_end = Some(future.boxed());
         }
-        Err(FlushError::OutOfDate) => {
+        Err(VulkanError::OutOfDate) => {
             *recreate_swapchain = true;
             *previous_frame_end =
                 Some(sync::now(pipeline.vulkano_interface.device.clone()).boxed());

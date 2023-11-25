@@ -8,11 +8,11 @@
 // according to those terms.
 
 use crate::{
-    app::VulkanoInterface, card_system::CardManager, voxel_sim_manager::VoxelComputePipeline,
-    SimData, rollback_manager::get_index,
+    app::VulkanoInterface, card_system::CardManager, rollback_manager::get_index,
+    voxel_sim_manager::VoxelComputePipeline, SimData,
 };
 use bytemuck::{Pod, Zeroable};
-use cgmath::{Quaternion, Point3};
+use cgmath::{Point3, Quaternion};
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -27,8 +27,12 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    memory::allocator::{AllocationCreateInfo, MemoryUsage},
-    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
+    pipeline::{
+        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
+    },
     sync::GpuFuture,
 };
 
@@ -69,12 +73,20 @@ impl ProjectileComputePipeline {
 
         let compute_proj_pipeline = {
             let shader = compute_projs_cs::load(compute_queue.device().clone()).unwrap();
+            let device = compute_queue.device();
+            let cs = shader.entry_point("main").unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(cs);
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
             ComputePipeline::new(
-                compute_queue.device().clone(),
-                shader.entry_point("main").unwrap(),
-                &(),
+                device.clone(),
                 None,
-                |_| {},
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
             )
             .unwrap()
         };
@@ -83,18 +95,21 @@ impl ProjectileComputePipeline {
             memory_allocator.clone(),
             SubbufferAllocatorCreateInfo {
                 buffer_usage: BufferUsage::UNIFORM_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         );
 
         let projectile_buffer = Buffer::new_sized(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         )
@@ -136,7 +151,7 @@ impl ProjectileComputePipeline {
             return before_future.boxed();
         }
         let mut builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.compute_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -162,10 +177,7 @@ impl ProjectileComputePipeline {
     /// Builds the command for a dispatch.
     fn dispatch(
         &mut self,
-        builder: &mut AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer,
-            Arc<StandardCommandBufferAllocator>,
-        >,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         voxel_data: &VoxelComputePipeline,
         sim_data: &mut SimData,
         time_step: f32,
@@ -195,11 +207,14 @@ impl ProjectileComputePipeline {
                 WriteDescriptorSet::buffer(1, self.projectile_buffer.clone()),
                 WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
             ],
+            [],
         )
         .unwrap();
         builder
             .bind_pipeline_compute(self.compute_proj_pipeline.clone())
+            .unwrap()
             .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
+            .unwrap()
             .dispatch([((self.upload_projectile_count + 127) / 128) as u32, 1, 1])
             .unwrap();
     }

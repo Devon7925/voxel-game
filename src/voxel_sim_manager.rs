@@ -27,8 +27,12 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryUsage},
-    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    pipeline::{
+        compute::ComputePipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
+        ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
+    },
     sync::GpuFuture,
 };
 
@@ -49,7 +53,7 @@ pub struct VoxelComputePipeline {
     last_update_count: usize,
 }
 
-fn empty_grid(memory_allocator: &impl MemoryAllocator) -> Subbuffer<[[u32; 2]]> {
+fn empty_grid(memory_allocator: Arc<StandardMemoryAllocator>) -> Subbuffer<[[u32; 2]]> {
     Buffer::from_iter(
         memory_allocator,
         BufferCreateInfo {
@@ -57,7 +61,8 @@ fn empty_grid(memory_allocator: &impl MemoryAllocator) -> Subbuffer<[[u32; 2]]> 
             ..Default::default()
         },
         AllocationCreateInfo {
-            usage: MemoryUsage::Upload,
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         vec![
@@ -96,16 +101,25 @@ impl VoxelComputePipeline {
         );
         let world_gen = WorldGen::new(world_density, pillar_density);
 
-        let voxel_buffer = empty_grid(memory_allocator);
+        let voxel_buffer = empty_grid(memory_allocator.clone());
 
         let compute_life_pipeline = {
             let shader = compute_dists_cs::load(compute_queue.device().clone()).unwrap();
+
+            let cs = shader.entry_point("main").unwrap();
+            let stage = PipelineShaderStageCreateInfo::new(cs);
+            let layout = PipelineLayout::new(
+                compute_queue.device().clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(compute_queue.device().clone())
+                    .unwrap(),
+            )
+            .unwrap();
+
             ComputePipeline::new(
                 compute_queue.device().clone(),
-                shader.entry_point("main").unwrap(),
-                &(),
                 None,
-                |_| {},
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
             )
             .unwrap()
         };
@@ -114,18 +128,21 @@ impl VoxelComputePipeline {
             memory_allocator.clone(),
             SubbufferAllocatorCreateInfo {
                 buffer_usage: BufferUsage::UNIFORM_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         );
 
         let chunk_updates = Buffer::new_sized(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         )
@@ -358,7 +375,7 @@ impl VoxelComputePipeline {
             return before_future.boxed();
         }
         let mut builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.compute_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -384,10 +401,7 @@ impl VoxelComputePipeline {
     /// Builds the command for a dispatch.
     fn dispatch(
         &mut self,
-        builder: &mut AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer,
-            Arc<StandardCommandBufferAllocator>,
-        >,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         sim_data: &mut SimData,
     ) {
         // Resize image if needed.
@@ -440,11 +454,14 @@ impl VoxelComputePipeline {
                 WriteDescriptorSet::buffer(1, self.chunk_updates.clone()),
                 WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
             ],
+            [],
         )
         .unwrap();
         builder
             .bind_pipeline_compute(self.compute_life_pipeline.clone())
+            .unwrap()
             .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
+            .unwrap()
             .dispatch([chunk_update_count as u32, 1, 1])
             .unwrap();
     }

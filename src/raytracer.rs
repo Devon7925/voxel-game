@@ -22,22 +22,29 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    image::ImageViewAbstract,
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+    image::view::ImageView,
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
-            color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
+            color_blend::{
+                AttachmentBlend, BlendFactor, BlendOp, ColorBlendAttachmentState, ColorBlendState,
+            },
             input_assembly::InputAssemblyState,
-            vertex_input::Vertex,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
 };
 
 use crate::{
-    multipass_system::LightingVertex, rollback_manager::{RollbackData, PlayerSim},
+    multipass_system::LightingVertex, rollback_manager::PlayerSim,
     settings_manager::GraphicsSettings, SimData,
 };
 
@@ -74,13 +81,14 @@ impl PointLightingSystem {
             },
         ];
         let vertex_buffer = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vertices,
@@ -91,33 +99,68 @@ impl PointLightingSystem {
             memory_allocator,
             SubbufferAllocatorCreateInfo {
                 buffer_usage: BufferUsage::UNIFORM_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         );
 
         let pipeline = {
-            let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
-            let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
+            let device = gfx_queue.device();
+            let vs = vs::load(device.clone())
+                .expect("failed to create shader module")
+                .entry_point("main")
+                .expect("shader entry point not found");
+            let fs = fs::load(device.clone())
+                .expect("failed to create shader module")
+                .entry_point("main")
+                .expect("shader entry point not found");
 
-            GraphicsPipeline::start()
-                .vertex_input_state(LightingVertex::per_vertex())
-                .vertex_shader(vs.entry_point("main").unwrap(), ())
-                .input_assembly_state(InputAssemblyState::new())
-                .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                .fragment_shader(fs.entry_point("main").unwrap(), ())
-                .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend(
-                    AttachmentBlend {
-                        color_op: BlendOp::Add,
-                        color_source: BlendFactor::One,
-                        color_destination: BlendFactor::One,
-                        alpha_op: BlendOp::Max,
-                        alpha_source: BlendFactor::One,
-                        alpha_destination: BlendFactor::One,
-                    },
-                ))
-                .render_pass(subpass.clone())
-                .build(gfx_queue.device().clone())
-                .unwrap()
+            let vertex_input_state = LightingVertex::per_vertex()
+                .definition(&vs.info().input_interface)
+                .unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::new(vs),
+                PipelineShaderStageCreateInfo::new(fs),
+            ];
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+
+            GraphicsPipeline::new(
+                device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    input_assembly_state: Some(InputAssemblyState::default()),
+                    viewport_state: Some(ViewportState::default()),
+                    rasterization_state: Some(RasterizationState::default()),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::with_attachment_states(
+                        subpass.num_color_attachments(),
+                        ColorBlendAttachmentState {
+                            blend: Some(AttachmentBlend {
+                                color_blend_op: BlendOp::Add,
+                                src_color_blend_factor: BlendFactor::One,
+                                dst_color_blend_factor: BlendFactor::One,
+                                alpha_blend_op: BlendOp::Max,
+                                src_alpha_blend_factor: BlendFactor::One,
+                                dst_alpha_blend_factor: BlendFactor::One,
+                            }),
+                            ..Default::default()
+                        },
+                    )),
+                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                    subpass: Some(subpass.clone().into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+            .unwrap()
         };
 
         PointLightingSystem {
@@ -141,8 +184,7 @@ impl PointLightingSystem {
         let sim_uniform_buffer_subbuffer = {
             let uniform_data = fs::SimData {
                 render_size: sim_data.render_size.into(),
-                projectile_count: (rollback_manager.get_projectiles().len() as u32)
-                    .into(),
+                projectile_count: (rollback_manager.get_projectiles().len() as u32).into(),
                 max_dist: sim_data.max_dist.into(),
                 start_pos: sim_data.start_pos.into(),
             };
@@ -162,6 +204,7 @@ impl PointLightingSystem {
                 WriteDescriptorSet::buffer(2, rollback_manager.player_buffer()),
                 WriteDescriptorSet::buffer(3, rollback_manager.projectile_buffer()),
             ],
+            [],
         )
         .unwrap()
     }
@@ -197,15 +240,15 @@ impl PointLightingSystem {
     pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
-        color_input: Arc<dyn ImageViewAbstract + 'static>,
-        normals_input: Arc<dyn ImageViewAbstract + 'static>,
-        depth_input: Arc<dyn ImageViewAbstract + 'static>,
+        color_input: Arc<ImageView>,
+        normals_input: Arc<ImageView>,
+        depth_input: Arc<ImageView>,
         screen_to_world: Matrix4<f32>,
         voxels: Subbuffer<[[u32; 2]]>,
         rollback_manager: &Box<dyn PlayerSim>,
         sim_data: &mut SimData,
         graphics_settings: &GraphicsSettings,
-    ) -> SecondaryAutoCommandBuffer {
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let push_constants = fs::PushConstants {
             screen_to_world: screen_to_world.into(),
             aspect_ratio: viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32,
@@ -225,19 +268,20 @@ impl PointLightingSystem {
                 WriteDescriptorSet::image_view(1, normals_input),
                 WriteDescriptorSet::image_view(2, depth_input),
             ],
+            [],
         )
         .unwrap();
 
         let data_descriptor_set = self.create_desc_set(voxels, sim_data, rollback_manager);
 
         let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
-            depth_range: 0.0..1.0,
+            offset: [0.0, 0.0],
+            extent: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+            depth_range: 0.0..=1.0,
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
@@ -247,16 +291,21 @@ impl PointLightingSystem {
         )
         .unwrap();
         builder
-            .set_viewport(0, [viewport])
+            .set_viewport(0, [viewport].into_iter().collect())
+            .unwrap()
             .bind_pipeline_graphics(self.pipeline.clone())
+            .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
                 (image_descriptor_set, data_descriptor_set),
             )
+            .unwrap()
             .push_constants(self.pipeline.layout().clone(), 0, push_constants)
+            .unwrap()
             .bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .unwrap()
             .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
         builder.build().unwrap()

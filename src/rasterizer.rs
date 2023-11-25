@@ -15,15 +15,21 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Queue,
-    memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         graphics::{
-            depth_stencil::DepthStencilState,
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
-            vertex_input::Vertex,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
 };
@@ -68,13 +74,14 @@ impl RasterizerSystem {
     ) -> RasterizerSystem {
         let (proj_vertices, proj_normals) = cube_vecs();
         let proj_vertex_buffer = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             proj_vertices,
@@ -82,13 +89,14 @@ impl RasterizerSystem {
         .expect("failed to create buffer");
 
         let proj_normal_buffer = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             proj_normals,
@@ -96,13 +104,14 @@ impl RasterizerSystem {
         .expect("failed to create buffer");
 
         let proj_instance_data = Buffer::new_sized(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         )
@@ -110,13 +119,14 @@ impl RasterizerSystem {
 
         let (player_vertices, player_normals) = load_obj_to_vecs("assets/player.obj");
         let player_vertex_buffer = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             player_vertices,
@@ -124,13 +134,14 @@ impl RasterizerSystem {
         .expect("failed to create buffer");
 
         let player_normal_buffer = Buffer::from_iter(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             player_normals,
@@ -138,42 +149,80 @@ impl RasterizerSystem {
         .expect("failed to create buffer");
 
         let player_instance_data = Buffer::new_sized(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         )
         .expect("failed to create buffer");
 
         let pipeline = {
-            let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
-            let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
+            let device = gfx_queue.device();
+            let vs = vs::load(device.clone())
+                .expect("failed to create shader module")
+                .entry_point("main")
+                .expect("shader entry point not found");
+            let fs = fs::load(device.clone())
+                .expect("failed to create shader module")
+                .entry_point("main")
+                .expect("shader entry point not found");
+            let vertex_input_state = [
+                TrianglePos::per_vertex(),
+                TriangleNormal::per_vertex(),
+                ProjectileInstanceData::per_instance(),
+            ]
+            .definition(&vs.info().input_interface)
+            .unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::new(vs),
+                PipelineShaderStageCreateInfo::new(fs),
+            ];
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
 
-            GraphicsPipeline::start()
-                .vertex_input_state([
-                    TrianglePos::per_vertex(),
-                    TriangleNormal::per_vertex(),
-                    ProjectileInstanceData::per_instance(),
-                ])
-                .vertex_shader(vs.entry_point("main").unwrap(), ())
-                .input_assembly_state(InputAssemblyState::new())
-                .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                .fragment_shader(fs.entry_point("main").unwrap(), ())
-                .depth_stencil_state(DepthStencilState::simple_depth_test())
-                .render_pass(subpass.clone())
-                .build(gfx_queue.device().clone())
-                .unwrap()
+            GraphicsPipeline::new(
+                device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    input_assembly_state: Some(InputAssemblyState::default()),
+                    viewport_state: Some(ViewportState::default()),
+                    rasterization_state: Some(RasterizationState::default()),
+                    depth_stencil_state: Some(DepthStencilState {
+                        depth: Some(DepthState::simple()),
+                        ..Default::default()
+                    }),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::with_attachment_states(
+                        subpass.num_color_attachments(),
+                        ColorBlendAttachmentState::default(),
+                    )),
+                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                    subpass: Some(subpass.clone().into()),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+            .unwrap()
         };
 
         let uniform_buffer = SubbufferAllocator::new(
             memory_allocator,
             SubbufferAllocatorCreateInfo {
                 buffer_usage: BufferUsage::UNIFORM_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
         );
@@ -200,7 +249,7 @@ impl RasterizerSystem {
         viewport_dimensions: [u32; 2],
         view_matrix: Matrix4<f32>,
         world_state: &WorldState,
-    ) -> SecondaryAutoCommandBuffer {
+    ) -> Arc<SecondaryAutoCommandBuffer> {
         let uniform_buffer_subbuffer = {
             let aspect_ratio = viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32;
             let proj =
@@ -281,6 +330,7 @@ impl RasterizerSystem {
                 WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer.clone()),
                 WriteDescriptorSet::buffer(1, proj_color_uniform_buffer_subbuffer),
             ],
+            [],
         )
         .unwrap();
         let player_color_uniform_buffer_subbuffer = {
@@ -300,11 +350,12 @@ impl RasterizerSystem {
                 WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
                 WriteDescriptorSet::buffer(1, player_color_uniform_buffer_subbuffer),
             ],
+            [],
         )
         .unwrap();
 
         let mut builder = AutoCommandBufferBuilder::secondary(
-            &self.command_buffer_allocator,
+            self.command_buffer_allocator.as_ref(),
             self.gfx_queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
@@ -317,18 +368,23 @@ impl RasterizerSystem {
             .set_viewport(
                 0,
                 [Viewport {
-                    origin: [0.0, 0.0],
-                    dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
-                    depth_range: 0.0..1.0,
-                }],
+                    offset: [0.0, 0.0],
+                    extent: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+                    depth_range: 0.0..=1.0,
+                }]
+                .into_iter()
+                .collect(),
             )
+            .unwrap()
             .bind_pipeline_graphics(self.pipeline.clone())
+            .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
                 proj_descriptor_set,
             )
+            .unwrap()
             .bind_vertex_buffers(
                 0,
                 (
@@ -337,6 +393,7 @@ impl RasterizerSystem {
                     self.proj_instance_data.clone(),
                 ),
             )
+            .unwrap()
             .draw(
                 self.proj_vertex_buffer.len() as u32,
                 world_state.projectiles.len() as u32,
@@ -350,6 +407,7 @@ impl RasterizerSystem {
                 0,
                 player_descriptor_set,
             )
+            .unwrap()
             .bind_vertex_buffers(
                 0,
                 (
@@ -358,6 +416,7 @@ impl RasterizerSystem {
                     self.player_instance_data.clone(),
                 ),
             )
+            .unwrap()
             .draw(
                 self.player_vertex_buffer.len() as u32,
                 player_buffer_idx as u32,

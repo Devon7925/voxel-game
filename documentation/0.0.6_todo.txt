@@ -18,4 +18,3 @@ Finish card editor
     bugfixes
         on hit inner card drag on self
         invalid drag types
-Update dependencies
