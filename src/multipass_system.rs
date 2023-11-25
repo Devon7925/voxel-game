@@ -39,7 +39,7 @@ use crate::{
         BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType,
         VoxelMaterial,
     },
-    gui::{cooldown, draw_base_card, GuiElement, PaletteState},
+    gui::{cooldown, draw_base_card, GuiElement, PaletteState, is_valid_drag},
     raytracer::PointLightingSystem,
     rollback_manager::{HealthSection, PlayerSim},
     settings_manager::Settings,
@@ -1021,9 +1021,9 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                     });
                                                 }
 
-                                                if let Some(source_path) = source_path.as_mut() {
-                                                    if let Some(drop_path) = drop_path.as_mut() {
-                                                        if ui.input(|i| i.pointer.any_released()) {
+                                                if let Some((source_path, source_type)) = source_path.as_mut() {
+                                                    if let Some((drop_path, drop_type)) = drop_path.as_mut() {
+                                                        if ui.input(|i| i.pointer.any_released()) && is_valid_drag(source_type, drop_type) {
                                                             let source_action_idx =
                                                                 source_path.pop_front().unwrap()
                                                                     as usize;

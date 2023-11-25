@@ -145,14 +145,36 @@ pub fn drop_target<R>(
     InnerResponse::new(ret, response)
 }
 
+pub enum DragableType {
+    ProjectileModifier,
+    MultiCastModifier,
+    BaseCard,
+}
+
+pub enum DropableType {
+    MultiCastBaseCard,
+    BaseNone,
+    BaseProjectile,
+}
+
+pub fn is_valid_drag(from: &DragableType, to: &DropableType) -> bool {
+    match (from, to) {
+        (DragableType::ProjectileModifier, DropableType::BaseProjectile) => true,
+        (DragableType::MultiCastModifier, DropableType::MultiCastBaseCard) => true,
+        (DragableType::BaseCard, DropableType::MultiCastBaseCard) => true,
+        (DragableType::BaseCard, DropableType::BaseNone) => true,
+        _ => false,
+    }
+}
+
 const CARD_UI_SPACING: f32 = 3.0;
 const CARD_UI_ROUNDING: f32 = 3.0;
 pub fn draw_base_card(
     ui: &mut Ui,
     card: &BaseCard,
     path: &mut VecDeque<u32>,
-    source_path: &mut Option<VecDeque<u32>>,
-    dest_path: &mut Option<VecDeque<u32>>,
+    source_path: &mut Option<(VecDeque<u32>, DragableType)>,
+    dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
 ) {
     let id_source = "my_drag_and_drop_demo";
 
@@ -321,7 +343,7 @@ pub fn draw_base_card(
                                     ui.add_space(CARD_UI_SPACING);
                                 });
                                 if ui.memory(|mem| mem.is_being_dragged(item_id)) {
-                                    *source_path = Some(path.clone());
+                                    *source_path = Some((path.clone(), DragableType::ProjectileModifier));
                                 }
                                 path.pop_back();
                             }
@@ -331,7 +353,7 @@ pub fn draw_base_card(
                                 if source_path.is_none()
                                     && ui.memory(|mem| mem.is_being_dragged(item_id))
                                 {
-                                    *source_path = Some(path.clone());
+                                    *source_path = Some((path.clone(), DragableType::ProjectileModifier));
                                 }
                                 path.pop_back();
                             }
@@ -345,7 +367,7 @@ pub fn draw_base_card(
                                 && can_accept_what_is_being_dragged
                                 && response.hovered()
                             {
-                                *dest_path = Some(path.clone());
+                                *dest_path = Some((path.clone(), DropableType::BaseProjectile));
                             }
                         }
                     }
@@ -391,7 +413,7 @@ pub fn draw_base_card(
                                 if source_path.is_none()
                                     && ui.memory(|mem| mem.is_being_dragged(item_id))
                                 {
-                                    *source_path = Some(path.clone());
+                                    *source_path = Some((path.clone(), DragableType::MultiCastModifier));
                                 }
                                 path.pop_back();
                             }
@@ -405,7 +427,7 @@ pub fn draw_base_card(
                                 && can_accept_what_is_being_dragged
                                 && response.hovered()
                             {
-                                *dest_path = Some(path.clone());
+                                *dest_path = Some((path.clone(), DropableType::MultiCastBaseCard));
                             }
                         }
                     }
@@ -489,7 +511,7 @@ pub fn draw_base_card(
                                 && can_accept_what_is_being_dragged
                                 && response.hovered()
                             {
-                                *dest_path = Some(path.clone());
+                                *dest_path = Some((path.clone(), DropableType::BaseNone));
                             }
                         }
                     }
@@ -498,7 +520,7 @@ pub fn draw_base_card(
         );
     });
     if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
-        *source_path = Some(path.clone());
+        *source_path = Some((path.clone(), DragableType::BaseCard));
     }
 }
 
