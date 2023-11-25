@@ -1,13 +1,16 @@
 Abiliy Modifiers
     charges
     add cast time
+    add recovery time
     shared cooldowns
     keybind
         Pressed (button)
         On Pressed (button)
-        Released (button)
         On Released (button)
         And (keybind, keybind)
+        Or (keybind, keybind)
+        Not (keybind)
 On Trigger
     On Trigger (id)
     Trigger (id)
+Ensure multiplayer synchronization

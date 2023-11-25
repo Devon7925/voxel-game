@@ -1,0 +1,34 @@
+Card Editor
+    Fix increaced height when adding modifiers
+    Add wrapping to the modifier list
+    Add material palette and dragging
+    Add effect palette and dragging
+    Add status effect palette and dragging
+    Support adjusting remaining card settings
+        Trail frequency
+        Status effect duration
+        Damage & Knockback magnitude
+        Decreace multi modifier's magnitude
+    Show cooldowns
+
+World Gen
+    Move to GPU compute
+    Support unloaded chunks
+    Support multiplayer dynamic loading with fixed center
+    Enable dynamic center for single player
+
+Multiplayer
+    Ensure proper game exiting
+    Add single player button
+    Add play replay button
+    Add lobby system
+        Create Lobby
+        Lobby settings (from settings file)
+            name
+            tick rate
+            player count
+            world size
+        Lobby list screen
+        Join lobby
+
+Performance checkup
