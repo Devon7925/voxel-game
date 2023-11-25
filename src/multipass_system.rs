@@ -39,7 +39,7 @@ use crate::{
         BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType,
         VoxelMaterial,
     },
-    gui::{cooldown, draw_base_card, GuiElement, PaletteState, is_valid_drag},
+    gui::{cooldown, draw_base_card, is_valid_drag, GuiElement, PaletteState},
     raytracer::PointLightingSystem,
     rollback_manager::{HealthSection, PlayerSim},
     settings_manager::Settings,
@@ -789,11 +789,13 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     if ui.button("Card Editor").clicked() {
                                         gui_state.menu_stack.push(GuiElement::CardEditor);
                                     }
+                                    if ui.button("Leave Game").clicked() {
+                                        gui_state.menu_stack.clear();
+                                        gui_state.menu_stack.push(GuiElement::MainMenu);
+                                        gui_state.in_game = false;
+                                    }
                                     if ui.button("Exit to Desktop").clicked() {
                                         gui_state.should_exit = true;
-                                    }
-                                    if ui.button("Close").clicked() {
-                                        gui_state.menu_stack.pop();
                                     }
                                 });
                             });
@@ -1021,9 +1023,15 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                     });
                                                 }
 
-                                                if let Some((source_path, source_type)) = source_path.as_mut() {
-                                                    if let Some((drop_path, drop_type)) = drop_path.as_mut() {
-                                                        if ui.input(|i| i.pointer.any_released()) && is_valid_drag(source_type, drop_type) {
+                                                if let Some((source_path, source_type)) =
+                                                    source_path.as_mut()
+                                                {
+                                                    if let Some((drop_path, drop_type)) =
+                                                        drop_path.as_mut()
+                                                    {
+                                                        if ui.input(|i| i.pointer.any_released())
+                                                            && is_valid_drag(source_type, drop_type)
+                                                        {
                                                             let source_action_idx =
                                                                 source_path.pop_front().unwrap()
                                                                     as usize;

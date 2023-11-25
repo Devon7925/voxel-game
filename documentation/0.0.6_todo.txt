@@ -13,4 +13,3 @@ On Trigger
     Trigger (id)
 UI
     Add status effect ui
-    Exit to main menu button

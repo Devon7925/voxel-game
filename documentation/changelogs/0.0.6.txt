@@ -6,3 +6,5 @@ Finish card editor
     select palette type
     scrolling
     clip out of area
+UI
+    Exit to main menu button
