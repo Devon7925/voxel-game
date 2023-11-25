@@ -11,5 +11,3 @@ Abiliy Modifiers
 On Trigger
     On Trigger (id)
     Trigger (id)
-UI
-    Add status effect ui

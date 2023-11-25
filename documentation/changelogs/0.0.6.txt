@@ -8,3 +8,4 @@ Finish card editor
     clip out of area
 UI
     Exit to main menu button
+    Add status effect ui

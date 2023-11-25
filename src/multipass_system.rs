@@ -37,11 +37,11 @@ use winit::event_loop::EventLoop;
 use crate::{
     card_system::{
         BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType,
-        VoxelMaterial,
+        ReferencedStatusEffect, VoxelMaterial,
     },
     gui::{cooldown, draw_base_card, is_valid_drag, GuiElement, PaletteState},
     raytracer::PointLightingSystem,
-    rollback_manager::{HealthSection, PlayerSim},
+    rollback_manager::{AppliedStatusEffect, HealthSection, PlayerSim},
     settings_manager::Settings,
     voxel_sim_manager::VoxelComputePipeline,
     GuiState, SimData,
@@ -628,6 +628,32 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                             let color = Color32::from_additive_luminance(255);
                             let (player_health, player_max_health) =
                                 spectate_player.get_health_stats();
+
+                            for AppliedStatusEffect { effect, time_left } in
+                                spectate_player.status_effects.iter()
+                            {
+                                let effect_name = match effect {
+                                    ReferencedStatusEffect::DamageOverTime => "Damage Over Time",
+                                    ReferencedStatusEffect::HealOverTime => "Heal Over Time",
+                                    ReferencedStatusEffect::Slow => "Slow",
+                                    ReferencedStatusEffect::Speed => "Speed",
+                                    ReferencedStatusEffect::DecreaceDamageTaken => {
+                                        "Decreace Damage Taken"
+                                    }
+                                    ReferencedStatusEffect::IncreaceDamageTaken => {
+                                        "Increase Damage Taken"
+                                    }
+                                    ReferencedStatusEffect::DecreaceGravity => "Decreace Gravity",
+                                    ReferencedStatusEffect::IncreaceGravity => "Increase Gravity",
+                                    ReferencedStatusEffect::Invincibility => "Invincibility",
+                                    ReferencedStatusEffect::Overheal => "Overheal",
+                                    ReferencedStatusEffect::OnHit(_) => "On Player Hit",
+                                };
+                                ui.label(
+                                    RichText::new(format!("{}: {:.1}s", effect_name, time_left))
+                                        .color(Color32::WHITE),
+                                );
+                            }
 
                             ui.label(
                                 RichText::new(format!("{} / {}", player_health, player_max_health))
