@@ -9,3 +9,6 @@ Finish card editor
 UI
     Exit to main menu button
     Add status effect ui
+On Trigger
+    On Trigger (id)
+    Trigger (id)

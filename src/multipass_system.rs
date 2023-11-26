@@ -970,6 +970,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                             BaseCard::CreateMaterial(
                                                                 VoxelMaterial::Ice,
                                                             ),
+                                                            BaseCard::Trigger(0),
                                                         ],
                                                         vec![],
                                                     ),
@@ -979,6 +980,10 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                                 BaseCard::None,
                                                             ),
                                                             ProjectileModifier::OnExpiry(
+                                                                BaseCard::None,
+                                                            ),
+                                                            ProjectileModifier::OnTrigger(
+                                                                0,
                                                                 BaseCard::None,
                                                             ),
                                                             ProjectileModifier::Trail(

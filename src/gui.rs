@@ -265,6 +265,7 @@ pub fn draw_base_card(
                                         }
                                         ProjectileModifier::OnExpiry(_)
                                         | ProjectileModifier::OnHit(_)
+                                        | ProjectileModifier::OnTrigger(_, _) => {}
                                         | ProjectileModifier::Trail(_, _) => {}
                                     }
 
@@ -279,6 +280,20 @@ pub fn draw_base_card(
                                 ui.horizontal_top(|ui| {
                                     ui.add_space(CARD_UI_SPACING);
                                     match modifier {
+                                        ProjectileModifier::OnHit(base_card) => {
+                                            drag_source(ui, item_id, |ui| {
+                                                ui.label("On Hit");
+                                                path.push_back(0);
+                                                draw_base_card(
+                                                    ui,
+                                                    base_card,
+                                                    path,
+                                                    source_path,
+                                                    dest_path,
+                                                );
+                                                path.pop_back();
+                                            });
+                                        }
                                         ProjectileModifier::OnExpiry(base_card) => {
                                             drag_source(ui, item_id, |ui| {
                                                 ui.label("On Expiry");
@@ -293,9 +308,9 @@ pub fn draw_base_card(
                                                 path.pop_back();
                                             });
                                         }
-                                        ProjectileModifier::OnHit(base_card) => {
+                                        ProjectileModifier::OnTrigger(id, base_card) => {
                                             drag_source(ui, item_id, |ui| {
-                                                ui.label("On Hit");
+                                                ui.label(format!("On Trigger {}", id));
                                                 path.push_back(0);
                                                 draw_base_card(
                                                     ui,
@@ -489,6 +504,19 @@ pub fn draw_base_card(
                             ui.min_rect(),
                             CARD_UI_ROUNDING,
                             Stroke::new(1.0, Color32::RED),
+                        );
+                    }
+                    BaseCard::Trigger(id) => {
+                        ui.horizontal(|ui| {
+                            ui.add_space(CARD_UI_SPACING);
+                            ui.label(format!("Trigger {}", id));
+                            ui.add_space(CARD_UI_SPACING);
+                        });
+                        ui.add_space(CARD_UI_SPACING);
+                        ui.painter().rect_stroke(
+                            ui.min_rect(),
+                            CARD_UI_ROUNDING,
+                            Stroke::new(1.0, Color32::GOLD),
                         );
                     }
                     BaseCard::None => {

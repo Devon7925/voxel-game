@@ -11,6 +11,7 @@ pub enum BaseCard {
     MultiCast(Vec<BaseCard>, Vec<MultiCastModifier>),
     CreateMaterial(VoxelMaterial),
     Effect(Effect),
+    Trigger(u32),
     None,
 }
 
@@ -21,6 +22,7 @@ pub enum ProjectileModifier {
     NoEnemyFire,
     OnHit(BaseCard),
     OnExpiry(BaseCard),
+    OnTrigger(u32, BaseCard),
     Trail(u32, BaseCard),
     LockToOwner,
     PiercePlayers,
@@ -125,7 +127,9 @@ fn gen_cooldown_for_ttk(accuracy: f32, damage: f32, goal_ttk: f32) -> f32 {
             SCALE * 100,
             100,
             &mut HashMap::new(),
-        ) * healing as f32 / 128.0 > goal_ttk
+        ) * healing as f32
+            / 128.0
+            > goal_ttk
         {
             healing -= delta;
         } else {
@@ -147,8 +151,8 @@ fn get_avg_ttk(
         0.0
     } else if iterations == 0 {
         0.0
-    } else if current_health > 100*SCALE {
-        get_avg_ttk(accuracy, damage, healing, 100*SCALE, iterations, table)
+    } else if current_health > 100 * SCALE {
+        get_avg_ttk(accuracy, damage, healing, 100 * SCALE, iterations, table)
     } else {
         if let Some((cached_result, cached_iterations)) = table.get(&current_health) {
             if cached_iterations >= &iterations {
@@ -211,13 +215,13 @@ impl BaseCard {
             .sum::<f32>()
     }
 
-
     fn evaluate_value(&self, is_direct: bool) -> Vec<CardValue> {
         const RANGE_PROBABILITIES_SCALE: f32 = 10.0;
         match self {
             BaseCard::Projectile(modifiers) => {
                 let mut hit_value = vec![];
                 let mut expiry_value = vec![];
+                let mut trigger_value = vec![];
                 let mut trail_value = vec![];
                 let mut speed = 0;
                 let mut length = 0;
@@ -260,7 +264,10 @@ impl BaseCard {
                             hit_value.extend(card.evaluate_value(false))
                         }
                         ProjectileModifier::OnExpiry(card) => {
-                            expiry_value.extend(card.evaluate_value(false));
+                            expiry_value.extend(card.evaluate_value(is_direct));
+                        }
+                        ProjectileModifier::OnTrigger(_id, card) => {
+                            trigger_value.extend(card.evaluate_value(is_direct));
                         }
                         ProjectileModifier::Trail(freq, card) => {
                             trail_value.extend(
@@ -350,6 +357,21 @@ impl BaseCard {
                     range_probabilities: convolve_range_probabilities(
                         expiry_range_probabilities,
                         expiry_value.range_probabilities,
+                    ),
+                }));
+                let trigger_range_probabilities: [f32; 10] = core::array::from_fn(|idx| {
+                    if idx <= (lifetime * speed / RANGE_PROBABILITIES_SCALE) as usize {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                });
+                value.extend(trigger_value.into_iter().map(|trigger_value| CardValue {
+                    damage: trigger_value.damage,
+                    generic: trigger_value.generic,
+                    range_probabilities: convolve_range_probabilities(
+                        trigger_range_probabilities,
+                        trigger_value.range_probabilities,
                     ),
                 }));
 
@@ -571,6 +593,7 @@ impl BaseCard {
                     }
                 },
             },
+            BaseCard::Trigger(_id) => vec![],
             BaseCard::None => vec![],
         }
     }
@@ -596,6 +619,11 @@ impl BaseCard {
                             }
                         }
                         ProjectileModifier::OnExpiry(card) => {
+                            if !card.is_reasonable() {
+                                return false;
+                            }
+                        }
+                        ProjectileModifier::OnTrigger(_, card) => {
                             if !card.is_reasonable() {
                                 return false;
                             }
@@ -648,6 +676,7 @@ impl BaseCard {
                 Effect::Cleanse => {}
                 Effect::Teleport => {}
             },
+            BaseCard::Trigger(_) => {}
             BaseCard::None => {}
         }
         return true;
@@ -673,10 +702,12 @@ impl BaseCard {
                         let card_ref = match modifiers.get_mut(idx).unwrap() {
                             ProjectileModifier::OnHit(ref mut card) => card,
                             ProjectileModifier::OnExpiry(ref mut card) => card,
-                            ProjectileModifier::Trail(_freqency, ref mut card) => {
-                                card
-                            }
-                            invalid_take_modifier => panic!("Invalid state: cannot take from {:?}", invalid_take_modifier),
+                            ProjectileModifier::OnTrigger(_id, ref mut card) => card,
+                            ProjectileModifier::Trail(_freqency, ref mut card) => card,
+                            invalid_take_modifier => panic!(
+                                "Invalid state: cannot take from {:?}",
+                                invalid_take_modifier
+                            ),
                         };
                         let result = DraggableCard::BaseCard(card_ref.clone());
                         *card_ref = BaseCard::None;
@@ -685,6 +716,9 @@ impl BaseCard {
                         match modifiers[idx] {
                             ProjectileModifier::OnHit(ref mut card) => card.take_modifier(path),
                             ProjectileModifier::OnExpiry(ref mut card) => card.take_modifier(path),
+                            ProjectileModifier::OnTrigger(_, ref mut card) => {
+                                card.take_modifier(path)
+                            }
                             ProjectileModifier::Trail(_freqency, ref mut card) => {
                                 card.take_modifier(path)
                             }
@@ -745,7 +779,7 @@ impl BaseCard {
                     } else {
                         modifiers.push(item.clone());
                     }
-                    
+
                     modifiers.retain(|modifier| match modifier {
                         ProjectileModifier::SimpleModify(_, s) => *s != 0,
                         _ => true,
@@ -756,6 +790,9 @@ impl BaseCard {
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => card.insert_modifier(path, item),
                         ProjectileModifier::OnExpiry(ref mut card) => {
+                            card.insert_modifier(path, item)
+                        }
+                        ProjectileModifier::OnTrigger(_id, ref mut card) => {
                             card.insert_modifier(path, item)
                         }
                         ProjectileModifier::Trail(_freqency, ref mut card) => {
@@ -811,7 +848,11 @@ impl BaseCard {
                 }
             }
             BaseCard::None => {
-                assert!(path.is_empty(), "Invalid state: should not have nonempty path {:?} when inserting into None", path);
+                assert!(
+                    path.is_empty(),
+                    "Invalid state: should not have nonempty path {:?} when inserting into None",
+                    path
+                );
                 let DraggableCard::BaseCard(item) = item else {
                     panic!("Invalid state")
                 };
@@ -824,7 +865,7 @@ impl BaseCard {
     pub fn cleanup(&mut self, path: &mut VecDeque<u32>) {
         match self {
             BaseCard::Projectile(modifiers) => {
-                if path.len() <= 1 {                    
+                if path.len() <= 1 {
                     modifiers.retain(|modifier| match modifier {
                         ProjectileModifier::SimpleModify(_, s) => *s != 0,
                         _ => true,
@@ -834,13 +875,13 @@ impl BaseCard {
                     assert!(path.pop_front().unwrap() == 0);
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => card.cleanup(path),
-                        ProjectileModifier::OnExpiry(ref mut card) => {
-                            card.cleanup(path)
-                        }
-                        ProjectileModifier::Trail(_freqency, ref mut card) => {
-                            card.cleanup(path)
-                        }
-                        ref invalid => panic!("Invalid state: cannot follow path {} into {:?}", idx, invalid),
+                        ProjectileModifier::OnExpiry(ref mut card) => card.cleanup(path),
+                        ProjectileModifier::OnTrigger(_, ref mut card) => card.cleanup(path),
+                        ProjectileModifier::Trail(_freqency, ref mut card) => card.cleanup(path),
+                        ref invalid => panic!(
+                            "Invalid state: cannot follow path {} into {:?}",
+                            idx, invalid
+                        ),
                     }
                 }
             }
@@ -927,6 +968,9 @@ impl ProjectileModifier {
             ProjectileModifier::NoEnemyFire => format!("Prevents hitting enemy entities"),
             ProjectileModifier::OnHit(card) => format!("On Hit {}", card.to_string()),
             ProjectileModifier::OnExpiry(card) => format!("On Expiry {}", card.to_string()),
+            ProjectileModifier::OnTrigger(id, card) => {
+                format!("On trigger {} {}", id, card.to_string())
+            }
             ProjectileModifier::Trail(freq, card) => {
                 format!("Trail {}: {}", freq, card.to_string())
             }
@@ -965,6 +1009,7 @@ impl ProjectileModifier {
             ProjectileModifier::NoEnemyFire => panic!(),
             ProjectileModifier::OnHit(_) => panic!(),
             ProjectileModifier::OnExpiry(_) => panic!(),
+            ProjectileModifier::OnTrigger(_, _) => panic!(),
             ProjectileModifier::Trail(_, _) => panic!(),
             ProjectileModifier::LockToOwner => panic!(),
             ProjectileModifier::PiercePlayers => panic!(),
@@ -979,6 +1024,7 @@ pub enum ReferencedBaseCardType {
     MultiCast,
     CreateMaterial,
     Effect,
+    Trigger,
     None,
 }
 
@@ -1014,6 +1060,7 @@ pub struct ReferencedProjectile {
     pub wall_bounce: bool,
     pub on_hit: Vec<ReferencedBaseCard>,
     pub on_expiry: Vec<ReferencedBaseCard>,
+    pub on_trigger: Vec<(u32, ReferencedBaseCard)>,
     pub trail: Vec<(f32, ReferencedBaseCard)>,
 }
 
@@ -1048,11 +1095,15 @@ pub enum ReferencedStatusEffect {
     OnHit(ReferencedBaseCard),
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ReferencedTrigger(pub u32);
+
 pub struct CardManager {
     pub referenced_multicasts: Vec<ReferencedMulticast>,
     pub referenced_projs: Vec<ReferencedProjectile>,
     pub referenced_material_creators: Vec<VoxelMaterial>,
     pub referenced_effects: Vec<ReferencedEffect>,
+    pub referenced_triggers: Vec<ReferencedTrigger>,
 }
 
 impl Default for CardManager {
@@ -1062,6 +1113,7 @@ impl Default for CardManager {
             referenced_projs: vec![],
             referenced_material_creators: vec![],
             referenced_effects: vec![],
+            referenced_triggers: vec![],
         }
     }
 }
@@ -1082,6 +1134,7 @@ impl CardManager {
                 let mut no_enemy_fire = false;
                 let mut on_hit = Vec::new();
                 let mut on_expiry = Vec::new();
+                let mut on_trigger = Vec::new();
                 let mut trail = Vec::new();
                 let mut lock_owner = false;
                 let mut pierce_players = false;
@@ -1119,6 +1172,9 @@ impl CardManager {
                         }
                         ProjectileModifier::OnExpiry(card) => {
                             on_expiry.push(self.register_base_card(card))
+                        }
+                        ProjectileModifier::OnTrigger(id, card) => {
+                            on_trigger.push((id, self.register_base_card(card)))
                         }
                         ProjectileModifier::Trail(freq, card) => {
                             trail.push((1.0 / (freq as f32), self.register_base_card(card)))
@@ -1166,6 +1222,7 @@ impl CardManager {
                     wall_bounce,
                     on_hit,
                     on_expiry,
+                    on_trigger,
                     trail,
                 });
 
@@ -1246,6 +1303,13 @@ impl CardManager {
                     card_idx: self.referenced_effects.len() - 1,
                 }
             }
+            BaseCard::Trigger(id) => {
+                self.referenced_triggers.push(ReferencedTrigger(id));
+                ReferencedBaseCard {
+                    card_type: ReferencedBaseCardType::Trigger,
+                    card_idx: self.referenced_triggers.len() - 1,
+                }
+            }
             BaseCard::None => ReferencedBaseCard {
                 card_type: ReferencedBaseCardType::None,
                 card_idx: 0,
@@ -1263,15 +1327,16 @@ impl CardManager {
         Vec<Projectile>,
         Vec<(Point3<i32>, VoxelMaterial)>,
         Vec<ReferencedEffect>,
+        Vec<(ReferencedTrigger, u32)>,
     ) {
         let mut projectiles = vec![];
         let mut new_voxels = vec![];
         let mut effects = vec![];
+        let mut triggers = vec![];
         match card {
             ReferencedBaseCard {
                 card_type: ReferencedBaseCardType::Projectile,
                 card_idx,
-                ..
             } => {
                 let proj_stats = self.get_referenced_proj(card_idx);
                 let proj_damage = proj_stats.damage as f32;
@@ -1293,19 +1358,20 @@ impl CardManager {
             ReferencedBaseCard {
                 card_type: ReferencedBaseCardType::MultiCast,
                 card_idx,
-                ..
             } => {
                 let multicast = &self.referenced_multicasts[card_idx];
                 let mut individual_sub_projectiles = vec![];
                 let mut sub_projectiles = vec![];
                 let mut sub_voxels = vec![];
                 let mut sub_effects = vec![];
+                let mut sub_triggers = vec![];
                 for sub_card in multicast.sub_cards.iter() {
-                    let (sub_sub_projectiles, sub_sub_voxels, sub_sub_effects) =
+                    let (sub_sub_projectiles, sub_sub_voxels, sub_sub_effects, sub_sub_triggers) =
                         self.get_effects_from_base_card(*sub_card, pos, rot, player_idx);
                     individual_sub_projectiles.extend(sub_sub_projectiles);
                     sub_voxels.extend(sub_sub_voxels);
                     sub_effects.extend(sub_sub_effects);
+                    sub_triggers.extend(sub_sub_triggers);
                 }
                 let spread: f32 = multicast.spread as f32 / 15.0;
                 let count = 2u32.pow(multicast.duplication);
@@ -1332,11 +1398,11 @@ impl CardManager {
                 projectiles.extend(sub_projectiles);
                 new_voxels.extend(sub_voxels);
                 effects.extend(sub_effects);
+                triggers.extend(sub_triggers);
             }
             ReferencedBaseCard {
                 card_type: ReferencedBaseCardType::CreateMaterial,
                 card_idx,
-                ..
             } => {
                 let material = &self.referenced_material_creators[card_idx];
                 new_voxels.push((pos.cast::<i32>().unwrap(), material.clone()));
@@ -1344,14 +1410,23 @@ impl CardManager {
             ReferencedBaseCard {
                 card_type: ReferencedBaseCardType::Effect,
                 card_idx,
-                ..
             } => {
                 let effect = &self.referenced_effects[card_idx];
                 effects.push(effect.clone());
             }
-            _ => panic!("Invalid state"),
+            ReferencedBaseCard {
+                card_type: ReferencedBaseCardType::Trigger,
+                card_idx,
+            } => {
+                let trigger = self.referenced_triggers[card_idx].clone();
+                triggers.push((trigger, player_idx));
+            }
+            ReferencedBaseCard {
+                card_type: ReferencedBaseCardType::None,
+                ..
+            } => {}
         }
-        (projectiles, new_voxels, effects)
+        (projectiles, new_voxels, effects, triggers)
     }
 
     pub fn get_referenced_proj(&self, idx: usize) -> &ReferencedProjectile {

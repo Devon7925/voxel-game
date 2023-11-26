@@ -10,6 +10,7 @@ Card Editor
         Damage & Knockback magnitude
         Decreace multi modifier's magnitude
     Show cooldowns
+    Import button
 
 World Gen
     Move to GPU compute

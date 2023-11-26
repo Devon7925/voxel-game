@@ -21,7 +21,7 @@ use winit::event::{ElementState, WindowEvent};
 use crate::{
     card_system::{
         BaseCard, CardManager, ReferencedBaseCard, ReferencedBaseCardType, ReferencedEffect,
-        ReferencedStatusEffect, VoxelMaterial,
+        ReferencedStatusEffect, ReferencedTrigger, VoxelMaterial,
     },
     gui::{GuiElement, GuiState},
     networking::{NetworkConnection, NetworkPacket},
@@ -1070,6 +1070,7 @@ impl WorldState {
         let mut new_projectiles = Vec::new();
         let mut voxels_to_write: Vec<(Point3<i32>, [u32; 2])> = Vec::new();
         let mut new_effects: Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)> = Vec::new();
+        let mut step_triggers: Vec<(ReferencedTrigger, u32)> = Vec::new();
 
         let player_stats: Vec<PlayerEffectStats> = self
             .players
@@ -1151,6 +1152,7 @@ impl WorldState {
                 &mut new_projectiles,
                 &mut voxels_to_write,
                 &mut new_effects,
+                &mut step_triggers,
             )
         });
 
@@ -1189,6 +1191,7 @@ impl WorldState {
                     &mut new_projectiles,
                     &mut voxels_to_write,
                     &mut new_effects,
+                    &mut step_triggers,
                 );
             }
         }
@@ -1279,8 +1282,8 @@ impl WorldState {
                                     proj_rot[1],
                                     proj_rot[2],
                                 );
-                                let (on_hit_projectiles, on_hit_voxels, effects) = card_manager
-                                    .get_effects_from_base_card(
+                                let (on_hit_projectiles, on_hit_voxels, effects, triggers) =
+                                    card_manager.get_effects_from_base_card(
                                         card_ref,
                                         &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
                                         &proj_rot,
@@ -1293,6 +1296,7 @@ impl WorldState {
                                 for effect in effects {
                                     new_effects.push((player_idx, pos, player.pos - pos, effect));
                                 }
+                                step_triggers.extend(triggers);
                             }
                             break 'outer;
                         }
@@ -1350,7 +1354,7 @@ impl WorldState {
                     })
                     .collect::<Vec<_>>()
             };
-            for (on_hit_projectiles, on_hit_voxels, effects) in hit_effects {
+            for (on_hit_projectiles, on_hit_voxels, effects, triggers) in hit_effects {
                 new_projectiles.extend(on_hit_projectiles);
                 for (pos, material) in on_hit_voxels {
                     voxels_to_write.push((pos, material.to_memory()));
@@ -1358,6 +1362,7 @@ impl WorldState {
                 for effect in effects {
                     new_effects.push((j, player1_pos, player2_pos - player1_pos, effect));
                 }
+                step_triggers.extend(triggers);
             }
         }
 
@@ -1366,6 +1371,45 @@ impl WorldState {
                 player.respawn_timer = 5.0;
             }
         }
+
+        for (ReferencedTrigger(trigger_id), trigger_player) in step_triggers {
+            for proj in self.projectiles.iter_mut() {
+                if proj.owner != trigger_player {
+                    continue;
+                }
+                let proj_card = card_manager
+                    .get_referenced_proj(proj.proj_card_idx as usize)
+                    .clone();
+                let projectile_rot =
+                    Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
+                let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+                for (proj_trigger_id, on_trigger) in proj_card.on_trigger {
+                    if proj_trigger_id == trigger_id {
+                        proj.health = 0.0;
+                        let (proj_effects, vox_effects, effects, _) = card_manager
+                            .get_effects_from_base_card(
+                                on_trigger,
+                                &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                                &projectile_rot,
+                                proj.owner,
+                            );
+                        new_projectiles.extend(proj_effects);
+                        for (pos, material) in vox_effects {
+                            voxels_to_write.push((pos, material.to_memory()));
+                        }
+                        for effect in effects {
+                            new_effects.push((
+                                proj.owner as usize,
+                                Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                                projectile_dir,
+                                effect,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
         // remove dead projectiles and add new ones
         self.projectiles.retain(|proj| proj.health > 0.0);
         self.projectiles.extend(new_projectiles);
@@ -1551,6 +1595,7 @@ impl Projectile {
         new_projectiles: &mut Vec<Projectile>,
         voxels_to_write: &mut Vec<(Point3<i32>, [u32; 2])>,
         new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
+        step_triggers: &mut Vec<(ReferencedTrigger, u32)>,
     ) {
         let proj_card = card_manager.get_referenced_proj(self.proj_card_idx as usize);
         let projectile_rot = Quaternion::new(self.dir[3], self.dir[0], self.dir[1], self.dir[2]);
@@ -1594,12 +1639,13 @@ impl Projectile {
                 .on_expiry
                 .clone()
             {
-                let (proj_effects, vox_effects, effects) = card_manager.get_effects_from_base_card(
-                    card_ref,
-                    &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
-                    &new_projectile_rot,
-                    self.owner,
-                );
+                let (proj_effects, vox_effects, effects, triggers) = card_manager
+                    .get_effects_from_base_card(
+                        card_ref,
+                        &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
+                        &new_projectile_rot,
+                        self.owner,
+                    );
                 new_projectiles.extend(proj_effects);
                 for (pos, material) in vox_effects {
                     voxels_to_write.push((pos, material.to_memory()));
@@ -1612,17 +1658,19 @@ impl Projectile {
                         effect,
                     ));
                 }
+                step_triggers.extend(triggers);
             }
         }
 
         for (trail_time, trail_card) in proj_card.trail.iter() {
             if self.lifetime % trail_time >= trail_time - time_step {
-                let (proj_effects, vox_effects, effects) = card_manager.get_effects_from_base_card(
-                    trail_card.clone(),
-                    &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
-                    &new_projectile_rot,
-                    self.owner,
-                );
+                let (proj_effects, vox_effects, effects, triggers) = card_manager
+                    .get_effects_from_base_card(
+                        trail_card.clone(),
+                        &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
+                        &new_projectile_rot,
+                        self.owner,
+                    );
                 new_projectiles.extend(proj_effects);
                 for (pos, material) in vox_effects {
                     voxels_to_write.push((pos, material.to_memory()));
@@ -1635,6 +1683,7 @@ impl Projectile {
                         effect,
                     ));
                 }
+                step_triggers.extend(triggers);
             }
         }
     }
@@ -1674,6 +1723,7 @@ impl Player {
         new_projectiles: &mut Vec<Projectile>,
         voxels_to_write: &mut Vec<(Point3<i32>, [u32; 2])>,
         new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
+        step_triggers: &mut Vec<(ReferencedTrigger, u32)>,
     ) {
         if self.respawn_timer > 0.0 {
             self.respawn_timer -= time_step;
@@ -1747,7 +1797,7 @@ impl Player {
                     && ability.cooldown <= 0.0
                 {
                     ability.cooldown = ability.value;
-                    let (proj_effects, vox_effects, effects) = card_manager
+                    let (proj_effects, vox_effects, effects, triggers) = card_manager
                         .get_effects_from_base_card(
                             ability.ability,
                             &self.pos,
@@ -1761,6 +1811,7 @@ impl Player {
                     for effect in effects {
                         new_effects.push((player_idx, self.pos, self.dir, effect));
                     }
+                    step_triggers.extend(triggers);
                 }
             }
         }

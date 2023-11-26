@@ -192,6 +192,7 @@ impl ProjectileComputePipeline {
                 render_size: sim_data.render_size.into(),
                 start_pos: sim_data.start_pos.into(),
                 dt: time_step,
+                projectile_count: self.upload_projectile_count as u32,
             };
 
             let subbuffer = self.uniform_buffer.allocate_sized().unwrap();

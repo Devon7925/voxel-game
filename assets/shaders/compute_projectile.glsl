@@ -12,6 +12,7 @@ layout(set = 0, binding = 2) uniform SimData {
     uvec3 render_size;
     ivec3 start_pos;
     float dt;
+    uint projectile_count;
 } sim_data;
 
 uvec2 get_data_unchecked(ivec3 global_pos) {
@@ -48,6 +49,7 @@ vec3 RayBoxDist(vec3 pos, vec3 ray, vec3 vmin, vec3 vmax) {
 
 void main() {
     uint projectile_idx = gl_WorkGroupSize.x * gl_WorkGroupID.x + gl_LocalInvocationID.x;
+    if (projectile_idx >= sim_data.projectile_count) return;
     Projectile projectile = projectiles[projectile_idx];
 
     ivec3 grid_iteration_count = ivec3(ceil(2.0*projectile.size * sqrt(2.0)));
