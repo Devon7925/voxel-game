@@ -1,12 +1,12 @@
 use futures::{select, FutureExt};
 use futures_timer::Delay;
-use matchbox_socket::{PeerState, WebRtcSocket, PeerId};
+use matchbox_socket::{PeerId, PeerState, WebRtcSocket};
 use serde::{Deserialize, Serialize};
+use std::str;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use std::str;
 
-use crate::{rollback_manager::PlayerAction, card_system::BaseCard, settings_manager::Settings};
+use crate::{card_system::Cooldown, rollback_manager::PlayerAction, settings_manager::Settings};
 
 #[derive(Debug)]
 pub struct NetworkConnection {
@@ -18,7 +18,7 @@ pub struct NetworkConnection {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum NetworkPacket {
     Action(u64, PlayerAction),
-    DeckUpdate(u64, Vec<BaseCard>),
+    DeckUpdate(u64, Vec<Cooldown>),
     DeltatimeUpdate(u64, f32),
 }
 
@@ -62,7 +62,10 @@ impl NetworkConnection {
         self.packet_queue.push(packet);
     }
 
-    pub fn network_update(&mut self, player_count: usize) -> (Vec<(PeerId, PeerState)>, Vec<(PeerId, NetworkPacket)>) {
+    pub fn network_update(
+        &mut self,
+        player_count: usize,
+    ) -> (Vec<(PeerId, PeerState)>, Vec<(PeerId, NetworkPacket)>) {
         let mut player_connection_changes = Vec::new();
         let mut recieved_packets = Vec::new();
         // Handle any new peers
@@ -74,7 +77,7 @@ impl NetworkConnection {
             // Accept any messages incoming
             for (peer, packet) in self.socket.receive() {
                 let message = str::from_utf8(packet.as_ref()).unwrap();
-                let foreign_player_action:NetworkPacket = ron::from_str(message).unwrap();
+                let foreign_player_action: NetworkPacket = ron::from_str(message).unwrap();
                 recieved_packets.push((peer, foreign_player_action));
             }
         }
@@ -82,14 +85,22 @@ impl NetworkConnection {
     }
 
     pub fn send_packet(&mut self, peer: PeerId, packet: NetworkPacket) {
-        let packet = ron::to_string(&packet).unwrap().as_bytes().to_vec().into_boxed_slice();
+        let packet = ron::to_string(&packet)
+            .unwrap()
+            .as_bytes()
+            .to_vec()
+            .into_boxed_slice();
         self.socket.send(packet.clone(), peer);
     }
 
     pub fn send_packet_queue(&mut self, peers: Vec<&PeerId>) {
         for peer in peers {
             for packet in self.packet_queue.clone() {
-                let packet = ron::to_string(&packet).unwrap().as_bytes().to_vec().into_boxed_slice();
+                let packet = ron::to_string(&packet)
+                    .unwrap()
+                    .as_bytes()
+                    .to_vec()
+                    .into_boxed_slice();
                 self.socket.send(packet.clone(), peer.clone());
             }
         }

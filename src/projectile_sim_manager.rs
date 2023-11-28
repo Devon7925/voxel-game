@@ -64,7 +64,7 @@ pub struct Projectile {
     pub damage: f32,
     pub proj_card_idx: u32,
     pub wall_bounce: u32,
-    pub _filler3: f32,
+    pub is_from_head: u32,
 }
 
 impl ProjectileComputePipeline {
@@ -253,6 +253,7 @@ impl ProjectileComputePipeline {
                         &Point3::new(projectile.pos[0], projectile.pos[1], projectile.pos[2]),
                         &proj_rot,
                         projectile.owner,
+                        false,
                     );
                     projectiles.extend(effects.0);
                     new_voxels.extend(effects.1);

@@ -12,12 +12,6 @@ movement_controls:
   jump: !Key Space
   crouch: !Key LControl
   sensitivity: 0.001
-ability_controls:
-- !Mouse Left
-- !Mouse Right
-- !Key E
-- !Key LShift
-- !Key T
 graphics_settings:
   primary_ray_dist: 100
   transparency_ray_dist: 75

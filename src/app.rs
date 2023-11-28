@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    card_system::{BaseCard, CardManager},
+    card_system::{CardManager, Cooldown},
     multipass_system::FrameSystem,
     projectile_sim_manager::ProjectileComputePipeline,
     rasterizer::RasterizerSystem,
@@ -68,7 +68,7 @@ impl RenderPipeline {
     pub fn new(
         event_loop: &EventLoop<()>,
         settings: Settings,
-        deck: &Vec<BaseCard>,
+        deck: &Vec<Cooldown>,
     ) -> RenderPipeline {
         // Basic initialization. See the triangle example if you want more details about this.
 

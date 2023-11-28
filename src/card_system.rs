@@ -3,7 +3,160 @@ use std::collections::{HashMap, VecDeque};
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
 use serde::{Deserialize, Serialize};
 
-use crate::projectile_sim_manager::Projectile;
+use crate::{projectile_sim_manager::Projectile, settings_manager::Control};
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Cooldown {
+    pub modifiers: Vec<CooldownModifier>,
+    pub abilities: Vec<Ability>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum CooldownModifier {
+    AddCharge(u32),
+}
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Ability {
+    pub card: BaseCard,
+    pub keybind: Keybind,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum Keybind {
+    Pressed(Control),
+    OnPressed(Control),
+    OnReleased(Control),
+    And(Box<Keybind>, Box<Keybind>),
+    Or(Box<Keybind>, Box<Keybind>),
+    Not(Box<Keybind>),
+    True,
+}
+
+impl Keybind {
+    pub fn get_simple_representation(&self) -> Option<String> {
+        match self {
+            Keybind::Pressed(control) => Some(format!("{}", control)),
+            Keybind::OnPressed(control) => Some(format!("{}", control)),
+            Keybind::OnReleased(control) => Some(format!("{}", control)),
+            Keybind::And(_, _) => None,
+            Keybind::Or(_, _) => None,
+            Keybind::Not(_) => None,
+            Keybind::True => Some("⨀".to_string()),
+        }
+    }
+}
+
+impl Cooldown {
+    pub fn vec_from_string(ron_string: &str) -> Vec<Self> {
+        ron::from_str(ron_string).unwrap()
+    }
+
+    pub fn is_reasonable(&self) -> bool {
+        self.abilities
+            .iter()
+            .all(|ability| ability.card.is_reasonable())
+    }
+
+    pub fn get_cooldown(&self) -> f32 {
+        let ability_values: Vec<f32> = self
+            .abilities
+            .iter()
+            .map(|ability| ability.card.get_cooldown())
+            .collect();
+        let sum: f32 = ability_values.iter().sum();
+        let max: f32 = ability_values
+            .iter()
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
+            .clone();
+        (sum + 2.0 * max) / 3.0
+    }
+
+    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {
+        let type_idx = path.pop_front().unwrap() as usize;
+        if type_idx == 0 {
+            let idx = path.pop_front().unwrap() as usize;
+            assert!(path.is_empty());
+            let modifier = self.modifiers[idx].clone();
+            self.modifiers[idx] = CooldownModifier::AddCharge(0);
+            DraggableCard::CooldownModifier(modifier)
+        } else if type_idx == 1 {
+            let idx = path.pop_front().unwrap() as usize;
+            if path.is_empty() {
+                let ability_card = self.abilities[idx].card.clone();
+                self.abilities[idx].card = BaseCard::None;
+                DraggableCard::BaseCard(ability_card)
+            } else {
+                self.abilities[idx].card.take_from_path(path)
+            }
+        } else {
+            panic!("Invalid state");
+        }
+    }
+
+    pub fn insert_to_path(&mut self, path: &mut VecDeque<u32>, item: DraggableCard) {
+        if path.is_empty() {
+            if let DraggableCard::BaseCard(item) = item {
+                self.abilities.push(Ability {
+                    card: item,
+                    keybind: Keybind::Not(Box::new(Keybind::True)),
+                });
+            } else if let DraggableCard::CooldownModifier(modifier_item) = item {
+                let mut combined = false;
+                match modifier_item.clone() {
+                    CooldownModifier::AddCharge(last_s) => {
+                        for modifier in self.modifiers.iter_mut() {
+                            match modifier {
+                                CooldownModifier::AddCharge(s) => {
+                                    *s += last_s;
+                                    combined = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !combined {
+                    self.modifiers.push(modifier_item.clone());
+                }
+            } else {
+                panic!("Invalid state")
+            }
+        } else {
+            assert!(path.pop_front().unwrap() == 1);
+            let idx = path.pop_front().unwrap() as usize;
+            self.abilities[idx].card.insert_to_path(path, item)
+        }
+    }
+
+    pub fn cleanup(&mut self, path: &mut VecDeque<u32>) {
+        if path.is_empty() {
+            return;
+        }
+        let idx_type = path.pop_front().unwrap();
+        if idx_type == 0 {
+            let idx = path.pop_front().unwrap() as usize;
+            assert!(path.is_empty());
+            match self.modifiers[idx] {
+                CooldownModifier::AddCharge(s) => {
+                    if s == 0 {
+                        self.modifiers.remove(idx);
+                    }
+                }
+            }
+        } else if idx_type == 1 {
+            let idx = path.pop_front().unwrap() as usize;
+            if path.is_empty() {
+                // do nothing
+            } else {
+                self.abilities[idx].card.cleanup(path);
+            }
+        } else {
+            panic!("Invalid state");
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum BaseCard {
@@ -184,11 +337,8 @@ fn get_avg_ttk(
 }
 
 impl BaseCard {
+    pub const EFFECT_LENGTH_SCALE: f32 = 0.5;
     pub fn from_string(ron_string: &str) -> Self {
-        ron::from_str(ron_string).unwrap()
-    }
-
-    pub fn vec_from_string(ron_string: &str) -> Vec<Self> {
         ron::from_str(ron_string).unwrap()
     }
 
@@ -486,14 +636,17 @@ impl BaseCard {
                 Effect::StatusEffect(effect_type, duration) => match effect_type {
                     StatusEffect::Speed => vec![CardValue {
                         damage: 0.0,
-                        generic: 0.5 * (*duration as f32),
+                        generic: Self::EFFECT_LENGTH_SCALE * 0.5 * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
                     }],
                     StatusEffect::Slow => vec![CardValue {
                         damage: 0.0,
-                        generic: (if is_direct { -1.0 } else { 1.0 }) * 0.5 * (*duration as f32),
+                        generic: Self::EFFECT_LENGTH_SCALE
+                            * (if is_direct { -1.0 } else { 1.0 })
+                            * 0.5
+                            * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
@@ -502,7 +655,7 @@ impl BaseCard {
                         if is_direct {
                             vec![CardValue {
                                 damage: 0.0,
-                                generic: -7.0 * (*duration as f32),
+                                generic: Self::EFFECT_LENGTH_SCALE * -7.0 * (*duration as f32),
                                 range_probabilities: core::array::from_fn(|idx| {
                                     if idx == 0 {
                                         1.0
@@ -513,7 +666,7 @@ impl BaseCard {
                             }]
                         } else {
                             vec![CardValue {
-                                damage: (*duration as f32),
+                                damage: Self::EFFECT_LENGTH_SCALE * (*duration as f32),
                                 generic: 0.0,
                                 range_probabilities: core::array::from_fn(|idx| {
                                     if idx == 0 {
@@ -527,56 +680,59 @@ impl BaseCard {
                     }
                     StatusEffect::HealOverTime => vec![CardValue {
                         damage: 0.0,
-                        generic: 7.0 * (*duration as f32),
+                        generic: Self::EFFECT_LENGTH_SCALE * 7.0 * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
                     }],
                     StatusEffect::IncreaceDamageTaken => vec![CardValue {
                         damage: 0.0,
-                        generic: 5.0 * (*duration as f32),
+                        generic: Self::EFFECT_LENGTH_SCALE * 5.0 * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
                     }],
                     StatusEffect::DecreaceDamageTaken => vec![CardValue {
                         damage: 0.0,
-                        generic: 5.0 * (*duration as f32),
+                        generic: Self::EFFECT_LENGTH_SCALE * 5.0 * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
                     }],
                     StatusEffect::IncreaceGravity => vec![CardValue {
                         damage: 0.0,
-                        generic: 0.5 * (*duration as f32),
+                        generic: Self::EFFECT_LENGTH_SCALE * 0.5 * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
                     }],
                     StatusEffect::DecreaceGravity => vec![CardValue {
                         damage: 0.0,
-                        generic: 0.5 * (*duration as f32),
+                        generic: Self::EFFECT_LENGTH_SCALE * 0.5 * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
                     }],
                     StatusEffect::Overheal => vec![CardValue {
                         damage: 0.0,
-                        generic: 5.0 * (2.0 - (-(*duration as f32)).exp()),
+                        generic: 5.0
+                            * (2.0 - (-(Self::EFFECT_LENGTH_SCALE * *duration as f32)).exp()),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
                     }],
                     StatusEffect::Invincibility => vec![CardValue {
                         damage: 0.0,
-                        generic: 10.0 * (*duration as f32),
+                        generic: Self::EFFECT_LENGTH_SCALE * 10.0 * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
                     }],
                     StatusEffect::OnHit(card) => {
                         let range_probabilities: [f32; 10] = core::array::from_fn(|idx| {
-                            (0.1 * (9.0 - idx as f32) * (*duration as f32)).min(1.0)
+                            (0.1 * (9.0 - idx as f32)
+                                * (Self::EFFECT_LENGTH_SCALE * *duration as f32))
+                                .min(1.0)
                         });
                         let hit_value = card.evaluate_value(false);
                         hit_value
@@ -682,7 +838,7 @@ impl BaseCard {
         return true;
     }
 
-    pub fn take_modifier(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {
+    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {
         if path.is_empty() {
             let result = DraggableCard::BaseCard(self.clone());
             *self = BaseCard::None;
@@ -714,13 +870,13 @@ impl BaseCard {
                         result
                     } else {
                         match modifiers[idx] {
-                            ProjectileModifier::OnHit(ref mut card) => card.take_modifier(path),
-                            ProjectileModifier::OnExpiry(ref mut card) => card.take_modifier(path),
+                            ProjectileModifier::OnHit(ref mut card) => card.take_from_path(path),
+                            ProjectileModifier::OnExpiry(ref mut card) => card.take_from_path(path),
                             ProjectileModifier::OnTrigger(_, ref mut card) => {
-                                card.take_modifier(path)
+                                card.take_from_path(path)
                             }
                             ProjectileModifier::Trail(_freqency, ref mut card) => {
-                                card.take_modifier(path)
+                                card.take_from_path(path)
                             }
                             _ => panic!("Invalid state"),
                         }
@@ -742,7 +898,7 @@ impl BaseCard {
                         cards[idx] = BaseCard::None;
                         DraggableCard::BaseCard(value)
                     } else {
-                        cards[idx].take_modifier(path)
+                        cards[idx].take_from_path(path)
                     }
                 } else {
                     panic!("Invalid state");
@@ -752,7 +908,7 @@ impl BaseCard {
         }
     }
 
-    pub fn insert_modifier(&mut self, path: &mut VecDeque<u32>, item: DraggableCard) {
+    pub fn insert_to_path(&mut self, path: &mut VecDeque<u32>, item: DraggableCard) {
         match self {
             BaseCard::Projectile(modifiers) => {
                 if path.is_empty() {
@@ -788,15 +944,15 @@ impl BaseCard {
                     let idx = path.pop_front().unwrap() as usize;
                     assert!(path.pop_front().unwrap() == 0);
                     match modifiers[idx] {
-                        ProjectileModifier::OnHit(ref mut card) => card.insert_modifier(path, item),
+                        ProjectileModifier::OnHit(ref mut card) => card.insert_to_path(path, item),
                         ProjectileModifier::OnExpiry(ref mut card) => {
-                            card.insert_modifier(path, item)
+                            card.insert_to_path(path, item)
                         }
                         ProjectileModifier::OnTrigger(_id, ref mut card) => {
-                            card.insert_modifier(path, item)
+                            card.insert_to_path(path, item)
                         }
                         ProjectileModifier::Trail(_freqency, ref mut card) => {
-                            card.insert_modifier(path, item)
+                            card.insert_to_path(path, item)
                         }
                         _ => panic!("Invalid state"),
                     }
@@ -844,7 +1000,7 @@ impl BaseCard {
                 } else {
                     assert!(path.pop_front().unwrap() == 1);
                     let idx = path.pop_front().unwrap() as usize;
-                    cards[idx].insert_modifier(path, item)
+                    cards[idx].insert_to_path(path, item)
                 }
             }
             BaseCard::None => {
@@ -931,6 +1087,7 @@ impl BaseCard {
 pub enum DraggableCard {
     ProjectileModifier(ProjectileModifier),
     MultiCastModifier(MultiCastModifier),
+    CooldownModifier(CooldownModifier),
     BaseCard(BaseCard),
 }
 
@@ -1016,6 +1173,115 @@ impl ProjectileModifier {
             ProjectileModifier::WallBounce => panic!(),
         }
     }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum StateKeybind {
+    Pressed(Control, bool),
+    OnPressed(Control, bool),
+    OnReleased(Control, bool),
+    And(Box<StateKeybind>, Box<StateKeybind>),
+    Or(Box<StateKeybind>, Box<StateKeybind>),
+    Not(Box<StateKeybind>),
+    True,
+}
+
+impl StateKeybind {
+    pub fn update(&mut self, control: &Control, state: bool) {
+        match self {
+            StateKeybind::Pressed(c, s) => {
+                if *c == *control {
+                    *s = state;
+                }
+            }
+            StateKeybind::OnPressed(c, s) => {
+                if *c == *control && state {
+                    *s = true;
+                }
+            }
+            StateKeybind::OnReleased(c, s) => {
+                if *c == *control && !state {
+                    *s = true;
+                }
+            }
+            StateKeybind::And(a, b) => {
+                a.as_mut().update(control, state);
+                b.as_mut().update(control, state);
+            }
+            StateKeybind::Or(a, b) => {
+                a.as_mut().update(control, state);
+                b.as_mut().update(control, state);
+            }
+            StateKeybind::Not(a) => {
+                a.as_mut().update(control, state);
+            }
+            StateKeybind::True => {}
+        }
+    }
+
+    pub fn get_simple_representation(&self) -> Option<String> {
+        match self {
+            StateKeybind::Pressed(control, _) => Some(format!("{}", control)),
+            StateKeybind::OnPressed(control, _) => Some(format!("OnPressed({})", control)),
+            StateKeybind::OnReleased(control, _) => Some(format!("OnReleased({})", control)),
+            StateKeybind::And(_, _) => None,
+            StateKeybind::Or(_, _) => None,
+            StateKeybind::Not(_) => None,
+            StateKeybind::True => Some("⨀".to_string()),
+        }
+    }
+
+    pub fn get_state(&self) -> bool {
+        match self {
+            StateKeybind::Pressed(_, s) => *s,
+            StateKeybind::OnPressed(_, s) => *s,
+            StateKeybind::OnReleased(_, s) => *s,
+            StateKeybind::And(a, b) => a.get_state() && b.get_state(),
+            StateKeybind::Or(a, b) => a.get_state() || b.get_state(),
+            StateKeybind::Not(a) => !a.get_state(),
+            StateKeybind::True => true,
+        }
+    }
+
+    pub fn clear(&mut self) {
+        match self {
+            StateKeybind::Pressed(_, _) => {}
+            StateKeybind::OnPressed(_, s) => *s = false,
+            StateKeybind::OnReleased(_, s) => *s = false,
+            StateKeybind::And(a, b) => {
+                a.as_mut().clear();
+                b.as_mut().clear();
+            }
+            StateKeybind::Or(a, b) => {
+                a.as_mut().clear();
+                b.as_mut().clear();
+            }
+            StateKeybind::Not(a) => {
+                a.as_mut().clear();
+            }
+            StateKeybind::True => {}
+        }
+    }
+}
+
+impl From<Keybind> for StateKeybind {
+    fn from(keybind: Keybind) -> Self {
+        match keybind {
+            Keybind::Pressed(control) => StateKeybind::Pressed(control, false),
+            Keybind::OnPressed(control) => StateKeybind::OnPressed(control, false),
+            Keybind::OnReleased(control) => StateKeybind::OnReleased(control, false),
+            Keybind::And(a, b) => StateKeybind::And(Box::new((*a).into()), Box::new((*b).into())),
+            Keybind::Or(a, b) => StateKeybind::Or(Box::new((*a).into()), Box::new((*b).into())),
+            Keybind::Not(a) => StateKeybind::Not(Box::new((*a).into())),
+            Keybind::True => StateKeybind::True,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ReferencedCooldown {
+    pub add_charge: u32,
+    pub abilities: Vec<(ReferencedBaseCard, Keybind)>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
@@ -1119,6 +1385,26 @@ impl Default for CardManager {
 }
 
 impl CardManager {
+    pub fn register_cooldown(&mut self, cooldown: Cooldown) -> ReferencedCooldown {
+        let mut abilities = Vec::new();
+        for ability in cooldown.abilities {
+            abilities.push((
+                self.register_base_card(ability.card),
+                ability.keybind.into(),
+            ));
+        }
+        let mut add_charge = 0;
+        for modifier in cooldown.modifiers {
+            match modifier {
+                CooldownModifier::AddCharge(c) => add_charge += c,
+            }
+        }
+        ReferencedCooldown {
+            add_charge,
+            abilities,
+        }
+    }
+
     pub fn register_base_card(&mut self, card: BaseCard) -> ReferencedBaseCard {
         match card {
             BaseCard::Projectile(modifiers) => {
@@ -1323,6 +1609,7 @@ impl CardManager {
         pos: &Point3<f32>,
         rot: &Quaternion<f32>,
         player_idx: u32,
+        is_from_head: bool,
     ) -> (
         Vec<Projectile>,
         Vec<(Point3<i32>, VoxelMaterial)>,
@@ -1352,7 +1639,7 @@ impl CardManager {
                     damage: proj_damage,
                     proj_card_idx: card_idx as u32,
                     wall_bounce: if proj_stats.wall_bounce { 1 } else { 0 },
-                    _filler3: 0.0,
+                    is_from_head: if is_from_head { 1 } else { 0 },
                 });
             }
             ReferencedBaseCard {
@@ -1367,7 +1654,13 @@ impl CardManager {
                 let mut sub_triggers = vec![];
                 for sub_card in multicast.sub_cards.iter() {
                     let (sub_sub_projectiles, sub_sub_voxels, sub_sub_effects, sub_sub_triggers) =
-                        self.get_effects_from_base_card(*sub_card, pos, rot, player_idx);
+                        self.get_effects_from_base_card(
+                            *sub_card,
+                            pos,
+                            rot,
+                            player_idx,
+                            is_from_head,
+                        );
                     individual_sub_projectiles.extend(sub_sub_projectiles);
                     sub_voxels.extend(sub_sub_voxels);
                     sub_effects.extend(sub_sub_effects);

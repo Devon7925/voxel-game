@@ -39,7 +39,7 @@ use crate::{
         BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType,
         ReferencedStatusEffect, VoxelMaterial,
     },
-    gui::{cooldown, draw_base_card, is_valid_drag, GuiElement, PaletteState},
+    gui::{cooldown, draw_base_card, draw_cooldown, is_valid_drag, GuiElement, PaletteState},
     raytracer::PointLightingSystem,
     rollback_manager::{AppliedStatusEffect, HealthSection, PlayerSim},
     settings_manager::Settings,
@@ -585,7 +585,6 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
         rollback_manager: &Box<dyn PlayerSim>,
         gui_state: &mut GuiState,
         sim_data: &mut SimData,
-        settings: &Settings,
     ) {
         puffin::profile_function!();
         self.frame.system.gui.immediate_ui(|gui| {
@@ -746,13 +745,10 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                             Vec2::new(-corner_offset, -corner_offset),
                         )
                         .show(&ctx, |ui| {
-                            for (ability_idx, ability) in
-                                spectate_player.abilities.iter().enumerate()
-                            {
-                                ui.add(cooldown(
-                                    format!("{}", settings.ability_controls[ability_idx]).as_str(),
-                                    ability,
-                                ));
+                            for ability in spectate_player.abilities.iter() {
+                                for ability_idx in 0..ability.ability.abilities.len() {
+                                    ui.add(cooldown(ability, ability_idx));
+                                }
                             }
                         });
                 }
@@ -1010,42 +1006,13 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                     &mut drop_path,
                                                 );
 
-                                                for (ability_idx, card) in
+                                                for (ability_idx, cooldown) in
                                                     gui_state.gui_cards.iter().enumerate()
                                                 {
                                                     ui.horizontal_top(|ui| {
-                                                        {
-                                                            let desired_size =
-                                                                ui.spacing().interact_size.y
-                                                                    * egui::vec2(3.0, 3.0);
-                                                            let (rect, _response) = ui
-                                                                .allocate_exact_size(
-                                                                    desired_size,
-                                                                    egui::Sense::click(),
-                                                                );
-                                                            let font =
-                                                                egui::FontId::proportional(24.0);
-                                                            ui.painter().rect_filled(
-                                                                rect,
-                                                                0.0,
-                                                                Color32::LIGHT_GRAY,
-                                                            );
-                                                            ui.painter().text(
-                                                                rect.center(),
-                                                                Align2::CENTER_CENTER,
-                                                                format!(
-                                                                    "{}",
-                                                                    settings.ability_controls
-                                                                        [ability_idx]
-                                                                )
-                                                                .as_str(),
-                                                                font,
-                                                                Color32::BLACK,
-                                                            );
-                                                        }
-                                                        draw_base_card(
+                                                        draw_cooldown(
                                                             ui,
-                                                            &card,
+                                                            &cooldown,
                                                             &mut vec![ability_idx as u32 + 1]
                                                                 .into(),
                                                             &mut source_path,
@@ -1071,18 +1038,19 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                                     as usize;
                                                             // do the drop:
                                                             let item = if source_action_idx == 0 {
-                                                                dock_card.take_modifier(source_path)
+                                                                dock_card
+                                                                    .take_from_path(source_path)
                                                             } else {
                                                                 gui_state.gui_cards
                                                                     [source_action_idx - 1]
-                                                                    .take_modifier(
+                                                                    .take_from_path(
                                                                         &mut source_path.clone(),
                                                                     )
                                                             };
                                                             if drop_action_idx > 0 {
                                                                 gui_state.gui_cards
                                                                     [drop_action_idx - 1]
-                                                                    .insert_modifier(
+                                                                    .insert_to_path(
                                                                         drop_path, item,
                                                                     );
                                                             }

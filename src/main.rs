@@ -14,7 +14,7 @@ mod world_gen;
 
 use crate::{
     app::RenderPipeline,
-    card_system::BaseCard,
+    card_system::Cooldown,
     gui::{GuiElement, GuiState, PaletteState},
     settings_manager::Settings,
 };
@@ -111,8 +111,8 @@ fn main() {
     }
 
     let player_deck =
-        BaseCard::vec_from_string(fs::read_to_string(&settings.card_file).unwrap().as_str());
-    assert!(player_deck.iter().all(|card| card.is_reasonable()));
+        Cooldown::vec_from_string(fs::read_to_string(&settings.card_file).unwrap().as_str());
+    assert!(player_deck.iter().all(|cooldown| cooldown.is_reasonable()));
 
     // Create app with vulkano context.
     let mut app = RenderPipeline::new(&event_loop, settings, &player_deck);
@@ -477,7 +477,6 @@ fn compute_then_render(
                         &pipeline.rollback_data,
                         gui_state,
                         sim_data,
-                        &pipeline.settings,
                     );
                 }
                 Pass::Finished(af) => {

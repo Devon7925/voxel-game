@@ -7,8 +7,8 @@ use egui_winit_vulkano::egui::{
 
 use crate::{
     card_system::{
-        BaseCard, Effect, MultiCastModifier, ProjectileModifier, ProjectileModifierType,
-        StatusEffect,
+        BaseCard, Cooldown, CooldownModifier, Effect, MultiCastModifier, ProjectileModifier,
+        ProjectileModifierType, StatusEffect,
     },
     rollback_manager::PlayerAbility,
 };
@@ -30,33 +30,57 @@ pub enum PaletteState {
 
 pub struct GuiState {
     pub menu_stack: Vec<GuiElement>,
-    pub gui_cards: Vec<BaseCard>,
+    pub gui_cards: Vec<Cooldown>,
     pub in_game: bool,
     pub should_exit: bool,
     pub palette_state: PaletteState,
 }
 
-fn cooldown_ui(ui: &mut egui::Ui, button: &str, ability: &PlayerAbility) -> egui::Response {
+fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -> egui::Response {
     let desired_size = ui.spacing().interact_size.y * egui::vec2(3.0, 3.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
 
     if ui.is_rect_visible(rect) {
         let font = egui::FontId::proportional(24.0);
-        if ability.cooldown > 0.0 {
+        if ability.cooldown > ability.ability.add_charge as f32 * ability.value {
             ui.painter().rect_filled(rect, 0.0, Color32::DARK_GRAY);
             ui.painter().text(
                 rect.center(),
                 Align2::CENTER_CENTER,
-                format!("{}", ability.cooldown.ceil() as i32),
-                font,
+                format!(
+                    "{}",
+                    (ability.cooldown - ability.ability.add_charge as f32 * ability.value).ceil()
+                        as i32
+                ),
+                font.clone(),
                 Color32::WHITE,
             );
-        } else {
-            ui.painter().rect_filled(rect, 0.0, Color32::LIGHT_GRAY);
+            return response;
+        }
+        ui.painter().rect_filled(rect, 0.0, Color32::LIGHT_GRAY);
+        {
+            let keybind = &ability.ability.abilities[ability_idx].1;
+            if let Some(key) = keybind.get_simple_representation() {
+                ui.painter().text(
+                    rect.center(),
+                    Align2::CENTER_CENTER,
+                    format!("{}", key),
+                    font,
+                    Color32::BLACK,
+                );
+            }
+        }
+        if ability.ability.add_charge > 0 {
+            let font = egui::FontId::proportional(12.0);
+            let charge_count = ((1 + ability.ability.add_charge) as f32
+                - ability.cooldown / ability.value)
+                .floor() as i32;
+            ui.painter()
+                .circle_filled(rect.right_top(), 8.0, Color32::GRAY);
             ui.painter().text(
-                rect.center(),
+                rect.right_top(),
                 Align2::CENTER_CENTER,
-                format!("{}", button),
+                format!("{}", charge_count),
                 font,
                 Color32::BLACK,
             );
@@ -66,8 +90,8 @@ fn cooldown_ui(ui: &mut egui::Ui, button: &str, ability: &PlayerAbility) -> egui
     response
 }
 
-pub fn cooldown<'a>(button: &'a str, ability: &'a PlayerAbility) -> impl egui::Widget + 'a {
-    move |ui: &mut egui::Ui| cooldown_ui(ui, button, ability)
+pub fn cooldown<'a>(ability: &'a PlayerAbility, ability_idx: usize) -> impl egui::Widget + 'a {
+    move |ui: &mut egui::Ui| cooldown_ui(ui, ability, ability_idx)
 }
 
 pub fn drag_source(ui: &mut Ui, id: Id, body: impl FnOnce(&mut Ui)) {
@@ -148,6 +172,7 @@ pub fn drop_target<R>(
 pub enum DragableType {
     ProjectileModifier,
     MultiCastModifier,
+    CooldownModifier,
     BaseCard,
 }
 
@@ -155,6 +180,7 @@ pub enum DropableType {
     MultiCastBaseCard,
     BaseNone,
     BaseProjectile,
+    Cooldown,
 }
 
 pub fn is_valid_drag(from: &DragableType, to: &DropableType) -> bool {
@@ -163,7 +189,74 @@ pub fn is_valid_drag(from: &DragableType, to: &DropableType) -> bool {
         (DragableType::MultiCastModifier, DropableType::MultiCastBaseCard) => true,
         (DragableType::BaseCard, DropableType::MultiCastBaseCard) => true,
         (DragableType::BaseCard, DropableType::BaseNone) => true,
+        (DragableType::CooldownModifier, DropableType::Cooldown) => true,
+        (DragableType::BaseCard, DropableType::Cooldown) => true,
         _ => false,
+    }
+}
+
+pub fn draw_cooldown(
+    ui: &mut Ui,
+    cooldown: &Cooldown,
+    path: &mut VecDeque<u32>,
+    source_path: &mut Option<(VecDeque<u32>, DragableType)>,
+    drop_path: &mut Option<(VecDeque<u32>, DropableType)>,
+) {
+    let can_accept_what_is_being_dragged = true;
+    let id_source = "my_drag_and_drop_demo";
+    let Cooldown {
+        abilities,
+        modifiers,
+    } = cooldown;
+    let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
+        ui.horizontal(|ui| {
+            ui.add_space(CARD_UI_SPACING);
+            ui.label("Ability");
+            path.push_back(0);
+            for (mod_idx, modifier) in modifiers.iter().enumerate() {
+                path.push_back(mod_idx as u32);
+                let item_id = egui::Id::new(id_source).with(path.clone());
+                drag_source(ui, item_id, |ui| match modifier {
+                    CooldownModifier::AddCharge(v) => add_basic_modifer(ui, "Add charge", *v),
+                });
+                path.pop_back();
+            }
+            path.pop_back();
+            ui.add_space(CARD_UI_SPACING);
+        });
+        path.push_back(1);
+        ui.vertical(|ui| {
+            for (ability_idx, ability) in abilities.iter().enumerate() {
+                path.push_back(ability_idx as u32);
+                draw_base_card(ui, &ability.card, path, source_path, drop_path);
+                path.pop_back();
+            }
+        });
+        path.pop_back();
+        ui.painter().rect_stroke(
+            ui.min_rect(),
+            CARD_UI_ROUNDING,
+            Stroke::new(1.0, Color32::YELLOW),
+        );
+
+        path.push_back(0);
+        for (modifier_idx, _modifier) in modifiers.iter().enumerate() {
+            path.push_back(modifier_idx as u32);
+            let item_id = egui::Id::new(id_source).with(path.clone());
+            if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                *source_path = Some((path.clone(), DragableType::CooldownModifier));
+            }
+            path.pop_back();
+        }
+        path.pop_back();
+    })
+    .response;
+
+    if drop_path.is_none() {
+        let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
+        if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
+            *drop_path = Some((path.clone(), DropableType::Cooldown));
+        }
     }
 }
 
@@ -266,7 +359,7 @@ pub fn draw_base_card(
                                         ProjectileModifier::OnExpiry(_)
                                         | ProjectileModifier::OnHit(_)
                                         | ProjectileModifier::OnTrigger(_, _) => {}
-                                        | ProjectileModifier::Trail(_, _) => {}
+                                        ProjectileModifier::Trail(_, _) => {}
                                     }
 
                                     path.pop_back();
@@ -358,7 +451,8 @@ pub fn draw_base_card(
                                     ui.add_space(CARD_UI_SPACING);
                                 });
                                 if ui.memory(|mem| mem.is_being_dragged(item_id)) {
-                                    *source_path = Some((path.clone(), DragableType::ProjectileModifier));
+                                    *source_path =
+                                        Some((path.clone(), DragableType::ProjectileModifier));
                                 }
                                 path.pop_back();
                             }
@@ -368,7 +462,8 @@ pub fn draw_base_card(
                                 if source_path.is_none()
                                     && ui.memory(|mem| mem.is_being_dragged(item_id))
                                 {
-                                    *source_path = Some((path.clone(), DragableType::ProjectileModifier));
+                                    *source_path =
+                                        Some((path.clone(), DragableType::ProjectileModifier));
                                 }
                                 path.pop_back();
                             }
@@ -428,7 +523,8 @@ pub fn draw_base_card(
                                 if source_path.is_none()
                                     && ui.memory(|mem| mem.is_being_dragged(item_id))
                                 {
-                                    *source_path = Some((path.clone(), DragableType::MultiCastModifier));
+                                    *source_path =
+                                        Some((path.clone(), DragableType::MultiCastModifier));
                                 }
                                 path.pop_back();
                             }

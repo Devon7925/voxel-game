@@ -20,8 +20,8 @@ use winit::event::{ElementState, WindowEvent};
 
 use crate::{
     card_system::{
-        BaseCard, CardManager, ReferencedBaseCard, ReferencedBaseCardType, ReferencedEffect,
-        ReferencedStatusEffect, ReferencedTrigger, VoxelMaterial,
+        BaseCard, CardManager, Cooldown, ReferencedCooldown, ReferencedEffect,
+        ReferencedStatusEffect, ReferencedTrigger, StateKeybind, VoxelMaterial,
     },
     gui::{GuiElement, GuiState},
     networking::{NetworkConnection, NetworkPacket},
@@ -105,8 +105,9 @@ pub struct RollbackData {
     pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
     replay_file: Option<File>,
     network_connection: NetworkConnection,
+    controls: Vec<Vec<StateKeybind>>,
     player_action: PlayerAction,
-    player_deck: Vec<BaseCard>,
+    player_deck: Vec<Cooldown>,
     player_idx_map: HashMap<PeerId, usize>,
     most_future_time_recorded: u64,
 }
@@ -130,13 +131,13 @@ pub struct PlayerAction {
     pub right: bool,
     pub jump: bool,
     pub crouch: bool,
-    pub activate_ability: Vec<bool>,
+    pub activate_ability: Vec<Vec<bool>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MetaAction {
     pub adjust_dt: Option<f32>,
-    pub deck_update: Option<Vec<BaseCard>>,
+    pub deck_update: Option<Vec<Cooldown>>,
 }
 
 #[derive(Clone, Debug)]
@@ -171,7 +172,7 @@ pub struct AppliedStatusEffect {
 
 #[derive(Clone, Debug)]
 pub struct PlayerAbility {
-    pub ability: ReferencedBaseCard,
+    pub ability: ReferencedCooldown,
     pub value: f32,
     pub cooldown: f32,
 }
@@ -269,9 +270,9 @@ impl PlayerSim for RollbackData {
                     if let Some(new_deck) = deck_update {
                         self.rollback_state.players[player_idx].abilities = new_deck
                             .into_iter()
-                            .map(|card| PlayerAbility {
-                                value: card.get_cooldown(),
-                                ability: card_manager.register_base_card(card),
+                            .map(|cooldown| PlayerAbility {
+                                value: cooldown.get_cooldown(),
+                                ability: card_manager.register_cooldown(cooldown),
                                 cooldown: 0.0,
                             })
                             .collect();
@@ -279,11 +280,11 @@ impl PlayerSim for RollbackData {
                 }
             }
         }
+        let player_actions = self.actions.pop_front().unwrap();
         if self.rollback_time < 50 {
             return;
         }
         {
-            let player_actions = self.actions.pop_front().unwrap();
             assert!(
                 player_actions.iter().all(|x| x.is_some()),
                 "missing action at timestamp {}",
@@ -313,7 +314,15 @@ impl PlayerSim for RollbackData {
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
     ) {
+        self.player_action.activate_ability = self
+            .controls
+            .iter()
+            .map(|cd| cd.iter().map(|ability| ability.get_state()).collect())
+            .collect();
         self.send_action(self.player_action.clone(), 0, self.current_time);
+        self.controls
+            .iter_mut()
+            .for_each(|cd| cd.iter_mut().for_each(|ability| ability.clear()));
         puffin::profile_function!();
         self.update_rollback_state(card_manager, time_step, vox_compute);
         self.current_time += 1;
@@ -494,12 +503,9 @@ impl PlayerSim for RollbackData {
                 mouse_match!(left);
                 mouse_match!(forward);
                 mouse_match!(backward);
-                for (ability_idx, ability_key) in settings.ability_controls.iter().enumerate() {
-                    if let Control::Mouse(mouse_code) = ability_key {
-                        if button == mouse_code {
-                            self.player_action.activate_ability[ability_idx] =
-                                state == &ElementState::Pressed;
-                        }
+                for cooldown in self.controls.iter_mut() {
+                    for ability in cooldown.iter_mut() {
+                        ability.update(&Control::Mouse(*button), state == &ElementState::Pressed);
                     }
                 }
             }
@@ -521,12 +527,10 @@ impl PlayerSim for RollbackData {
                     key_match!(left);
                     key_match!(forward);
                     key_match!(backward);
-                    for (ability_idx, ability_key) in settings.ability_controls.iter().enumerate() {
-                        if let Control::Key(key_code) = ability_key {
-                            if key == *key_code {
-                                self.player_action.activate_ability[ability_idx] =
-                                    input.state == ElementState::Pressed;
-                            }
+                    for cooldown in self.controls.iter_mut() {
+                        for ability in cooldown.iter_mut() {
+                            ability
+                                .update(&Control::Key(key), input.state == ElementState::Pressed);
                         }
                     }
                     match key {
@@ -581,7 +585,7 @@ impl RollbackData {
     pub fn new(
         memory_allocator: &Arc<StandardMemoryAllocator>,
         settings: &Settings,
-        deck: &Vec<BaseCard>,
+        deck: &Vec<Cooldown>,
         card_manager: &mut CardManager,
     ) -> Self {
         let projectile_buffer = Buffer::new_sized(
@@ -643,24 +647,37 @@ impl RollbackData {
                 .iter()
                 .map(|card| PlayerAbility {
                     value: card.get_cooldown(),
-                    ability: card_manager.register_base_card(card.clone()),
+                    ability: card_manager.register_cooldown(card.clone()),
                     cooldown: 0.0,
                 })
                 .collect(),
             ..Default::default()
         };
-        rollback_state.players.push(first_player);
-        actions.iter_mut().for_each(|x| {
-            x.push(Some(PlayerAction {
-                ..Default::default()
-            }))
-        });
+        rollback_state.players.push(first_player.clone());
+        actions.iter_mut().for_each(|x| x.push(None));
         meta_actions.iter_mut().for_each(|x| x.push(None));
 
         let network_connection = NetworkConnection::new(settings);
 
+        let controls: Vec<Vec<StateKeybind>> = first_player
+            .abilities
+            .into_iter()
+            .map(|a| {
+                a.ability
+                    .abilities
+                    .into_iter()
+                    .map(|a| StateKeybind::from(a.1))
+                    .collect()
+            })
+            .collect();
+
+        let activate_ability = controls
+            .iter()
+            .map(|x| x.iter().map(|_| false).collect())
+            .collect::<Vec<Vec<bool>>>();
+
         let player_action = PlayerAction {
-            activate_ability: vec![false; settings.ability_controls.len()],
+            activate_ability,
             ..Default::default()
         };
 
@@ -676,6 +693,7 @@ impl RollbackData {
             projectile_buffer,
             replay_file,
             network_connection,
+            controls,
             player_action,
             player_deck: deck.clone(),
             player_idx_map: HashMap::new(),
@@ -737,7 +755,7 @@ impl RollbackData {
 
     pub fn send_deck_update(
         &mut self,
-        new_deck: Vec<BaseCard>,
+        new_deck: Vec<Cooldown>,
         player_idx: usize,
         time_stamp: u64,
     ) {
@@ -793,11 +811,7 @@ impl RollbackData {
 
     pub fn player_join(&mut self, player: Player) {
         self.rollback_state.players.push(player);
-        self.actions.iter_mut().for_each(|x| {
-            x.push(Some(PlayerAction {
-                ..Default::default()
-            }))
-        });
+        self.actions.iter_mut().for_each(|x| x.push(None));
         self.meta_actions.iter_mut().for_each(|x| x.push(None));
     }
 }
@@ -826,7 +840,7 @@ impl PlayerSim for ReplayData {
                             .into_iter()
                             .map(|card| PlayerAbility {
                                 value: card.get_cooldown(),
-                                ability: card_manager.register_base_card(card),
+                                ability: card_manager.register_cooldown(card),
                                 cooldown: 0.0,
                             })
                             .collect();
@@ -1008,14 +1022,14 @@ impl ReplayData {
             };
             if line.starts_with("PLAYER COUNT ") {
             } else if let Some(deck_string) = line.strip_prefix("PLAYER DECK ") {
-                let deck: Vec<BaseCard> = ron::de::from_str(deck_string).unwrap();
+                let deck: Vec<Cooldown> = ron::de::from_str(deck_string).unwrap();
                 state.players.push(Player {
                     pos: SPAWN_LOCATION,
                     abilities: deck
                         .iter()
                         .map(|card| PlayerAbility {
                             value: card.get_cooldown(),
-                            ability: card_manager.register_base_card(card.clone()),
+                            ability: card_manager.register_cooldown(card.clone()),
                             cooldown: 0.0,
                         })
                         .collect(),
@@ -1201,14 +1215,7 @@ impl WorldState {
             }
             // check for collision with projectiles
             for proj in self.projectiles.iter_mut() {
-                if player_idx as u32 == proj.owner
-                    && proj.lifetime < 1.0
-                    && player
-                        .abilities
-                        .iter()
-                        .map(|a| &a.ability)
-                        .filter(|a| a.card_type == ReferencedBaseCardType::Projectile)
-                        .any(|a| a.card_idx as u32 == proj.proj_card_idx)
+                if player_idx as u32 == proj.owner && proj.lifetime < 1.0 && proj.is_from_head == 1
                 {
                     continue;
                 }
@@ -1288,6 +1295,7 @@ impl WorldState {
                                         &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
                                         &proj_rot,
                                         proj.owner,
+                                        false,
                                     );
                                 new_projectiles.extend(on_hit_projectiles);
                                 for (pos, material) in on_hit_voxels {
@@ -1350,6 +1358,7 @@ impl WorldState {
                             &player1.pos,
                             &player1.rot,
                             i as u32,
+                            false,
                         )
                     })
                     .collect::<Vec<_>>()
@@ -1392,6 +1401,7 @@ impl WorldState {
                                 &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
                                 &projectile_rot,
                                 proj.owner,
+                                false,
                             );
                         new_projectiles.extend(proj_effects);
                         for (pos, material) in vox_effects {
@@ -1441,9 +1451,10 @@ impl WorldState {
                 ReferencedEffect::StatusEffect(effect, duration) => {
                     match effect {
                         ReferencedStatusEffect::Overheal => {
-                            player
-                                .health
-                                .push(HealthSection::Overhealth(10.0, duration as f32));
+                            player.health.push(HealthSection::Overhealth(
+                                10.0,
+                                BaseCard::EFFECT_LENGTH_SCALE * duration as f32,
+                            ));
                         }
                         _ => {}
                     }
@@ -1645,6 +1656,7 @@ impl Projectile {
                         &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
                         &new_projectile_rot,
                         self.owner,
+                        false,
                     );
                 new_projectiles.extend(proj_effects);
                 for (pos, material) in vox_effects {
@@ -1670,6 +1682,7 @@ impl Projectile {
                         &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
                         &new_projectile_rot,
                         self.owner,
+                        false,
                     );
                 new_projectiles.extend(proj_effects);
                 for (pos, material) in vox_effects {
@@ -1791,32 +1804,37 @@ impl Player {
                     .zip(Vector3::new(0.3, 13.0, 0.3), |c, m| c as f32 * m);
             }
 
-            for (ability_idx, ability) in self.abilities.iter_mut().enumerate() {
-                if ability_idx < action.activate_ability.len()
-                    && action.activate_ability[ability_idx]
-                    && ability.cooldown <= 0.0
-                {
-                    ability.cooldown = ability.value;
-                    let (proj_effects, vox_effects, effects, triggers) = card_manager
-                        .get_effects_from_base_card(
-                            ability.ability,
-                            &self.pos,
-                            &self.rot,
-                            player_idx as u32,
-                        );
-                    new_projectiles.extend(proj_effects);
-                    for (pos, material) in vox_effects {
-                        voxels_to_write.push((pos, material.to_memory()));
+            for (cooldown_idx, cooldown) in self.abilities.iter_mut().enumerate() {
+                if cooldown.cooldown <= cooldown.value * cooldown.ability.add_charge as f32 {
+                    for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
+                        if action.activate_ability[cooldown_idx][ability_idx] {
+                            cooldown.cooldown += cooldown.value;
+                            let (proj_effects, vox_effects, effects, triggers) = card_manager
+                                .get_effects_from_base_card(
+                                    ability.0,
+                                    &self.pos,
+                                    &self.rot,
+                                    player_idx as u32,
+                                    true,
+                                );
+                            new_projectiles.extend(proj_effects);
+                            for (pos, material) in vox_effects {
+                                voxels_to_write.push((pos, material.to_memory()));
+                            }
+                            for effect in effects {
+                                new_effects.push((player_idx, self.pos, self.dir, effect));
+                            }
+                            step_triggers.extend(triggers);
+                            break;
+                        }
                     }
-                    for effect in effects {
-                        new_effects.push((player_idx, self.pos, self.dir, effect));
-                    }
-                    step_triggers.extend(triggers);
                 }
             }
         }
         for ability in self.abilities.iter_mut() {
-            ability.cooldown -= time_step;
+            if ability.cooldown > 0.0 {
+                ability.cooldown -= time_step;
+            }
         }
         self.vel.y -= player_stats[player_idx].gravity * 32.0 * time_step;
         if self.vel.magnitude() > 0.0 {

@@ -12,3 +12,14 @@ UI
 On Trigger
     On Trigger (id)
     Trigger (id)
+Abiliy Modifiers
+    charges
+    shared cooldowns
+    keybind
+        Pressed (button)
+        On Pressed (button)
+        On Released (button)
+        And (keybind, keybind)
+        Or (keybind, keybind)
+        Not (keybind)
+        True

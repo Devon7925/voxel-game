@@ -1,13 +1,8 @@
-Abiliy Modifiers
-    charges
-    add cast time
-    shared cooldowns
-    keybind
-        Pressed (button)
-        On Pressed (button)
-        On Released (button)
-        And (keybind, keybind)
-        Or (keybind, keybind)
-        Not (keybind)
-        True
+Abiliy modifiers
+    recovery time
+    fix card editor issues
+    Keybinds
+        on ground
+Update characters
+    flying rocketeer
 Ensure multiplayer synchronization
