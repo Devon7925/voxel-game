@@ -1,5 +1,4 @@
 Abiliy modifiers
-    recovery time
     fix card editor issues
     Keybinds
         on ground

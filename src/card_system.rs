@@ -57,7 +57,7 @@ impl Cooldown {
             .all(|ability| ability.card.is_reasonable())
     }
 
-    pub fn get_cooldown(&self) -> f32 {
+    pub fn get_cooldown_recovery(&self) -> (f32, f32) {
         let ability_values: Vec<f32> = self
             .abilities
             .iter()
@@ -69,7 +69,17 @@ impl Cooldown {
             .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap()
             .clone();
-        (sum + 2.0 * max) / 3.0
+        let mut ability_charges = 0;
+        for modifier in self.modifiers.iter() {
+            match modifier {
+                CooldownModifier::AddCharge(s) => {
+                    ability_charges += s;
+                }
+            }
+        }
+        let cooldown = (sum + 2.0 * max) / 3.0 * (1.0 + 0.2 * ability_charges as f32);
+        let recovery = (sum + 2.0 * max) / 3.0 * (1.0 - (-(ability_charges as f32 / 10.0)).exp());
+        (cooldown, recovery)
     }
 
     pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {

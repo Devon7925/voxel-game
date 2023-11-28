@@ -173,8 +173,9 @@ pub struct AppliedStatusEffect {
 #[derive(Clone, Debug)]
 pub struct PlayerAbility {
     pub ability: ReferencedCooldown,
-    pub value: f32,
+    pub value: (f32, f32),
     pub cooldown: f32,
+    pub recovery: f32,
 }
 
 #[derive(Clone, Copy, Zeroable, Debug, Pod)]
@@ -271,9 +272,10 @@ impl PlayerSim for RollbackData {
                         self.rollback_state.players[player_idx].abilities = new_deck
                             .into_iter()
                             .map(|cooldown| PlayerAbility {
-                                value: cooldown.get_cooldown(),
+                                value: cooldown.get_cooldown_recovery(),
                                 ability: card_manager.register_cooldown(cooldown),
                                 cooldown: 0.0,
+                                recovery: 0.0,
                             })
                             .collect();
                     }
@@ -646,9 +648,10 @@ impl RollbackData {
             abilities: deck
                 .iter()
                 .map(|card| PlayerAbility {
-                    value: card.get_cooldown(),
+                    value: card.get_cooldown_recovery(),
                     ability: card_manager.register_cooldown(card.clone()),
                     cooldown: 0.0,
+                    recovery: 0.0,
                 })
                 .collect(),
             ..Default::default()
@@ -839,9 +842,10 @@ impl PlayerSim for ReplayData {
                         self.state.players[player_idx].abilities = new_deck
                             .into_iter()
                             .map(|card| PlayerAbility {
-                                value: card.get_cooldown(),
+                                value: card.get_cooldown_recovery(),
                                 ability: card_manager.register_cooldown(card),
                                 cooldown: 0.0,
+                                recovery: 0.0,
                             })
                             .collect();
                     }
@@ -1028,9 +1032,10 @@ impl ReplayData {
                     abilities: deck
                         .iter()
                         .map(|card| PlayerAbility {
-                            value: card.get_cooldown(),
+                            value: card.get_cooldown_recovery(),
                             ability: card_manager.register_cooldown(card.clone()),
                             cooldown: 0.0,
+                            recovery: 0.0,
                         })
                         .collect(),
                     ..Default::default()
@@ -1805,10 +1810,13 @@ impl Player {
             }
 
             for (cooldown_idx, cooldown) in self.abilities.iter_mut().enumerate() {
-                if cooldown.cooldown <= cooldown.value * cooldown.ability.add_charge as f32 {
+                if cooldown.cooldown <= cooldown.value.0 * cooldown.ability.add_charge as f32
+                    && cooldown.recovery <= 0.0
+                {
                     for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
                         if action.activate_ability[cooldown_idx][ability_idx] {
-                            cooldown.cooldown += cooldown.value;
+                            cooldown.cooldown += cooldown.value.0;
+                            cooldown.recovery = cooldown.value.1;
                             let (proj_effects, vox_effects, effects, triggers) = card_manager
                                 .get_effects_from_base_card(
                                     ability.0,
@@ -1834,6 +1842,9 @@ impl Player {
         for ability in self.abilities.iter_mut() {
             if ability.cooldown > 0.0 {
                 ability.cooldown -= time_step;
+            }
+            if ability.recovery > 0.0 {
+                ability.recovery -= time_step;
             }
         }
         self.vel.y -= player_stats[player_idx].gravity * 32.0 * time_step;
