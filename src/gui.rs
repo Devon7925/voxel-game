@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use egui_winit_vulkano::egui::{
     self, epaint, text::LayoutJob, Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse,
-    LayerId, Order, Rect, Rounding, Sense, Shape, Stroke, TextFormat, Ui,
+    LayerId, Order, Rect, Rgba, Rounding, Sense, Shape, Stroke, TextFormat, Ui,
 };
 
 use crate::{
@@ -131,6 +131,14 @@ pub fn drag_source(ui: &mut Ui, id: Id, body: impl FnOnce(&mut Ui)) {
     }
 }
 
+pub fn darken(color: Color32, factor: f32) -> Color32 {
+    let mut color = Rgba::from(color);
+    for i in 0..3 {
+        color[i] = color[i] * factor;
+    }
+    color.into()
+}
+
 pub fn drop_target<R>(
     ui: &mut Ui,
     can_accept_what_is_being_dragged: bool,
@@ -154,7 +162,7 @@ pub fn drop_target<R>(
         ui.visuals().widgets.inactive
     };
 
-    let mut fill_color = style.bg_fill;
+    let mut fill_color = darken(style.bg_stroke.color, 0.25);
     let mut stroke = style.bg_stroke;
     if is_being_dragged && !can_accept_what_is_being_dragged {
         fill_color = ui.visuals().gray_out(fill_color);
@@ -208,47 +216,46 @@ pub fn draw_cooldown(
         abilities,
         modifiers,
     } = cooldown;
+    ui.visuals_mut().widgets.active.rounding = Rounding::from(CARD_UI_ROUNDING);
+    ui.visuals_mut().widgets.inactive.rounding = Rounding::from(CARD_UI_ROUNDING);
+    ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+    ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(0.5, Color32::from_rgb(255, 0, 255));
     let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
-        ui.horizontal(|ui| {
-            ui.add_space(CARD_UI_SPACING);
-            ui.label("Ability");
-            path.push_back(0);
-            for (mod_idx, modifier) in modifiers.iter().enumerate() {
-                path.push_back(mod_idx as u32);
-                let item_id = egui::Id::new(id_source).with(path.clone());
-                drag_source(ui, item_id, |ui| match modifier {
-                    CooldownModifier::AddCharge(v) => add_basic_modifer(ui, "Add charge", *v),
-                });
-                path.pop_back();
-            }
-            path.pop_back();
-            ui.add_space(CARD_UI_SPACING);
-        });
-        path.push_back(1);
         ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(CARD_UI_SPACING);
+                ui.label("Ability");
+                path.push_back(0);
+                for (mod_idx, modifier) in modifiers.iter().enumerate() {
+                    path.push_back(mod_idx as u32);
+                    let item_id = egui::Id::new(id_source).with(path.clone());
+                    drag_source(ui, item_id, |ui| match modifier {
+                        CooldownModifier::AddCharge(v) => add_basic_modifer(ui, "Add Charge", *v),
+                    });
+                    path.pop_back();
+                }
+                path.pop_back();
+                ui.add_space(CARD_UI_SPACING);
+            });
+            path.push_back(1);
             for (ability_idx, ability) in abilities.iter().enumerate() {
                 path.push_back(ability_idx as u32);
                 draw_base_card(ui, &ability.card, path, source_path, drop_path);
                 path.pop_back();
             }
-        });
-        path.pop_back();
-        ui.painter().rect_stroke(
-            ui.min_rect(),
-            CARD_UI_ROUNDING,
-            Stroke::new(1.0, Color32::YELLOW),
-        );
+            path.pop_back();
 
-        path.push_back(0);
-        for (modifier_idx, _modifier) in modifiers.iter().enumerate() {
-            path.push_back(modifier_idx as u32);
-            let item_id = egui::Id::new(id_source).with(path.clone());
-            if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
-                *source_path = Some((path.clone(), DragableType::CooldownModifier));
+            path.push_back(0);
+            for (modifier_idx, _modifier) in modifiers.iter().enumerate() {
+                path.push_back(modifier_idx as u32);
+                let item_id = egui::Id::new(id_source).with(path.clone());
+                if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                    *source_path = Some((path.clone(), DragableType::CooldownModifier));
+                }
+                path.pop_back();
             }
             path.pop_back();
-        }
-        path.pop_back();
+        });
     })
     .response;
 
@@ -281,7 +288,6 @@ pub fn draw_base_card(
                 ui.add_space(CARD_UI_SPACING);
                 match card {
                     BaseCard::Projectile(modifiers) => {
-                        ui.visuals_mut().widgets.active.rounding = Rounding::from(CARD_UI_ROUNDING);
                         ui.visuals_mut().widgets.inactive.bg_stroke =
                             Stroke::new(0.5, Color32::WHITE);
                         let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
@@ -482,6 +488,8 @@ pub fn draw_base_card(
                         }
                     }
                     BaseCard::MultiCast(cards, modifiers) => {
+                        ui.visuals_mut().widgets.inactive.bg_stroke =
+                            Stroke::new(0.5, Color32::YELLOW);
                         let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
                             ui.horizontal(|ui| {
                                 ui.add_space(CARD_UI_SPACING);
@@ -510,11 +518,6 @@ pub fn draw_base_card(
                                 path.pop_back();
                             }
                             path.pop_back();
-                            ui.painter().rect_stroke(
-                                ui.min_rect(),
-                                CARD_UI_ROUNDING,
-                                Stroke::new(1.0, Color32::YELLOW),
-                            );
 
                             path.push_back(0);
                             for (modifier_idx, _modifier) in modifiers.iter().enumerate() {
@@ -543,6 +546,7 @@ pub fn draw_base_card(
                         }
                     }
                     BaseCard::CreateMaterial(mat) => {
+                        let where_to_put_background = ui.painter().add(Shape::Noop);
                         ui.horizontal(|ui| {
                             ui.add_space(CARD_UI_SPACING);
                             ui.label("Create Material");
@@ -550,13 +554,15 @@ pub fn draw_base_card(
                             ui.add_space(CARD_UI_SPACING);
                         });
                         ui.add_space(CARD_UI_SPACING);
-                        ui.painter().rect_stroke(
-                            ui.min_rect(),
-                            CARD_UI_ROUNDING,
-                            Stroke::new(1.0, Color32::BLUE),
+
+                        let color = Color32::BLUE;
+                        ui.painter().set(
+                            where_to_put_background,
+                            epaint::RectShape::new(ui.min_rect(), CARD_UI_ROUNDING, darken(color, 0.25), Stroke::new(1.0, color)),
                         );
                     }
                     BaseCard::Effect(effect) => {
+                        let where_to_put_background = ui.painter().add(Shape::Noop);
                         ui.horizontal(|ui| {
                             ui.add_space(CARD_UI_SPACING);
                             ui.label("Apply Effect");
@@ -596,27 +602,29 @@ pub fn draw_base_card(
                             ui.add_space(CARD_UI_SPACING);
                         });
                         ui.add_space(CARD_UI_SPACING);
-                        ui.painter().rect_stroke(
-                            ui.min_rect(),
-                            CARD_UI_ROUNDING,
-                            Stroke::new(1.0, Color32::RED),
+
+                        let color = Color32::RED;
+                        ui.painter().set(
+                            where_to_put_background,
+                            epaint::RectShape::new(ui.min_rect(), CARD_UI_ROUNDING, darken(color, 0.25), Stroke::new(1.0, color)),
                         );
                     }
                     BaseCard::Trigger(id) => {
+                        let where_to_put_background = ui.painter().add(Shape::Noop);
                         ui.horizontal(|ui| {
                             ui.add_space(CARD_UI_SPACING);
                             ui.label(format!("Trigger {}", id));
                             ui.add_space(CARD_UI_SPACING);
                         });
                         ui.add_space(CARD_UI_SPACING);
-                        ui.painter().rect_stroke(
-                            ui.min_rect(),
-                            CARD_UI_ROUNDING,
-                            Stroke::new(1.0, Color32::GOLD),
+
+                        let color = Color32::from_rgb(0, 255, 255);
+                        ui.painter().set(
+                            where_to_put_background,
+                            epaint::RectShape::new(ui.min_rect(), CARD_UI_ROUNDING, darken(color, 0.25), Stroke::new(1.0, color)),
                         );
                     }
                     BaseCard::None => {
-                        ui.visuals_mut().widgets.active.rounding = Rounding::from(CARD_UI_ROUNDING);
                         ui.visuals_mut().widgets.inactive.bg_stroke =
                             Stroke::new(1.0, Color32::GREEN);
                         let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
@@ -654,6 +662,7 @@ pub fn add_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display)
         name,
         0.0,
         TextFormat {
+            color: Color32::WHITE,
             ..Default::default()
         },
     );
@@ -663,6 +672,7 @@ pub fn add_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display)
         TextFormat {
             font_id: FontId::proportional(7.0),
             valign: Align::TOP,
+            color: Color32::WHITE,
             ..Default::default()
         },
     );
@@ -682,6 +692,7 @@ pub fn add_hoverable_basic_modifer(
             name,
             0.0,
             TextFormat {
+                color: Color32::WHITE,
                 ..Default::default()
             },
         );
@@ -691,6 +702,7 @@ pub fn add_hoverable_basic_modifer(
             TextFormat {
                 font_id: FontId::proportional(7.0),
                 valign: Align::TOP,
+                color: Color32::WHITE,
                 ..Default::default()
             },
         );

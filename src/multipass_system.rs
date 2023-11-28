@@ -998,13 +998,16 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                         )
                                                     }
                                                 };
-                                                draw_base_card(
-                                                    ui,
-                                                    &dock_card,
-                                                    &mut vec![0].into(),
-                                                    &mut source_path,
-                                                    &mut drop_path,
-                                                );
+                                                ui.scope(|ui| {
+                                                    ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+                                                    draw_base_card(
+                                                        ui,
+                                                        &dock_card,
+                                                        &mut vec![0].into(),
+                                                        &mut source_path,
+                                                        &mut drop_path,
+                                                    );
+                                                });
 
                                                 for (ability_idx, cooldown) in
                                                     gui_state.gui_cards.iter().enumerate()
