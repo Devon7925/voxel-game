@@ -1465,7 +1465,7 @@ impl WorldState {
                     }
                     player.status_effects.push(AppliedStatusEffect {
                         effect,
-                        time_left: duration as f32,
+                        time_left: BaseCard::EFFECT_LENGTH_SCALE * duration as f32,
                     })
                 }
                 ReferencedEffect::Cleanse => {
@@ -1797,7 +1797,7 @@ impl Player {
             }
             let accel_speed = player_stats[player_idx].speed
                 * if self.collision_vec != Vector3::new(0, 0, 0) {
-                    42.0
+                    80.0
                 } else {
                     18.0
                 };
@@ -1984,12 +1984,14 @@ impl Player {
                                 if perp_vel.magnitude() > 0.0 {
                                     let friction_factor =
                                         VoxelMaterial::FRICTION_COEFFICIENTS[voxel[0] as usize];
-                                    self.vel[(component + 1) % 3] -= (0.5 * perp_vel.normalize().x
-                                        + friction_factor * perp_vel.x)
-                                        * time_step;
-                                    self.vel[(component + 2) % 3] -= (0.5 * perp_vel.normalize().y
-                                        + friction_factor * perp_vel.y)
-                                        * time_step;
+                                    self.vel[(component + 1) % 3] -=
+                                        (friction_factor * 0.5 * perp_vel.normalize().x
+                                            + friction_factor * perp_vel.x)
+                                            * time_step;
+                                    self.vel[(component + 2) % 3] -=
+                                        (friction_factor * 0.5 * perp_vel.normalize().y
+                                            + friction_factor * perp_vel.y)
+                                            * time_step;
                                 }
 
                                 self.collision_vec[component] = -vel_dir[component].signum() as i32;

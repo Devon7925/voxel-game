@@ -14,6 +14,7 @@ pub struct Cooldown {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum CooldownModifier {
     AddCharge(u32),
+    AddCooldown(u32),
 }
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Ability {
@@ -70,15 +71,21 @@ impl Cooldown {
             .unwrap()
             .clone();
         let mut ability_charges = 0;
+        let mut added_cooldown = 0;
         for modifier in self.modifiers.iter() {
             match modifier {
                 CooldownModifier::AddCharge(s) => {
                     ability_charges += s;
                 }
+                CooldownModifier::AddCooldown(s) => {
+                    added_cooldown += s;
+                }
             }
         }
-        let cooldown = (sum + 2.0 * max) / 3.0 * (1.0 + 0.2 * ability_charges as f32);
-        let recovery = (sum + 2.0 * max) / 3.0 * (1.0 - (-(ability_charges as f32 / 10.0)).exp());
+        let cooldown = 0.5 * added_cooldown as f32
+            + (sum + 2.0 * max) / 3.0 * (1.0 + 0.2 * ability_charges as f32);
+        let recovery = 0.5 * added_cooldown as f32
+            + (sum + 2.0 * max) / 3.0 * (1.0 - (-(ability_charges as f32 / 10.0)).exp());
         (cooldown, recovery)
     }
 
@@ -122,6 +129,19 @@ impl Cooldown {
                                     combined = true;
                                     break;
                                 }
+                                _ => {}
+                            }
+                        }
+                    }
+                    CooldownModifier::AddCooldown(last_s) => {
+                        for modifier in self.modifiers.iter_mut() {
+                            match modifier {
+                                CooldownModifier::AddCooldown(s) => {
+                                    *s += last_s;
+                                    combined = true;
+                                    break;
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -150,6 +170,11 @@ impl Cooldown {
             assert!(path.is_empty());
             match self.modifiers[idx] {
                 CooldownModifier::AddCharge(s) => {
+                    if s == 0 {
+                        self.modifiers.remove(idx);
+                    }
+                }
+                CooldownModifier::AddCooldown(s) => {
                     if s == 0 {
                         self.modifiers.remove(idx);
                     }
@@ -246,7 +271,7 @@ pub enum StatusEffect {
 }
 
 impl VoxelMaterial {
-    pub const FRICTION_COEFFICIENTS: [f32; 8] = [0.0, 1.5, 0.0, 1.5, 1.5, 0.0, 0.1, 1.0];
+    pub const FRICTION_COEFFICIENTS: [f32; 8] = [0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 0.1, 1.0];
     pub fn to_memory(&self) -> [u32; 2] {
         match self {
             VoxelMaterial::Air => [0, 0x11111111],
@@ -1293,6 +1318,7 @@ impl From<Keybind> for StateKeybind {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReferencedCooldown {
     pub add_charge: u32,
+    pub add_cooldown: u32,
     pub abilities: Vec<(ReferencedBaseCard, Keybind)>,
 }
 
@@ -1406,13 +1432,16 @@ impl CardManager {
             ));
         }
         let mut add_charge = 0;
+        let mut add_cooldown = 0;
         for modifier in cooldown.modifiers {
             match modifier {
                 CooldownModifier::AddCharge(c) => add_charge += c,
+                CooldownModifier::AddCooldown(c) => add_cooldown += c,
             }
         }
         ReferencedCooldown {
             add_charge,
+            add_cooldown,
             abilities,
         }
     }

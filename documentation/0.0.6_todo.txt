@@ -1,5 +1,4 @@
 Abiliy modifiers
-    Add cooldown
     Keybinds
         on ground
 Update characters

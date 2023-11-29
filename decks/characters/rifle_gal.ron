@@ -34,7 +34,7 @@
         ]
     ),
     Cooldown(
-        modifiers: [],
+        modifiers: [AddCooldown(1)],
         abilities: [
             (
                 card: Effect(StatusEffect(Slow, 1)),
@@ -62,8 +62,9 @@
                         SimpleModify(Lifetime,-10),
                         SimpleModify(Health,-10),
                         PiercePlayers,
+                        FriendlyFire,
                         OnHit(Effect(Damage(20))),
-                        OnHit(Effect(StatusEffect(DamageOverTime, 5))),
+                        OnHit(Effect(StatusEffect(DamageOverTime, 10))),
                     ])),
                 ]),
                 keybind: Pressed(Key(E))

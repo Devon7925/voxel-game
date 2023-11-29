@@ -12,9 +12,11 @@ UI
 On Trigger
     On Trigger (id)
     Trigger (id)
-Abiliy Modifiers
-    charges
-    shared cooldowns
+Abiliy editor
+    Ability Modifiers
+        Add charge
+        Add cooldown
+    Shared cooldown for multiple abilities
     keybind
         Pressed (button)
         On Pressed (button)

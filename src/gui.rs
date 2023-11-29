@@ -231,6 +231,9 @@ pub fn draw_cooldown(
                     let item_id = egui::Id::new(id_source).with(path.clone());
                     drag_source(ui, item_id, |ui| match modifier {
                         CooldownModifier::AddCharge(v) => add_basic_modifer(ui, "Add Charge", *v),
+                        CooldownModifier::AddCooldown(v) => {
+                            add_basic_modifer(ui, "Add Cooldown", *v)
+                        }
                     });
                     path.pop_back();
                 }
@@ -558,7 +561,12 @@ pub fn draw_base_card(
                         let color = Color32::BLUE;
                         ui.painter().set(
                             where_to_put_background,
-                            epaint::RectShape::new(ui.min_rect(), CARD_UI_ROUNDING, darken(color, 0.25), Stroke::new(1.0, color)),
+                            epaint::RectShape::new(
+                                ui.min_rect(),
+                                CARD_UI_ROUNDING,
+                                darken(color, 0.25),
+                                Stroke::new(1.0, color),
+                            ),
                         );
                     }
                     BaseCard::Effect(effect) => {
@@ -606,7 +614,12 @@ pub fn draw_base_card(
                         let color = Color32::RED;
                         ui.painter().set(
                             where_to_put_background,
-                            epaint::RectShape::new(ui.min_rect(), CARD_UI_ROUNDING, darken(color, 0.25), Stroke::new(1.0, color)),
+                            epaint::RectShape::new(
+                                ui.min_rect(),
+                                CARD_UI_ROUNDING,
+                                darken(color, 0.25),
+                                Stroke::new(1.0, color),
+                            ),
                         );
                     }
                     BaseCard::Trigger(id) => {
@@ -621,7 +634,12 @@ pub fn draw_base_card(
                         let color = Color32::from_rgb(0, 255, 255);
                         ui.painter().set(
                             where_to_put_background,
-                            epaint::RectShape::new(ui.min_rect(), CARD_UI_ROUNDING, darken(color, 0.25), Stroke::new(1.0, color)),
+                            epaint::RectShape::new(
+                                ui.min_rect(),
+                                CARD_UI_ROUNDING,
+                                darken(color, 0.25),
+                                Stroke::new(1.0, color),
+                            ),
                         );
                     }
                     BaseCard::None => {
