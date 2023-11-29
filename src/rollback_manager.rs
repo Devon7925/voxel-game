@@ -316,6 +316,11 @@ impl PlayerSim for RollbackData {
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
     ) {
+        let on_ground = self.get_spectate_player().map(|player| player.collision_vec.y > 0).unwrap_or(false);
+        self
+            .controls
+            .iter_mut()
+            .for_each(|cd| cd.iter_mut().for_each(|ability| ability.update_on_ground(on_ground)));
         self.player_action.activate_ability = self
             .controls
             .iter()

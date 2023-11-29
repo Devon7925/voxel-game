@@ -27,6 +27,7 @@ pub enum Keybind {
     Pressed(Control),
     OnPressed(Control),
     OnReleased(Control),
+    IsOnGround,
     And(Box<Keybind>, Box<Keybind>),
     Or(Box<Keybind>, Box<Keybind>),
     Not(Box<Keybind>),
@@ -39,6 +40,7 @@ impl Keybind {
             Keybind::Pressed(control) => Some(format!("{}", control)),
             Keybind::OnPressed(control) => Some(format!("{}", control)),
             Keybind::OnReleased(control) => Some(format!("{}", control)),
+            Keybind::IsOnGround => None,
             Keybind::And(_, _) => None,
             Keybind::Or(_, _) => None,
             Keybind::Not(_) => None,
@@ -1217,6 +1219,7 @@ pub enum StateKeybind {
     Pressed(Control, bool),
     OnPressed(Control, bool),
     OnReleased(Control, bool),
+    IsOnGround(bool),
     And(Box<StateKeybind>, Box<StateKeybind>),
     Or(Box<StateKeybind>, Box<StateKeybind>),
     Not(Box<StateKeybind>),
@@ -1241,6 +1244,7 @@ impl StateKeybind {
                     *s = true;
                 }
             }
+            StateKeybind::IsOnGround(_) => {}
             StateKeybind::And(a, b) => {
                 a.as_mut().update(control, state);
                 b.as_mut().update(control, state);
@@ -1256,11 +1260,32 @@ impl StateKeybind {
         }
     }
 
+    pub fn update_on_ground(&mut self, state: bool) {
+        match self {
+            StateKeybind::IsOnGround(s) => {
+                *s = state;
+            }
+            StateKeybind::And(a, b) => {
+                a.as_mut().update_on_ground(state);
+                b.as_mut().update_on_ground(state);
+            }
+            StateKeybind::Or(a, b) => {
+                a.as_mut().update_on_ground(state);
+                b.as_mut().update_on_ground(state);
+            }
+            StateKeybind::Not(a) => {
+                a.as_mut().update_on_ground(state);
+            }
+            _ => {}
+        }
+    }
+
     pub fn get_simple_representation(&self) -> Option<String> {
         match self {
             StateKeybind::Pressed(control, _) => Some(format!("{}", control)),
-            StateKeybind::OnPressed(control, _) => Some(format!("OnPressed({})", control)),
-            StateKeybind::OnReleased(control, _) => Some(format!("OnReleased({})", control)),
+            StateKeybind::OnPressed(control, _) => Some(format!("{}", control)),
+            StateKeybind::OnReleased(control, _) => Some(format!("{}", control)),
+            StateKeybind::IsOnGround(_) => None,
             StateKeybind::And(_, _) => None,
             StateKeybind::Or(_, _) => None,
             StateKeybind::Not(_) => None,
@@ -1273,6 +1298,7 @@ impl StateKeybind {
             StateKeybind::Pressed(_, s) => *s,
             StateKeybind::OnPressed(_, s) => *s,
             StateKeybind::OnReleased(_, s) => *s,
+            StateKeybind::IsOnGround(s) => *s,
             StateKeybind::And(a, b) => a.get_state() && b.get_state(),
             StateKeybind::Or(a, b) => a.get_state() || b.get_state(),
             StateKeybind::Not(a) => !a.get_state(),
@@ -1285,6 +1311,7 @@ impl StateKeybind {
             StateKeybind::Pressed(_, _) => {}
             StateKeybind::OnPressed(_, s) => *s = false,
             StateKeybind::OnReleased(_, s) => *s = false,
+            StateKeybind::IsOnGround(s) => *s = false,
             StateKeybind::And(a, b) => {
                 a.as_mut().clear();
                 b.as_mut().clear();
@@ -1307,6 +1334,7 @@ impl From<Keybind> for StateKeybind {
             Keybind::Pressed(control) => StateKeybind::Pressed(control, false),
             Keybind::OnPressed(control) => StateKeybind::OnPressed(control, false),
             Keybind::OnReleased(control) => StateKeybind::OnReleased(control, false),
+            Keybind::IsOnGround => StateKeybind::IsOnGround(false),
             Keybind::And(a, b) => StateKeybind::And(Box::new((*a).into()), Box::new((*b).into())),
             Keybind::Or(a, b) => StateKeybind::Or(Box::new((*a).into()), Box::new((*b).into())),
             Keybind::Not(a) => StateKeybind::Not(Box::new((*a).into())),

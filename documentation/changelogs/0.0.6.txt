@@ -25,3 +25,4 @@ Abiliy editor
         Or (keybind, keybind)
         Not (keybind)
         True
+        On ground
