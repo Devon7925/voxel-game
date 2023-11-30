@@ -8,8 +8,8 @@
 // according to those terms.
 
 use crate::{
-    app::VulkanoInterface, card_system::CardManager, rollback_manager::get_index,
-    voxel_sim_manager::VoxelComputePipeline, SimData,
+    app::CreationInterface, card_system::CardManager, rollback_manager::{get_index, PlayerSim},
+    voxel_sim_manager::VoxelComputePipeline, game_manager::{GameState, GameSettings},
 };
 use bytemuck::{Pod, Zeroable};
 use cgmath::{Point3, Quaternion};
@@ -68,12 +68,12 @@ pub struct Projectile {
 }
 
 impl ProjectileComputePipeline {
-    pub fn new(app: &VulkanoInterface, compute_queue: Arc<Queue>) -> ProjectileComputePipeline {
-        let memory_allocator = &app.memory_allocator;
+    pub fn new(creation_interface: &CreationInterface) -> ProjectileComputePipeline {
+        let memory_allocator = &creation_interface.memory_allocator;
 
         let compute_proj_pipeline = {
-            let shader = compute_projs_cs::load(compute_queue.device().clone()).unwrap();
-            let device = compute_queue.device();
+            let shader = compute_projs_cs::load(creation_interface.queue.device().clone()).unwrap();
+            let device = creation_interface.queue.device();
             let cs = shader.entry_point("main").unwrap();
             let stage = PipelineShaderStageCreateInfo::new(cs);
             let layout = PipelineLayout::new(
@@ -116,10 +116,10 @@ impl ProjectileComputePipeline {
         .unwrap();
 
         ProjectileComputePipeline {
-            compute_queue,
+            compute_queue: creation_interface.queue.clone(),
             compute_proj_pipeline,
-            command_buffer_allocator: app.command_buffer_allocator.clone(),
-            descriptor_set_allocator: app.descriptor_set_allocator.clone(),
+            command_buffer_allocator: creation_interface.command_buffer_allocator.clone(),
+            descriptor_set_allocator: creation_interface.descriptor_set_allocator.clone(),
             uniform_buffer,
             projectile_buffer,
             upload_projectile_count: 0,
@@ -139,9 +139,10 @@ impl ProjectileComputePipeline {
     pub fn compute<F>(
         &mut self,
         before_future: F,
-        voxel_data: &VoxelComputePipeline,
-        sim_data: &mut SimData,
-        time_step: f32,
+        game_state: &GameState,
+        game_settings: &GameSettings,
+        rollback_data: &Box<dyn PlayerSim>,
+        voxel_compute: &VoxelComputePipeline,
     ) -> Box<dyn GpuFuture>
     where
         F: GpuFuture + 'static,
@@ -163,7 +164,7 @@ impl ProjectileComputePipeline {
         // wanted to simulate 10 steps at a time...
 
         // First compute the next state.
-        self.dispatch(&mut builder, voxel_data, sim_data, time_step);
+        self.dispatch(&mut builder, game_state, game_settings, rollback_data, voxel_compute);
 
         let command_buffer = builder.build().unwrap();
         let finished = before_future
@@ -178,9 +179,10 @@ impl ProjectileComputePipeline {
     fn dispatch(
         &mut self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        voxel_data: &VoxelComputePipeline,
-        sim_data: &mut SimData,
-        time_step: f32,
+        game_state: &GameState,
+        game_settings: &GameSettings,
+        rollback_data: &Box<dyn PlayerSim>,
+        voxel_compute: &VoxelComputePipeline,
     ) {
         // Resize image if needed.
         let pipeline_layout = self.compute_proj_pipeline.layout();
@@ -188,10 +190,10 @@ impl ProjectileComputePipeline {
 
         let uniform_buffer_subbuffer = {
             let uniform_data = compute_projs_cs::SimData {
-                max_dist: sim_data.max_dist.into(),
-                render_size: sim_data.render_size.into(),
-                start_pos: sim_data.start_pos.into(),
-                dt: time_step,
+                max_dist: 15.into(),
+                render_size: game_settings.render_size.into(),
+                start_pos: game_state.start_pos.into(),
+                dt: rollback_data.get_delta_time().into(),
                 projectile_count: self.upload_projectile_count as u32,
             };
 
@@ -204,7 +206,7 @@ impl ProjectileComputePipeline {
             &self.descriptor_set_allocator,
             desc_layout.clone(),
             [
-                WriteDescriptorSet::buffer(0, voxel_data.voxels()),
+                WriteDescriptorSet::buffer(0, voxel_compute.voxels()),
                 WriteDescriptorSet::buffer(1, self.projectile_buffer.clone()),
                 WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
             ],

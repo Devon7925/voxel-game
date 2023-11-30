@@ -11,6 +11,7 @@ mod settings_manager;
 mod utils;
 mod voxel_sim_manager;
 mod world_gen;
+mod game_manager;
 
 use crate::{
     app::RenderPipeline,
@@ -42,16 +43,7 @@ pub const RENDER_SIZE: [u32; 3] = [16, 16, 16];
 pub const CHUNK_SIZE: u32 = 16;
 const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
 
-struct SimSettings {
-    pub max_dist: u32,
-    pub do_compute: bool,
-}
-
-pub struct SimData {
-    max_dist: u32,
-    render_size: [u32; 3],
-    start_pos: [i32; 3],
-}
+const DEFAULT_DELTA_TIME: f32 = 1.0 / 60.0;
 
 pub struct WindowProperties {
     pub width: u32,
@@ -115,20 +107,9 @@ fn main() {
     assert!(player_deck.iter().all(|cooldown| cooldown.is_reasonable()));
 
     // Create app with vulkano context.
-    let mut app = RenderPipeline::new(&event_loop, settings, &player_deck);
+    let mut app = RenderPipeline::new(&event_loop, settings);
 
     // Time & inputs...
-    let mut sim_settings = SimSettings {
-        max_dist: 15,
-        do_compute: true,
-    };
-
-    let mut sim_data = SimData {
-        max_dist: sim_settings.max_dist,
-        render_size: RENDER_SIZE,
-        start_pos: FIRST_START_POS,
-    };
-
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(app.vulkano_interface.device.clone()).boxed());
 
@@ -141,9 +122,8 @@ fn main() {
     let mut gui_state = GuiState {
         menu_stack: vec![GuiElement::MainMenu],
         gui_cards: player_deck.clone(),
-        in_game: false,
-        should_exit: false,
         palette_state: PaletteState::ProjectileModifiers,
+        should_exit: false,
     };
 
     let mut time = Instant::now();
@@ -151,7 +131,6 @@ fn main() {
         let should_continue = handle_events(
             &mut event_loop,
             &mut app,
-            &mut sim_settings,
             &mut window_props,
             &mut gui_state,
         );
@@ -164,13 +143,15 @@ fn main() {
         if (Instant::now() - time).as_secs_f32() > 0.0 {
             puffin::GlobalProfiler::lock().new_frame();
             previous_frame_end.as_mut().unwrap().cleanup_finished();
-            time += std::time::Duration::from_secs_f32(app.rollback_data.get_delta_time());
+            time += std::time::Duration::from_secs_f32(app.game.as_ref().map(|game| game.rollback_data.get_delta_time()).unwrap_or(DEFAULT_DELTA_TIME));
             let skip_render = (Instant::now() - time).as_secs_f32() > 0.0;
-            if app.settings.player_count > 1 && gui_state.in_game && !skip_render {
-                app.rollback_data.update();
-            }
-            if app.rollback_data.is_sim_behind() {
-                time += std::time::Duration::from_secs_f32(app.rollback_data.get_delta_time());
+            if let Some(game) = app.game.as_mut() {
+                if !skip_render {
+                    game.rollback_data.update();
+                }
+                if game.rollback_data.is_sim_behind() {
+                    time += std::time::Duration::from_secs_f32(game.rollback_data.get_delta_time());
+                }
             }
             if skip_render {
                 println!(
@@ -178,16 +159,13 @@ fn main() {
                     (Instant::now() - time).as_secs_f32()
                 );
             }
-            sim_settings.do_compute = app.rollback_data.player_count()
-                >= app.settings.player_count as usize
-                && gui_state.in_game;
+            let do_compute = app.game.is_some();
             compute_then_render(
                 &mut app,
-                &sim_settings,
-                &mut sim_data,
                 &mut recreate_swapchain,
                 &mut previous_frame_end,
                 &mut gui_state,
+                do_compute,
                 skip_render,
             );
             let window = app
@@ -198,7 +176,9 @@ fn main() {
                 .downcast_ref::<Window>()
                 .unwrap();
             window.set_cursor_visible(gui_state.menu_stack.len() > 0 && window.has_focus());
-            app.rollback_data.end_frame();
+            if let Some(game) = app.game.as_mut() {
+                game.rollback_data.end_frame();
+            }
         }
     }
 }
@@ -207,7 +187,6 @@ fn main() {
 fn handle_events(
     event_loop: &mut EventLoop<()>,
     app: &mut RenderPipeline,
-    sim_settings: &mut SimSettings,
     window_props: &mut WindowProperties,
     gui_state: &mut GuiState,
 ) -> bool {
@@ -224,8 +203,9 @@ fn handle_events(
                 if gui_event {
                     return;
                 }
-                app.rollback_data
-                    .process_event(event, &app.settings, gui_state, &window_props);
+                if let Some(game) = app.game.as_mut() {
+                    game.rollback_data.process_event(event, &app.settings, gui_state, &window_props);
+                }
                 match event {
                     WindowEvent::CloseRequested => {
                         is_running = false;
@@ -293,31 +273,6 @@ fn handle_events(
                                         }
                                     }
                                 }
-                                winit::event::VirtualKeyCode::Up => {
-                                    if input.state == ElementState::Released {
-                                        sim_settings.max_dist += 1;
-                                        println!("max_dist: {}", sim_settings.max_dist);
-                                    }
-                                }
-                                winit::event::VirtualKeyCode::Down => {
-                                    if input.state == ElementState::Released {
-                                        sim_settings.max_dist -= 1;
-                                        println!("max_dist: {}", sim_settings.max_dist);
-                                    }
-                                }
-                                winit::event::VirtualKeyCode::P => {
-                                    if input.state == ElementState::Released {
-                                        sim_settings.do_compute = !sim_settings.do_compute;
-                                        println!("do_compute: {}", sim_settings.do_compute);
-                                    }
-                                }
-                                winit::event::VirtualKeyCode::R => {
-                                    if input.state == ElementState::Released {
-                                        let cam_player = app.rollback_data.get_camera();
-                                        println!("cam_pos: {:?}", cam_player.pos);
-                                        println!("cam_rot: {:?}", cam_player.rot);
-                                    }
-                                }
                                 _ => (),
                             }
                         });
@@ -334,16 +289,15 @@ fn handle_events(
 }
 
 fn compute_then_render(
-    pipeline: &mut RenderPipeline,
-    sim_settings: &SimSettings,
-    sim_data: &mut SimData,
+    app: &mut RenderPipeline,
     recreate_swapchain: &mut bool,
     previous_frame_end: &mut Option<Box<dyn GpuFuture>>,
     gui_state: &mut GuiState,
+    do_compute: bool,
     skip_render: bool,
 ) {
     puffin::profile_function!();
-    let window = pipeline
+    let window = app
         .vulkano_interface
         .surface
         .object()
@@ -354,15 +308,14 @@ fn compute_then_render(
     if dimensions.width == 0 || dimensions.height == 0 {
         return;
     }
-    let time_step = pipeline.rollback_data.get_delta_time();
 
     if *recreate_swapchain {
-        let (new_swapchain, new_images) = pipeline
+        let (new_swapchain, new_images) = app
             .vulkano_interface
             .swapchain
             .recreate(SwapchainCreateInfo {
                 image_extent: dimensions.into(),
-                ..pipeline.vulkano_interface.swapchain.create_info()
+                ..app.vulkano_interface.swapchain.create_info()
             })
             .expect("failed to recreate swapchain");
         let new_images = new_images
@@ -370,13 +323,13 @@ fn compute_then_render(
             .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
 
-        pipeline.vulkano_interface.swapchain = new_swapchain;
-        pipeline.vulkano_interface.images = new_images;
+        app.vulkano_interface.swapchain = new_swapchain;
+        app.vulkano_interface.images = new_images;
         *recreate_swapchain = false;
     }
 
     let (image_index, suboptimal, acquire_future) =
-        match acquire_next_image(pipeline.vulkano_interface.swapchain.clone(), None)
+        match acquire_next_image(app.vulkano_interface.swapchain.clone(), None)
             .map_err(Validated::unwrap)
         {
             Ok(r) => r,
@@ -393,8 +346,8 @@ fn compute_then_render(
 
     let future = previous_frame_end.take().unwrap().join(acquire_future);
 
-    let view_matrix = if pipeline.rollback_data.player_count() > 0 {
-        let camera = pipeline.rollback_data.get_camera();
+    let view_matrix = if let Some(game) = app.game.as_ref() {
+        let camera = game.rollback_data.get_camera();
         (Matrix4::from_translation(camera.pos.to_vec()) * Matrix4::from(camera.rot))
             .invert()
             .unwrap()
@@ -404,32 +357,37 @@ fn compute_then_render(
     let aspect_ratio = dimensions.width as f32 / dimensions.height as f32;
     let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), aspect_ratio, 0.1, 100.0);
     // Start the frame.
-    let future = if sim_settings.do_compute && gui_state.in_game {
-        puffin::profile_scope!("do compute");
-        sim_data.max_dist = sim_settings.max_dist;
-        pipeline.voxel_compute.push_updates_from_changed();
+    let future = if do_compute {
+        if let Some(game) = app.game.as_mut() {
+            puffin::profile_scope!("do compute");
+            let time_step = game.rollback_data.get_delta_time();
+            game.voxel_compute.push_updates_from_changed();
 
-        // Compute.
-        pipeline.rollback_data.download_projectiles(
-            &pipeline.card_manager,
-            &pipeline.projectile_compute,
-            &mut pipeline.voxel_compute,
-        );
-        pipeline.rollback_data.step(
-            &mut pipeline.card_manager,
-            time_step,
-            &mut pipeline.voxel_compute,
-        );
-        pipeline
-            .projectile_compute
-            .upload(pipeline.rollback_data.get_projectiles());
-        let after_proj_compute = pipeline.projectile_compute.compute(
-            future,
-            &pipeline.voxel_compute,
-            sim_data,
-            time_step,
-        );
-        pipeline.voxel_compute.compute(after_proj_compute, sim_data)
+            // Compute.
+            game.rollback_data.download_projectiles(
+                &game.card_manager,
+                &game.projectile_compute,
+                &mut game.voxel_compute,
+            );
+            game.rollback_data.step(
+                &mut game.card_manager,
+                time_step,
+                &mut game.voxel_compute,
+            );
+            game
+                .projectile_compute
+                .upload(game.rollback_data.get_projectiles());
+            let after_proj_compute = game.projectile_compute.compute(
+                future,
+                &game.game_state,
+                &game.game_settings,
+                &game.rollback_data,
+                &game.voxel_compute
+            );
+            game.voxel_compute.compute(after_proj_compute, &game.game_state, &game.game_settings)
+        } else {
+            future.boxed()
+        }
     } else {
         future.boxed()
     };
@@ -437,9 +395,9 @@ fn compute_then_render(
     let future = if skip_render {
         future
     } else {
-        let mut frame = pipeline.vulkano_interface.frame_system.frame(
+        let mut frame = app.vulkano_interface.frame_system.frame(
             future,
-            pipeline.vulkano_interface.images[image_index as usize].clone(),
+            app.vulkano_interface.images[image_index as usize].clone(),
             proj * view_matrix,
         );
 
@@ -448,35 +406,32 @@ fn compute_then_render(
             match pass {
                 Pass::Deferred(mut draw_pass) => {
                     puffin::profile_scope!("rasterize");
-                    if gui_state.in_game {
-                        let camera = pipeline.rollback_data.get_camera();
+                    if let Some(game) = app.game.as_mut() {
+                        let camera = game.rollback_data.get_camera();
                         let view_matrix = (Matrix4::from_translation(-camera.pos.to_vec())
                             * Matrix4::from(camera.rot))
                         .invert()
                         .unwrap();
-                        let cb = pipeline.vulkano_interface.rasterizer_system.draw(
+                        let cb = app.vulkano_interface.rasterizer_system.draw(
                             draw_pass.viewport_dimensions(),
                             view_matrix,
-                            &pipeline.rollback_data.get_current_state(),
+                            &game.rollback_data.get_current_state(),
                         );
                         draw_pass.execute(cb);
                     }
                 }
                 Pass::Lighting(mut lighting) => {
-                    let voxels = pipeline.voxel_compute.voxels();
-                    if gui_state.in_game {
+                    if let Some(game) = app.game.as_mut() {
                         lighting.raytrace(
-                            voxels,
-                            &pipeline.rollback_data,
-                            sim_data,
-                            &pipeline.settings,
+                            &game,
+                            &app.settings,
                         );
                     }
                     lighting.gui(
-                        &mut pipeline.voxel_compute,
-                        &pipeline.rollback_data,
+                        &mut app.game,
                         gui_state,
-                        sim_data,
+                        &app.settings,
+                        &app.vulkano_interface.creation_interface,
                     );
                 }
                 Pass::Finished(af) => {
@@ -491,9 +446,9 @@ fn compute_then_render(
         puffin::profile_scope!("fence and flush");
         future
             .then_swapchain_present(
-                pipeline.vulkano_interface.queue.clone(),
+                app.vulkano_interface.creation_interface.queue.clone(),
                 SwapchainPresentInfo::swapchain_image_index(
-                    pipeline.vulkano_interface.swapchain.clone(),
+                    app.vulkano_interface.swapchain.clone(),
                     image_index,
                 ),
             )
@@ -513,12 +468,12 @@ fn compute_then_render(
         Err(VulkanError::OutOfDate) => {
             *recreate_swapchain = true;
             *previous_frame_end =
-                Some(sync::now(pipeline.vulkano_interface.device.clone()).boxed());
+                Some(sync::now(app.vulkano_interface.device.clone()).boxed());
         }
         Err(e) => {
             println!("failed to flush future: {e}");
             *previous_frame_end =
-                Some(sync::now(pipeline.vulkano_interface.device.clone()).boxed());
+                Some(sync::now(app.vulkano_interface.device.clone()).boxed());
         }
     }
 }

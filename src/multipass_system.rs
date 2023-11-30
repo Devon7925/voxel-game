@@ -16,7 +16,7 @@ use egui_winit_vulkano::{
 };
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferContents, Subbuffer},
+    buffer::BufferContents,
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
         PrimaryAutoCommandBuffer, RenderPassBeginInfo, SecondaryCommandBufferAbstract,
@@ -41,10 +41,9 @@ use crate::{
     },
     gui::{cooldown, draw_base_card, draw_cooldown, is_valid_drag, GuiElement, PaletteState},
     raytracer::PointLightingSystem,
-    rollback_manager::{AppliedStatusEffect, HealthSection, PlayerSim},
+    rollback_manager::{AppliedStatusEffect, HealthSection},
     settings_manager::Settings,
-    voxel_sim_manager::VoxelComputePipeline,
-    GuiState, SimData,
+    GuiState, game_manager::{Game, GameSettings}, app::CreationInterface,
 };
 
 #[derive(BufferContents, Vertex)]
@@ -551,9 +550,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// receive any light.
     pub fn raytrace(
         &mut self,
-        voxels: Subbuffer<[[u32; 2]]>,
-        rollback_manager: &Box<dyn PlayerSim>,
-        sim_data: &mut SimData,
+        game: &Game,
         settings: &Settings,
     ) {
         puffin::profile_function!();
@@ -564,9 +561,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                 self.frame.system.normals_buffer.clone(),
                 self.frame.system.depth_buffer.clone(),
                 self.frame.world_to_framebuffer.invert().unwrap(),
-                voxels,
-                rollback_manager,
-                sim_data,
+                game,
                 &settings.graphics_settings,
             )
         };
@@ -581,18 +576,18 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
 
     pub fn gui(
         &mut self,
-        voxel_compute: &mut VoxelComputePipeline,
-        rollback_manager: &Box<dyn PlayerSim>,
+        game: &mut Option<Game>,
         gui_state: &mut GuiState,
-        sim_data: &mut SimData,
+        settings: &Settings,
+        creation_interface: &CreationInterface,
     ) {
         puffin::profile_function!();
         self.frame.system.gui.immediate_ui(|gui| {
             let ctx = gui.context();
             let screen_size = ctx.screen_rect().size();
             // Fill egui UI layout here
-            if gui_state.in_game {
-                let spectate_player = &rollback_manager.get_spectate_player();
+            if let Some(game) = game {
+                let spectate_player = &game.rollback_data.get_spectate_player();
                 egui::Area::new("crosshair").show(&ctx, |ui| {
                     let center = screen_size / 2.0;
                     let thickness = 1.0;
@@ -770,10 +765,31 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     Color32::BLACK,
                                 );
                                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                                    if ui.button("Play").clicked() {
+                                    if ui.button("Singleplayer").clicked() {
                                         gui_state.menu_stack.pop();
-                                        voxel_compute.load_chunks(sim_data);
-                                        gui_state.in_game = true;
+                                        *game = Some(Game::new(
+                                            settings,
+                                            GameSettings {
+                                                is_remote: false,
+                                                player_count: 1,
+                                                render_size: [16, 16, 16],
+                                            },
+                                            &gui_state.gui_cards,
+                                            creation_interface,
+                                        ));
+                                    }
+                                    if ui.button("Multiplayer").clicked() {
+                                        gui_state.menu_stack.pop();
+                                        *game = Some(Game::new(
+                                            settings,
+                                            GameSettings {
+                                                is_remote: true,
+                                                player_count: 2,
+                                                render_size: [16, 16, 16],
+                                            },
+                                            &gui_state.gui_cards,
+                                            creation_interface,
+                                        ));
                                     }
                                     if ui.button("Card Editor").clicked() {
                                         gui_state.menu_stack.push(GuiElement::CardEditor);
@@ -814,7 +830,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     if ui.button("Leave Game").clicked() {
                                         gui_state.menu_stack.clear();
                                         gui_state.menu_stack.push(GuiElement::MainMenu);
-                                        gui_state.in_game = false;
+                                        *game = None;
                                     }
                                     if ui.button("Exit to Desktop").clicked() {
                                         gui_state.should_exit = true;

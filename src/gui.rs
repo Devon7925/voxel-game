@@ -31,9 +31,8 @@ pub enum PaletteState {
 pub struct GuiState {
     pub menu_stack: Vec<GuiElement>,
     pub gui_cards: Vec<Cooldown>,
-    pub in_game: bool,
-    pub should_exit: bool,
     pub palette_state: PaletteState,
+    pub should_exit: bool,
 }
 
 fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -> egui::Response {

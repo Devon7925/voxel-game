@@ -44,8 +44,8 @@ use vulkano::{
 };
 
 use crate::{
-    multipass_system::LightingVertex, rollback_manager::PlayerSim,
-    settings_manager::GraphicsSettings, SimData,
+    multipass_system::LightingVertex,
+    settings_manager::GraphicsSettings, game_manager::Game,
 };
 
 pub struct PointLightingSystem {
@@ -176,17 +176,15 @@ impl PointLightingSystem {
 
     fn create_desc_set(
         &self,
-        voxels: Subbuffer<[[u32; 2]]>,
-        sim_data: &mut SimData,
-        rollback_manager: &Box<dyn PlayerSim>,
+        game: &Game,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(1).unwrap();
         let sim_uniform_buffer_subbuffer = {
             let uniform_data = fs::SimData {
-                render_size: sim_data.render_size.into(),
-                projectile_count: (rollback_manager.get_projectiles().len() as u32).into(),
-                max_dist: sim_data.max_dist.into(),
-                start_pos: sim_data.start_pos.into(),
+                render_size: game.game_settings.render_size.into(),
+                projectile_count: (game.rollback_data.get_projectiles().len() as u32).into(),
+                max_dist: 15,
+                start_pos: game.game_state.start_pos.into(),
             };
 
             let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
@@ -199,10 +197,10 @@ impl PointLightingSystem {
             &self.descriptor_set_allocator,
             layout.clone(),
             [
-                WriteDescriptorSet::buffer(0, voxels.clone()),
+                WriteDescriptorSet::buffer(0, game.voxel_compute.voxels().clone()),
                 WriteDescriptorSet::buffer(1, sim_uniform_buffer_subbuffer),
-                WriteDescriptorSet::buffer(2, rollback_manager.player_buffer()),
-                WriteDescriptorSet::buffer(3, rollback_manager.projectile_buffer()),
+                WriteDescriptorSet::buffer(2, game.rollback_data.player_buffer()),
+                WriteDescriptorSet::buffer(3, game.rollback_data.projectile_buffer()),
             ],
             [],
         )
@@ -244,9 +242,7 @@ impl PointLightingSystem {
         normals_input: Arc<ImageView>,
         depth_input: Arc<ImageView>,
         screen_to_world: Matrix4<f32>,
-        voxels: Subbuffer<[[u32; 2]]>,
-        rollback_manager: &Box<dyn PlayerSim>,
-        sim_data: &mut SimData,
+        game: &Game,
         graphics_settings: &GraphicsSettings,
     ) -> Arc<SecondaryAutoCommandBuffer> {
         let push_constants = fs::PushConstants {
@@ -272,7 +268,7 @@ impl PointLightingSystem {
         )
         .unwrap();
 
-        let data_descriptor_set = self.create_desc_set(voxels, sim_data, rollback_manager);
+        let data_descriptor_set = self.create_desc_set(game);
 
         let viewport = Viewport {
             offset: [0.0, 0.0],

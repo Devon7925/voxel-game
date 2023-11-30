@@ -7,8 +7,6 @@ use winit::event::{MouseButton, VirtualKeyCode};
 pub struct Settings {
     pub local_url: String,
     pub remote_url: String,
-    pub is_remote: bool,
-    pub player_count: u32,
     pub card_file: String,
     pub fullscreen_toggle: VirtualKeyCode,
     pub movement_controls: ControlSettings,

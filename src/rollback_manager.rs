@@ -29,7 +29,7 @@ use crate::{
     settings_manager::{Control, ReplayMode, Settings},
     voxel_sim_manager::VoxelComputePipeline,
     WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE,
-    SPAWN_LOCATION,
+    SPAWN_LOCATION, game_manager::GameSettings,
 };
 
 #[derive(Clone, Debug)]
@@ -104,7 +104,7 @@ pub struct RollbackData {
     pub projectile_buffer: Subbuffer<[Projectile; 1024]>,
     pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
     replay_file: Option<File>,
-    network_connection: NetworkConnection,
+    network_connection: Option<NetworkConnection>,
     controls: Vec<Vec<StateKeybind>>,
     player_action: PlayerAction,
     player_deck: Vec<Cooldown>,
@@ -408,31 +408,38 @@ impl PlayerSim for RollbackData {
     }
 
     fn update(&mut self) {
+        let Some(network_connection) = self.network_connection.as_mut() else {
+            return;
+        };
         let packet_data = NetworkPacket::Action(self.current_time, self.player_action.clone());
-        self.network_connection.queue_packet(packet_data);
+        network_connection.queue_packet(packet_data);
         let (connection_changes, recieved_packets) =
-            self.network_connection.network_update(self.player_count());
+            network_connection.network_update(self.rollback_state.players.len());
         for (peer, state) in connection_changes {
             match state {
                 PeerState::Connected => {
                     println!("Peer joined: {:?}", peer);
 
-                    self.player_idx_map.insert(peer, self.player_count());
+                    self.player_idx_map.insert(peer, self.rollback_state.players.len());
 
-                    self.player_join(Player {
+                    let new_player = Player {
                         pos: SPAWN_LOCATION,
                         ..Default::default()
-                    });
+                    };
+                    
+                    self.rollback_state.players.push(new_player);
+                    self.actions.iter_mut().for_each(|x| x.push(None));
+                    self.meta_actions.iter_mut().for_each(|x| x.push(None));
 
                     {
                         let deck_packet =
                             NetworkPacket::DeckUpdate(self.current_time, self.player_deck.clone());
-                        self.network_connection.send_packet(peer, deck_packet);
+                        network_connection.send_packet(peer, deck_packet);
                     }
                     {
                         let dt_packet =
                             NetworkPacket::DeltatimeUpdate(self.current_time, self.delta_time);
-                        self.network_connection.send_packet(peer, dt_packet);
+                        network_connection.send_packet(peer, dt_packet);
                     }
                 }
                 PeerState::Disconnected => {
@@ -440,6 +447,9 @@ impl PlayerSim for RollbackData {
                 }
             }
         }
+
+        let peers = self.player_idx_map.keys().collect();
+        network_connection.send_packet_queue(peers);
 
         for (peer, packet) in recieved_packets {
             let player_idx = self.player_idx_map.get(&peer).unwrap().clone();
@@ -455,9 +465,6 @@ impl PlayerSim for RollbackData {
                 }
             }
         }
-
-        let peers = self.player_idx_map.keys().collect();
-        self.network_connection.send_packet_queue(peers);
     }
 
     fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
@@ -559,12 +566,16 @@ impl PlayerSim for RollbackData {
                                                 0,
                                                 self.current_time,
                                             );
-                                            self.network_connection.queue_packet(
-                                                NetworkPacket::DeckUpdate(
-                                                    self.current_time,
-                                                    self.player_deck.clone(),
-                                                ),
-                                            );
+                                            if let Some(network_connection) =
+                                                self.network_connection.as_mut()
+                                            {
+                                                network_connection.queue_packet(
+                                                    NetworkPacket::DeckUpdate(
+                                                        self.current_time,
+                                                        self.player_deck.clone(),
+                                                    ),
+                                                );
+                                            }
                                         }
                                         _ => (),
                                     }
@@ -592,6 +603,7 @@ impl RollbackData {
     pub fn new(
         memory_allocator: &Arc<StandardMemoryAllocator>,
         settings: &Settings,
+        game_settings: &GameSettings,
         deck: &Vec<Cooldown>,
         card_manager: &mut CardManager,
     ) -> Self {
@@ -627,7 +639,7 @@ impl RollbackData {
             .then(|| std::fs::File::create(settings.replay_settings.replay_file.clone()).unwrap());
 
         if let Some(replay_file) = replay_file.as_mut() {
-            write!(replay_file, "PLAYER COUNT {}\n", settings.player_count).unwrap();
+            write!(replay_file, "PLAYER COUNT {}\n", game_settings.player_count).unwrap();
             write!(replay_file, "PLAYER DECK ").unwrap();
             ron::ser::to_writer(replay_file, &deck).unwrap();
         }
@@ -665,7 +677,7 @@ impl RollbackData {
         actions.iter_mut().for_each(|x| x.push(None));
         meta_actions.iter_mut().for_each(|x| x.push(None));
 
-        let network_connection = NetworkConnection::new(settings);
+        let network_connection = (game_settings.player_count > 1).then(|| NetworkConnection::new(settings, &game_settings));
 
         let controls: Vec<Vec<StateKeybind>> = first_player
             .abilities
@@ -815,12 +827,6 @@ impl RollbackData {
             )
         });
         action_frame[player_idx] = Some(action);
-    }
-
-    pub fn player_join(&mut self, player: Player) {
-        self.rollback_state.players.push(player);
-        self.actions.iter_mut().for_each(|x| x.push(None));
-        self.meta_actions.iter_mut().for_each(|x| x.push(None));
     }
 }
 

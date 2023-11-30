@@ -8,14 +8,10 @@
 // according to those terms.
 
 use crate::{
-    card_system::{CardManager, Cooldown},
     multipass_system::FrameSystem,
-    projectile_sim_manager::ProjectileComputePipeline,
     rasterizer::RasterizerSystem,
-    rollback_manager::{PlayerSim, ReplayData, RollbackData},
-    settings_manager::{ReplayMode, Settings},
-    voxel_sim_manager::VoxelComputePipeline,
-    WINDOW_HEIGHT, WINDOW_WIDTH,
+    settings_manager::Settings,
+    WINDOW_HEIGHT, WINDOW_WIDTH, game_manager::Game,
 };
 use std::sync::Arc;
 use vulkano::{
@@ -43,32 +39,32 @@ use winit::{
 };
 
 pub struct VulkanoInterface {
-    pub memory_allocator: Arc<StandardMemoryAllocator>,
-    pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-    pub descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     pub swapchain: Arc<Swapchain>,
     pub images: Vec<Arc<ImageView>>,
     pub surface: Arc<Surface>,
-    pub queue: Arc<Queue>,
     pub device: Arc<Device>,
     pub frame_system: FrameSystem,
     pub rasterizer_system: RasterizerSystem,
+    pub creation_interface: CreationInterface,
+}
+
+pub struct CreationInterface {
+    pub memory_allocator: Arc<StandardMemoryAllocator>,
+    pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    pub descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+    pub queue: Arc<Queue>,
 }
 
 pub struct RenderPipeline {
     pub vulkano_interface: VulkanoInterface,
-    pub voxel_compute: VoxelComputePipeline,
-    pub projectile_compute: ProjectileComputePipeline,
-    pub rollback_data: Box<dyn PlayerSim>,
-    pub card_manager: CardManager,
     pub settings: Settings,
+    pub game: Option<Game>
 }
 
 impl RenderPipeline {
     pub fn new(
         event_loop: &EventLoop<()>,
         settings: Settings,
-        deck: &Vec<Cooldown>,
     ) -> RenderPipeline {
         // Basic initialization. See the triangle example if you want more details about this.
 
@@ -209,47 +205,25 @@ impl RenderPipeline {
 
         let compute_queue: Arc<Queue> = queue.clone();
 
-        let mut card_manager = CardManager::default();
-
-        let rollback_data: Box<dyn PlayerSim> =
-            if settings.replay_settings.replay_mode == ReplayMode::Playback {
-                Box::new(ReplayData::new(
-                    &memory_allocator,
-                    &settings,
-                    &mut card_manager,
-                ))
-            } else {
-                Box::new(RollbackData::new(
-                    &memory_allocator,
-                    &settings,
-                    deck,
-                    &mut card_manager,
-                ))
-            };
-
         let vulkano_interface = VulkanoInterface {
-            memory_allocator,
-            command_buffer_allocator,
-            descriptor_set_allocator,
             swapchain,
             images,
             surface,
-            queue,
             device,
             frame_system,
             rasterizer_system,
+            creation_interface: CreationInterface {
+                memory_allocator,
+                command_buffer_allocator,
+                descriptor_set_allocator,
+                queue: compute_queue,
+            },
         };
 
         RenderPipeline {
-            voxel_compute: VoxelComputePipeline::new(&vulkano_interface, compute_queue.clone()),
-            projectile_compute: ProjectileComputePipeline::new(
-                &vulkano_interface,
-                compute_queue.clone(),
-            ),
-            rollback_data,
             vulkano_interface,
-            card_manager,
             settings,
+            game: None
         }
     }
 }

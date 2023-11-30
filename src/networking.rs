@@ -6,7 +6,7 @@ use std::str;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-use crate::{card_system::Cooldown, rollback_manager::PlayerAction, settings_manager::Settings};
+use crate::{card_system::Cooldown, rollback_manager::PlayerAction, settings_manager::Settings, game_manager::GameSettings};
 
 #[derive(Debug)]
 pub struct NetworkConnection {
@@ -23,12 +23,12 @@ pub enum NetworkPacket {
 }
 
 impl NetworkConnection {
-    pub fn new(settings: &Settings) -> Self {
-        let room_url = if settings.is_remote {
+    pub fn new(settings: &Settings, game_settings: &GameSettings) -> Self {
+        let room_url = format!("{}{}", if game_settings.is_remote {
             settings.remote_url.clone()
         } else {
             settings.local_url.clone()
-        };
+        }, game_settings.player_count);
         println!("connecting to matchbox server: {:?}", room_url);
         let (socket, loop_fut) = WebRtcSocket::new_reliable(room_url);
 

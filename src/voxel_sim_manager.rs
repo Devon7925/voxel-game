@@ -8,8 +8,11 @@
 // according to those terms.
 
 use crate::{
-    app::VulkanoInterface, utils::QueueSet, world_gen::WorldGen, SimData, CHUNK_SIZE, RENDER_SIZE,
-    SUB_CHUNK_COUNT,
+    app::CreationInterface,
+    game_manager::{GameSettings, GameState},
+    utils::QueueSet,
+    world_gen::WorldGen,
+    CHUNK_SIZE, RENDER_SIZE, SUB_CHUNK_COUNT,
 };
 use noise::{Add, Constant, Multiply, NoiseFn, OpenSimplex, ScalePoint};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -79,8 +82,8 @@ fn empty_grid(memory_allocator: Arc<StandardMemoryAllocator>) -> Subbuffer<[[u32
 }
 
 impl VoxelComputePipeline {
-    pub fn new(app: &VulkanoInterface, compute_queue: Arc<Queue>) -> VoxelComputePipeline {
-        let memory_allocator = &app.memory_allocator;
+    pub fn new(creation_interface: &CreationInterface) -> VoxelComputePipeline {
+        let memory_allocator = &creation_interface.memory_allocator;
 
         // generate based on simplex noise
         const SCALE: f64 = 0.04;
@@ -104,20 +107,20 @@ impl VoxelComputePipeline {
         let voxel_buffer = empty_grid(memory_allocator.clone());
 
         let compute_life_pipeline = {
-            let shader = compute_dists_cs::load(compute_queue.device().clone()).unwrap();
+            let shader = compute_dists_cs::load(creation_interface.queue.device().clone()).unwrap();
 
             let cs = shader.entry_point("main").unwrap();
             let stage = PipelineShaderStageCreateInfo::new(cs);
             let layout = PipelineLayout::new(
-                compute_queue.device().clone(),
+                creation_interface.queue.device().clone(),
                 PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(compute_queue.device().clone())
+                    .into_pipeline_layout_create_info(creation_interface.queue.device().clone())
                     .unwrap(),
             )
             .unwrap();
 
             ComputePipeline::new(
-                compute_queue.device().clone(),
+                creation_interface.queue.device().clone(),
                 None,
                 ComputePipelineCreateInfo::stage_layout(stage, layout),
             )
@@ -149,10 +152,10 @@ impl VoxelComputePipeline {
         .unwrap();
 
         VoxelComputePipeline {
-            compute_queue,
+            compute_queue: creation_interface.queue.clone(),
             compute_life_pipeline,
-            command_buffer_allocator: app.command_buffer_allocator.clone(),
-            descriptor_set_allocator: app.descriptor_set_allocator.clone(),
+            command_buffer_allocator: creation_interface.command_buffer_allocator.clone(),
+            descriptor_set_allocator: creation_interface.descriptor_set_allocator.clone(),
             voxel_buffer,
             chunk_update_queue: QueueSet::with_capacity(256),
             chunk_updates,
@@ -224,8 +227,8 @@ impl VoxelComputePipeline {
         }
     }
 
-    pub fn move_start_pos(&mut self, sim_data: &mut SimData, offset: [i32; 3]) {
-        sim_data.start_pos = [0, 1, 2].map(|i| sim_data.start_pos[i] + offset[i]);
+    pub fn move_start_pos(&mut self, game_state: &mut GameState, offset: [i32; 3]) {
+        game_state.start_pos = [0, 1, 2].map(|i| game_state.start_pos[i] + offset[i]);
 
         let [load_range_x, load_range_y, load_range_z] = [0, 1, 2].map(|i| {
             if offset[i] > 0 {
@@ -239,9 +242,9 @@ impl VoxelComputePipeline {
             for y_i in 0..RENDER_SIZE[1] {
                 for z_i in 0..RENDER_SIZE[2] {
                     let chunk_location = [
-                        sim_data.start_pos[0] + x_offset,
-                        sim_data.start_pos[1] + y_i as i32,
-                        sim_data.start_pos[2] + z_i as i32,
+                        game_state.start_pos[0] + x_offset,
+                        game_state.start_pos[1] + y_i as i32,
+                        game_state.start_pos[2] + z_i as i32,
                     ];
                     self.write_chunk(chunk_location);
                 }
@@ -255,9 +258,9 @@ impl VoxelComputePipeline {
             for y_offset in load_range_y.clone() {
                 for z_i in 0..RENDER_SIZE[2] {
                     let chunk_location = [
-                        sim_data.start_pos[0] + x_i as i32,
-                        sim_data.start_pos[1] + y_offset,
-                        sim_data.start_pos[2] + z_i as i32,
+                        game_state.start_pos[0] + x_i as i32,
+                        game_state.start_pos[1] + y_offset,
+                        game_state.start_pos[2] + z_i as i32,
                     ];
                     self.write_chunk(chunk_location);
                 }
@@ -274,9 +277,9 @@ impl VoxelComputePipeline {
                 }
                 for z_offset in load_range_z.clone() {
                     let chunk_location = [
-                        sim_data.start_pos[0] + x_i as i32,
-                        sim_data.start_pos[1] + y_i as i32,
-                        sim_data.start_pos[2] + z_offset,
+                        game_state.start_pos[0] + x_i as i32,
+                        game_state.start_pos[1] + y_i as i32,
+                        game_state.start_pos[2] + z_offset,
                     ];
                     self.write_chunk(chunk_location);
                 }
@@ -284,7 +287,7 @@ impl VoxelComputePipeline {
         }
     }
 
-    pub fn load_chunks(&mut self, sim_data: &mut SimData) {
+    pub fn load_chunks(&mut self, start_pos: [i32; 3]) {
         let mut chunk_buffer = self.voxel_buffer.write().unwrap();
         for x_i in 0..RENDER_SIZE[0] {
             for y_i in 0..RENDER_SIZE[1] {
@@ -292,18 +295,18 @@ impl VoxelComputePipeline {
                     .into_par_iter()
                     .map(|z_i| {
                         let chunk_location = [
-                            sim_data.start_pos[0] + x_i as i32,
-                            sim_data.start_pos[1] + y_i as i32,
-                            sim_data.start_pos[2] + z_i as i32,
+                            start_pos[0] + x_i as i32,
+                            start_pos[1] + y_i as i32,
+                            start_pos[2] + z_i as i32,
                         ];
                         self.world_gen.gen_chunk(chunk_location)
                     })
                     .collect();
                 for (z_i, chunk) in chunks.into_iter().enumerate() {
                     let chunk_location = [
-                        sim_data.start_pos[0] + x_i as i32,
-                        sim_data.start_pos[1] + y_i as i32,
-                        sim_data.start_pos[2] + z_i as i32,
+                        start_pos[0] + x_i as i32,
+                        start_pos[1] + y_i as i32,
+                        start_pos[2] + z_i as i32,
                     ];
                     let chunk_idx = self.get_chunk_idx(chunk_location);
                     for (i, vox) in chunk.into_iter().enumerate() {
@@ -366,7 +369,12 @@ impl VoxelComputePipeline {
         }
     }
 
-    pub fn compute<F>(&mut self, before_future: F, sim_data: &mut SimData) -> Box<dyn GpuFuture>
+    pub fn compute<F>(
+        &mut self,
+        before_future: F,
+        game_state: &GameState,
+        game_settings: &GameSettings,
+    ) -> Box<dyn GpuFuture>
     where
         F: GpuFuture + 'static,
     {
@@ -387,7 +395,7 @@ impl VoxelComputePipeline {
         // wanted to simulate 10 steps at a time...
 
         // First compute the next state.
-        self.dispatch(&mut builder, sim_data);
+        self.dispatch(&mut builder, game_state, game_settings);
 
         let command_buffer = builder.build().unwrap();
         let finished = before_future
@@ -402,7 +410,8 @@ impl VoxelComputePipeline {
     fn dispatch(
         &mut self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        sim_data: &mut SimData,
+        game_state: &GameState,
+        game_settings: &GameSettings,
     ) {
         // Resize image if needed.
         let pipeline_layout = self.compute_life_pipeline.layout();
@@ -410,9 +419,9 @@ impl VoxelComputePipeline {
 
         let uniform_buffer_subbuffer = {
             let uniform_data = compute_dists_cs::SimData {
-                max_dist: sim_data.max_dist.into(),
-                render_size: sim_data.render_size.into(),
-                start_pos: sim_data.start_pos.into(),
+                max_dist: 15.into(),
+                render_size: game_settings.render_size.into(),
+                start_pos: game_state.start_pos.into(),
             };
 
             let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
@@ -426,15 +435,18 @@ impl VoxelComputePipeline {
         {
             let mut chunk_updates_buffer = self.chunk_updates.write().unwrap();
             while let Some(loc) = self.chunk_update_queue.pop() {
-                if loc[0] >= (SUB_CHUNK_COUNT as i32) * sim_data.start_pos[0]
+                if loc[0] >= (SUB_CHUNK_COUNT as i32) * game_state.start_pos[0]
                     && loc[0]
-                        < (SUB_CHUNK_COUNT as i32) * (sim_data.start_pos[0] + RENDER_SIZE[0] as i32)
-                    && loc[1] >= (SUB_CHUNK_COUNT as i32) * sim_data.start_pos[1]
+                        < (SUB_CHUNK_COUNT as i32)
+                            * (game_state.start_pos[0] + RENDER_SIZE[0] as i32)
+                    && loc[1] >= (SUB_CHUNK_COUNT as i32) * game_state.start_pos[1]
                     && loc[1]
-                        < (SUB_CHUNK_COUNT as i32) * (sim_data.start_pos[1] + RENDER_SIZE[1] as i32)
-                    && loc[2] >= (SUB_CHUNK_COUNT as i32) * sim_data.start_pos[2]
+                        < (SUB_CHUNK_COUNT as i32)
+                            * (game_state.start_pos[1] + RENDER_SIZE[1] as i32)
+                    && loc[2] >= (SUB_CHUNK_COUNT as i32) * game_state.start_pos[2]
                     && loc[2]
-                        < (SUB_CHUNK_COUNT as i32) * (sim_data.start_pos[2] + RENDER_SIZE[2] as i32)
+                        < (SUB_CHUNK_COUNT as i32)
+                            * (game_state.start_pos[2] + RENDER_SIZE[2] as i32)
                 {
                     chunk_updates_buffer[chunk_update_count] = [loc[0], loc[1], loc[2], 0];
                     chunk_update_count += 1;
