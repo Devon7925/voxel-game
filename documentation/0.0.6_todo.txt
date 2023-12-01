@@ -1,8 +1,7 @@
 Convert characters to new format
-    edgy_skeleton
     hammer_man
-    ice_queen
-    machinegun_grandpa
-    robo_horse
+        allow seeing players through projectiles
+        fix frame delay on lock-on
 
 Ensure multiplayer synchronization
+    fix asynchrounous chunk updates causing non-deterministic chunk update order

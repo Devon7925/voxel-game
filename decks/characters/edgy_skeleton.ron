@@ -1,43 +1,72 @@
 [
-    MultiCast([
-        Projectile([
-            SimpleModify(Speed,1),
-            SimpleModify(Width,-10),
-            SimpleModify(Height,-10),
-            SimpleModify(Length,-10),
-            SimpleModify(Health,-10),
-            SimpleModify(Lifetime,-3),
-            OnHit(Effect(Damage(1))),
-        ]),
-    ],[
-        Spread(5),
-        Duplication(5),
-    ]),
-    MultiCast([],[]),
-    Projectile([
-        SimpleModify(Speed,6),
-        SimpleModify(Width,-5),
-        SimpleModify(Length,-5),
-        SimpleModify(Height,4),
-        SimpleModify(Lifetime,-3),
-        SimpleModify(Health,-10),
-        OnHit(Projectile([
-            SimpleModify(Speed,-3),
-            SimpleModify(Width,-10),
-            SimpleModify(Length,-10),
-            SimpleModify(Height,-10),
-            SimpleModify(Lifetime,-30),
-            SimpleModify(Health,-10),
-            OnExpiry(MultiCast([
-                Effect(Cleanse),
-                Effect(Teleport),
-            ],[])),
-        ])),
-    ]),
-    MultiCast([
-        Effect(Cleanse),
-        Effect(StatusEffect(Speed, 5)),
-        Effect(StatusEffect(Speed, 5)),
-        Effect(StatusEffect(Invincibility, 5)),
-    ],[]),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: Pressed(Mouse(Left)),
+                card: MultiCast([
+                    Projectile([
+                        SimpleModify(Speed,1),
+                        SimpleModify(Width,-10),
+                        SimpleModify(Height,-10),
+                        SimpleModify(Length,-10),
+                        SimpleModify(Health,-10),
+                        SimpleModify(Lifetime,-3),
+                        OnHit(Effect(Damage(3))),
+                    ]),
+                ],[
+                    Spread(5),
+                    Duplication(4),
+                ]),
+            ),
+        ]
+    ),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: OnPressed(Key(E)),
+                card: MultiCast([
+                    Projectile([
+                        SimpleModify(Speed,6),
+                        SimpleModify(Width,-5),
+                        SimpleModify(Length,-5),
+                        SimpleModify(Height,4),
+                        SimpleModify(Lifetime,-3),
+                        SimpleModify(Health,-10),
+                        OnHit(Projectile([
+                            SimpleModify(Speed,-3),
+                            SimpleModify(Width,-10),
+                            SimpleModify(Length,-10),
+                            SimpleModify(Height,-10),
+                            SimpleModify(Lifetime,-30),
+                            SimpleModify(Health,-10),
+                            OnExpiry(MultiCast([
+                                Effect(Cleanse),
+                                Effect(Teleport),
+                            ],[])),
+                        ])),
+                    ]),
+                    Effect(StatusEffect(Slow, 2)),
+                    Effect(StatusEffect(Slow, 2)),
+                    Effect(StatusEffect(Slow, 2)),
+                    Effect(StatusEffect(DecreaceGravity, 2)),
+                ],[]),
+            ),
+        ]
+    ),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: Pressed(Key(LShift)),
+                card: MultiCast([
+                    Effect(Cleanse),
+                    Effect(StatusEffect(Speed, 6)),
+                    Effect(StatusEffect(Speed, 6)),
+                    Effect(StatusEffect(Invincibility, 6)),
+                ],[]),
+            ),
+        ]
+    ),
 ]

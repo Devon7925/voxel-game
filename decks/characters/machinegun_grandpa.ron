@@ -1,51 +1,94 @@
 [
-    Projectile([SimpleModify(Speed,10),SimpleModify(Width,-10),SimpleModify(Height,-10),SimpleModify(Length,-10),SimpleModify(Lifetime,-3),SimpleModify(Health,-10),OnHit(Effect(Damage(9)))]),
-    Projectile([
-        SimpleModify(Width,-4),
-        SimpleModify(Height,-4),
-        SimpleModify(Length,-1),
-        SimpleModify(Health,-10),
-        OnHit(Effect(Damage(20))),
-        OnHit(Projectile([
-            SimpleModify(Speed,-3),
-            SimpleModify(Lifetime,-10),
-            SimpleModify(Health,-10),
-            PiercePlayers,
-            OnHit(Effect(Damage(20))),
-        ])),
-        OnHit(Projectile([
-            SimpleModify(Speed,-3),
-            SimpleModify(Lifetime,-10),
-            SimpleModify(Health,-10),
-            FriendlyFire,
-            PiercePlayers,
-            OnHit(Effect(Damage(20))),
-            OnHit(Effect(Knockback(1))),
-        ])),
-    ]),
-    Projectile([
-        SimpleModify(Speed,-3),
-        SimpleModify(Lifetime,1),
-        SimpleModify(Width,-8),
-        SimpleModify(Height,-8),
-        SimpleModify(Length,-8),
-        SimpleModify(Health,-10),
-        PiercePlayers,
-        Trail(2, Projectile([
-            FriendlyFire,
-            PiercePlayers,
-            SimpleModify(Speed,-3),
-            SimpleModify(Width,2),
-            SimpleModify(Height,-20),
-            SimpleModify(Length,2),
-            SimpleModify(Lifetime,-10),
-            SimpleModify(Health,-10),
-            OnHit(Effect(StatusEffect(HealOverTime, 1))),
-        ])),
-    ]),
-    MultiCast([
-        Effect(StatusEffect(Speed, 1)),
-        Effect(StatusEffect(Speed, 1)),
-    ],[]),
-    Effect(StatusEffect(DamageOverTime, 1)),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: Pressed(Mouse(Left)),
+                card: Projectile([
+                    SimpleModify(Speed,10),
+                    SimpleModify(Width,-10),
+                    SimpleModify(Height,-10),
+                    SimpleModify(Length,-10),
+                    SimpleModify(Lifetime,-3),
+                    SimpleModify(Health,-10),
+                    OnHit(Effect(Damage(9)))]
+                ),
+            ),
+        ]
+    ),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: Pressed(Mouse(Right)),
+                card: Projectile([
+                    SimpleModify(Width,-4),
+                    SimpleModify(Height,-4),
+                    SimpleModify(Length,-1),
+                    SimpleModify(Health,-10),
+                    OnHit(Effect(Damage(20))),
+                    OnHit(Projectile([
+                        SimpleModify(Speed,-3),
+                        SimpleModify(Lifetime,-10),
+                        SimpleModify(Health,-10),
+                        PiercePlayers,
+                        OnHit(Effect(Damage(20))),
+                    ])),
+                    OnHit(Projectile([
+                        SimpleModify(Speed,-3),
+                        SimpleModify(Lifetime,-10),
+                        SimpleModify(Health,-10),
+                        FriendlyFire,
+                        PiercePlayers,
+                        OnHit(Effect(Damage(20))),
+                        OnHit(Effect(Knockback(1))),
+                    ])),
+                ]),
+            ),
+        ]
+    ),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: Pressed(Key(E)),
+                card: Projectile([
+                    SimpleModify(Speed,-3),
+                    SimpleModify(Lifetime,1),
+                    SimpleModify(Width,-8),
+                    SimpleModify(Height,-8),
+                    SimpleModify(Length,-8),
+                    SimpleModify(Health,-10),
+                    NoEnemyFire,
+                    PiercePlayers,
+                    Trail(2, Projectile([
+                        SimpleModify(Speed,-3),
+                        SimpleModify(Width,4),
+                        SimpleModify(Height,-20),
+                        SimpleModify(Length,4),
+                        SimpleModify(Lifetime,-10),
+                        SimpleModify(Health,-10),
+                        FriendlyFire,
+                        NoEnemyFire,
+                        PiercePlayers,
+                        OnHit(Effect(StatusEffect(HealOverTime, 1))),
+                        OnHit(Effect(StatusEffect(HealOverTime, 1))),
+                    ])),
+                ]),
+            ),
+        ]
+    ),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: Pressed(Key(LShift)),
+                card: MultiCast([
+                    Effect(StatusEffect(Speed, 1)),
+                    Effect(StatusEffect(Speed, 1)),
+                ],[]),
+    
+            ),
+        ]
+    ),
 ]

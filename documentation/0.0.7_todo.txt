@@ -10,7 +10,8 @@ Card Editor
         Damage & Knockback magnitude
         Decreace multi modifier's magnitude
     Show cooldowns
-    Import button
+    Display keybind
+    Import/Export buttons
 
 World Gen
     Move to GPU compute
@@ -31,5 +32,14 @@ Multiplayer
             world size
         Lobby list screen
         Join lobby
+
+Cards
+    On headshot
+    StatusEffect
+        lock out
+        stop
+    Multi cooldown balancing
+    Cooldown modifiers
+        Reduce cooldown
 
 Performance checkup

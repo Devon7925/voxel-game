@@ -3,26 +3,6 @@
         modifiers: [],
         abilities: [
             (
-                keybind: Pressed(Mouse(Left)),
-                card: Projectile([
-                    SimpleModify(Width,3),
-                    SimpleModify(Height,-3),
-                    SimpleModify(Length,-3),
-                    SimpleModify(Speed,-1),
-                    SimpleModify(Lifetime,-5),
-                    SimpleModify(Health,-10),
-                    LockToOwner,
-                    PiercePlayers,
-                    OnHit(Effect(Damage(42))),
-                ]),
-    
-            ),
-        ]
-    ),
-    Cooldown(
-        modifiers: [],
-        abilities: [
-            (
                 keybind: Pressed(Mouse(Right)),
                 card: MultiCast([
                     Projectile([
@@ -39,6 +19,21 @@
                     Effect(StatusEffect(Slow, 3)),
                 ],[]),
     
+            ),
+            (
+                keybind: Pressed(Mouse(Left)),
+                card: Projectile([
+                    SimpleModify(Width,3),
+                    SimpleModify(Height,-3),
+                    SimpleModify(Length,-3),
+                    SimpleModify(Speed,-1),
+                    SimpleModify(Lifetime,-6),
+                    SimpleModify(Health,-10),
+                    LockToOwner,
+                    PiercePlayers,
+                    OnHit(Effect(Damage(42))),
+                    OnHit(Effect(Knockback(1))),
+                ]),
             ),
         ]
     ),
@@ -64,9 +59,11 @@
         modifiers: [],
         abilities: [
             (
-                keybind: OnPressed(Key(LShift)),
+                keybind: Pressed(Key(LShift)),
                 card: MultiCast([
-                    Effect(StatusEffect(OnHit(Effect(Damage(25))), 10)),
+                    Effect(StatusEffect(OnHit(Effect(Damage(25))), 6)),
+                    Effect(StatusEffect(OnHit(Effect(Knockback(5))), 6)),
+                    Effect(StatusEffect(DecreaceGravity, 6)),
                     Effect(Knockback(20)),
                 ],[]),
             ),

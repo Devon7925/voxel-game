@@ -60,7 +60,7 @@ impl Cooldown {
             .all(|ability| ability.card.is_reasonable())
     }
 
-    pub fn get_cooldown_recovery(&self) -> (f32, f32) {
+    pub fn get_cooldown_recovery(&self) -> (f32, Vec<f32>) {
         let ability_values: Vec<f32> = self
             .abilities
             .iter()
@@ -85,9 +85,13 @@ impl Cooldown {
             }
         }
         let cooldown = 0.5 * added_cooldown as f32
-            + (sum + 2.0 * max) / 3.0 * (1.0 + 0.2 * ability_charges as f32);
-        let recovery = 0.5 * added_cooldown as f32
-            + (sum + 2.0 * max) / 3.0 * (1.0 - (-(ability_charges as f32 / 10.0)).exp());
+            + (sum + 2.0 * max) / 3.0 * (1.0 + 0.25 * (ability_charges as f32 + 1.0).ln());
+        let recovery = ability_values
+            .iter()
+            .map(|val| {
+                0.5 * added_cooldown as f32 + val * (1.0 - (-(ability_charges as f32 / 10.0)).exp())
+            })
+            .collect();
         (cooldown, recovery)
     }
 
@@ -500,15 +504,17 @@ impl BaseCard {
                         .min(1.0)
                 });
                 let mut value = vec![];
-                value.push(CardValue {
-                    damage: 0.0,
-                    generic: 0.02
-                        * lifetime
-                        * (1.0 + width * height + length)
-                        * (1.0 + health)
-                        * if friendly_fire { 1.0 } else { 2.0 },
-                    range_probabilities,
-                });
+                if enemy_fire {
+                    value.push(CardValue {
+                        damage: 0.0,
+                        generic: 0.02
+                            * lifetime
+                            * (width * height + length * height + length * width)
+                            * (1.0 + health)
+                            * if friendly_fire { 1.0 } else { 2.0 },
+                        range_probabilities,
+                    });
+                }
                 value.extend(trail_value.into_iter().flat_map(|(value, freq)| {
                     (1..(freq * lifetime) as usize).map(move |idx| {
                         let dist = idx as f32 / freq * speed;
@@ -684,7 +690,7 @@ impl BaseCard {
                         damage: 0.0,
                         generic: Self::EFFECT_LENGTH_SCALE
                             * (if is_direct { -1.0 } else { 1.0 })
-                            * 0.5
+                            * 0.3
                             * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
@@ -705,7 +711,7 @@ impl BaseCard {
                             }]
                         } else {
                             vec![CardValue {
-                                damage: Self::EFFECT_LENGTH_SCALE * (*duration as f32),
+                                damage: Self::EFFECT_LENGTH_SCALE * 7.0 * (*duration as f32),
                                 generic: 0.0,
                                 range_probabilities: core::array::from_fn(|idx| {
                                     if idx == 0 {
@@ -943,6 +949,10 @@ impl BaseCard {
                     panic!("Invalid state");
                 }
             }
+            BaseCard::Effect(Effect::StatusEffect(StatusEffect::OnHit(card), _)) => {
+                assert!(path.pop_front().unwrap() == 0);
+                card.take_from_path(path)
+            }
             invalid_take => panic!("Invalid state: cannot take from {:?}", invalid_take),
         }
     }
@@ -1042,6 +1052,10 @@ impl BaseCard {
                     cards[idx].insert_to_path(path, item)
                 }
             }
+            BaseCard::Effect(Effect::StatusEffect(StatusEffect::OnHit(card), _)) => {
+                assert!(path.pop_front().unwrap() == 0);
+                card.insert_to_path(path, item);
+            }
             BaseCard::None => {
                 assert!(
                     path.is_empty(),
@@ -1113,6 +1127,10 @@ impl BaseCard {
                         panic!("Invalid state");
                     }
                 }
+            }
+            BaseCard::Effect(Effect::StatusEffect(StatusEffect::OnHit(card), _)) => {
+                assert!(path.pop_front().unwrap() == 0);
+                card.cleanup(path);
             }
             BaseCard::None => {
                 assert!(path.is_empty(), "Invalid state");

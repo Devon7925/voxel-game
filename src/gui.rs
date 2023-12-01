@@ -582,7 +582,9 @@ pub fn draw_base_card(
                                 Effect::StatusEffect(e, t) => {
                                     if let StatusEffect::OnHit(base_card) = e {
                                         ui.label("On Hit");
-                                        draw_base_card(ui, base_card, path, source_path, dest_path)
+                                        path.push_back(0);
+                                        draw_base_card(ui, base_card, path, source_path, dest_path);
+                                        path.pop_back();
                                     } else {
                                         let effect_name = match e {
                                             StatusEffect::DamageOverTime => "Damage Over Time",

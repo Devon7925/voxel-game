@@ -230,7 +230,7 @@ pub struct AppliedStatusEffect {
 #[derive(Clone, Debug)]
 pub struct PlayerAbility {
     pub ability: ReferencedCooldown,
-    pub value: (f32, f32),
+    pub value: (f32, Vec<f32>),
     pub cooldown: f32,
     pub recovery: f32,
 }
@@ -1433,8 +1433,8 @@ impl WorldState {
             let player1_pos = self.players.get(i).unwrap().pos;
             let player2_pos = self.players.get(j).unwrap().pos;
             let hit_effects = {
-                let player1 = self.players.get(i).unwrap();
-                player1
+                let player1 = self.players.get_mut(i).unwrap();
+                let hit_effects = player1
                     .status_effects
                     .iter()
                     .filter_map(|effect| match effect {
@@ -1453,7 +1453,18 @@ impl WorldState {
                             false,
                         )
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                
+                player1.status_effects.retain(|effect| match effect {
+                    AppliedStatusEffect {
+                        effect: ReferencedStatusEffect::OnHit(_),
+                        time_left: _,
+                    } => {
+                        false
+                    }
+                    _ => true,
+                });
+                hit_effects
             };
             for (on_hit_projectiles, on_hit_voxels, effects, triggers) in hit_effects {
                 new_projectiles.extend(on_hit_projectiles);
@@ -1903,7 +1914,7 @@ impl Entity {
                     for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
                         if action.activate_ability[cooldown_idx][ability_idx] {
                             cooldown.cooldown += cooldown.value.0;
-                            cooldown.recovery = cooldown.value.1;
+                            cooldown.recovery = cooldown.value.1[ability_idx];
                             let (proj_effects, vox_effects, effects, triggers) = card_manager
                                 .get_effects_from_base_card(
                                     ability.0,

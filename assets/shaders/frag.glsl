@@ -85,6 +85,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         vec3 delta = RayBoxDist(ray_pos, ray, v_min, v_max);
         float dist_diff = min(delta.x, min(delta.y, delta.z));
         if (depth + dist_diff > max_depth && max_depth > 0) {
+            depth = max_depth;
             break;
         }
         depth += dist_diff;
