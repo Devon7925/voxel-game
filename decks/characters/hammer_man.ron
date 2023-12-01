@@ -1,40 +1,75 @@
 [
-    Projectile([
-        SimpleModify(Width,3),
-        SimpleModify(Height,-3),
-        SimpleModify(Length,-3),
-        SimpleModify(Speed,-1),
-        SimpleModify(Lifetime,-5),
-        SimpleModify(Health,-10),
-        LockToOwner,
-        PiercePlayers,
-        OnHit(Effect(Damage(42))),
-    ]),
-    MultiCast([
-        Projectile([
-            SimpleModify(Speed,-1),
-            SimpleModify(Width,2),
-            SimpleModify(Height,1),
-            SimpleModify(Length,-15),
-            SimpleModify(Health,1),
-            SimpleModify(Lifetime,-2),
-            LockToOwner,
-            PiercePlayers,
-        ]),
-        Effect(StatusEffect(Slow, 1)),
-        Effect(StatusEffect(Slow, 1)),
-    ],[]),
-    Projectile([
-        SimpleModify(Width,-1),
-        SimpleModify(Height,-1),
-        SimpleModify(Length,-1),
-        SimpleModify(Speed,-1),
-        SimpleModify(Health,-10),
-        PiercePlayers,
-        OnHit(Effect(Damage(50))),
-    ]),
-    MultiCast([
-        Effect(StatusEffect(OnHit(Effect(Damage(25))), 10)),
-        Effect(Knockback(20)),
-    ],[]),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: Pressed(Mouse(Left)),
+                card: Projectile([
+                    SimpleModify(Width,3),
+                    SimpleModify(Height,-3),
+                    SimpleModify(Length,-3),
+                    SimpleModify(Speed,-1),
+                    SimpleModify(Lifetime,-5),
+                    SimpleModify(Health,-10),
+                    LockToOwner,
+                    PiercePlayers,
+                    OnHit(Effect(Damage(42))),
+                ]),
+    
+            ),
+        ]
+    ),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: Pressed(Mouse(Right)),
+                card: MultiCast([
+                    Projectile([
+                        SimpleModify(Speed,-1),
+                        SimpleModify(Width,2),
+                        SimpleModify(Height,1),
+                        SimpleModify(Length,-15),
+                        SimpleModify(Health,1),
+                        SimpleModify(Lifetime,-2),
+                        LockToOwner,
+                        PiercePlayers,
+                    ]),
+                    Effect(StatusEffect(Slow, 3)),
+                    Effect(StatusEffect(Slow, 3)),
+                ],[]),
+    
+            ),
+        ]
+    ),
+    Cooldown(
+        modifiers: [AddCharge(1)],
+        abilities: [
+            (
+                keybind: OnPressed(Key(E)),
+                card: Projectile([
+                    SimpleModify(Width,-1),
+                    SimpleModify(Height,-1),
+                    SimpleModify(Length,-1),
+                    SimpleModify(Speed,-1),
+                    SimpleModify(Health,-10),
+                    PiercePlayers,
+                    OnHit(Effect(Damage(50))),
+                ]),
+    
+            ),
+        ]
+    ),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: OnPressed(Key(LShift)),
+                card: MultiCast([
+                    Effect(StatusEffect(OnHit(Effect(Damage(25))), 10)),
+                    Effect(Knockback(20)),
+                ],[]),
+            ),
+        ]
+    )
 ]

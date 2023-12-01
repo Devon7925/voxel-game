@@ -315,7 +315,7 @@ void main() {
 
     vec3 pos = cam_data.pos.xyz;
 
-    RaycastResult primary_ray = raycast(pos, ray, push_constants.primary_ray_dist, false, max_depth);
+    RaycastResult primary_ray = raycast(pos, ray, push_constants.primary_ray_dist, true, max_depth);
     
     if (!primary_ray.hit) {
         if (in_depth >= 1.0) {

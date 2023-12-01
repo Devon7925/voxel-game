@@ -1,16 +1,17 @@
 use std::collections::VecDeque;
 
 use egui_winit_vulkano::egui::{
-    self, epaint, text::LayoutJob, Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse,
-    LayerId, Order, Rect, Rgba, Rounding, Sense, Shape, Stroke, TextFormat, Ui, Vec2, RichText, emath, pos2, ScrollArea,
+    self, emath, epaint, pos2, text::LayoutJob, Align, Align2, Color32, CursorIcon, FontId, Id,
+    InnerResponse, LayerId, Order, Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape,
+    Stroke, TextFormat, Ui, Vec2,
 };
 
 use crate::{
     card_system::{
         BaseCard, Cooldown, CooldownModifier, Effect, MultiCastModifier, ProjectileModifier,
-        ProjectileModifierType, StatusEffect, ReferencedStatusEffect, VoxelMaterial,
+        ProjectileModifierType, ReferencedStatusEffect, StatusEffect, VoxelMaterial,
     },
-    rollback_manager::{PlayerAbility, Player, AppliedStatusEffect, HealthSection},
+    rollback_manager::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
 };
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
@@ -743,240 +744,194 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
             );
 
             ui.allocate_ui_at_rect(menu_size, |ui| {
-                ui.painter().rect_filled(
-                    ui.available_rect_before_wrap(),
-                    0.0,
-                    Color32::BLACK,
-                );
+                ui.painter()
+                    .rect_filled(ui.available_rect_before_wrap(), 0.0, Color32::BLACK);
                 ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .scroll_bar_visibility(
                         egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
                     )
                     .show(ui, |ui| {
-                        ui.with_layout(
-                            egui::Layout::top_down(egui::Align::LEFT),
-                            |ui| {
-                                ui.label(
-                                    RichText::new("Card Editor")
-                                        .color(Color32::WHITE),
+                        ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
+                            ui.label(RichText::new("Card Editor").color(Color32::WHITE));
+                            ui.horizontal(|ui| {
+                                ui.selectable_value(
+                                    &mut gui_state.palette_state,
+                                    PaletteState::ProjectileModifiers,
+                                    "Projectile Modifiers",
                                 );
-                                ui.horizontal(|ui| {
-                                    ui.selectable_value(
-                                        &mut gui_state.palette_state,
-                                        PaletteState::ProjectileModifiers,
-                                        "Projectile Modifiers",
-                                    );
-                                    ui.selectable_value(
-                                        &mut gui_state.palette_state,
-                                        PaletteState::BaseCards,
-                                        "Base Cards",
-                                    );
-                                    ui.selectable_value(
-                                        &mut gui_state.palette_state,
-                                        PaletteState::AdvancedProjectileModifiers,
-                                        "Advanced Projectile Modifiers",
-                                    );
-                                    ui.selectable_value(
-                                        &mut gui_state.palette_state,
-                                        PaletteState::MultiCastModifiers,
-                                        "Multicast Modifiers",
-                                    );
-                                });
+                                ui.selectable_value(
+                                    &mut gui_state.palette_state,
+                                    PaletteState::BaseCards,
+                                    "Base Cards",
+                                );
+                                ui.selectable_value(
+                                    &mut gui_state.palette_state,
+                                    PaletteState::AdvancedProjectileModifiers,
+                                    "Advanced Projectile Modifiers",
+                                );
+                                ui.selectable_value(
+                                    &mut gui_state.palette_state,
+                                    PaletteState::MultiCastModifiers,
+                                    "Multicast Modifiers",
+                                );
+                            });
 
-                                let mut source_path = None;
-                                let mut drop_path = None;
-                                let mut dock_card = match gui_state.palette_state {
-                                    PaletteState::ProjectileModifiers => {
-                                        BaseCard::Projectile(vec![
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Gravity,
-                                                -1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Gravity,
-                                                1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Health,
-                                                -1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Health,
-                                                1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Length,
-                                                -1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Length,
-                                                1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Width,
-                                                -1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Width,
-                                                1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Height,
-                                                -1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Height,
-                                                1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Speed,
-                                                -1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Speed,
-                                                1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Lifetime,
-                                                -1,
-                                            ),
-                                            ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Lifetime,
-                                                1,
-                                            ),
-                                            ProjectileModifier::NoEnemyFire,
-                                            ProjectileModifier::FriendlyFire,
-                                            ProjectileModifier::LockToOwner,
-                                            ProjectileModifier::PiercePlayers,
-                                        ])
-                                    }
-                                    PaletteState::BaseCards => BaseCard::MultiCast(
-                                        vec![
-                                            BaseCard::Projectile(vec![]),
-                                            BaseCard::MultiCast(vec![], vec![]),
-                                            BaseCard::Effect(Effect::Damage(1)),
-                                            BaseCard::Effect(Effect::Damage(-1)),
-                                            BaseCard::Effect(Effect::Knockback(1)),
-                                            BaseCard::Effect(Effect::Knockback(-1)),
-                                            BaseCard::Effect(Effect::Cleanse),
-                                            BaseCard::Effect(Effect::Teleport),
-                                            BaseCard::CreateMaterial(
-                                                VoxelMaterial::Dirt,
-                                            ),
-                                            BaseCard::CreateMaterial(
-                                                VoxelMaterial::Stone,
-                                            ),
-                                            BaseCard::CreateMaterial(
-                                                VoxelMaterial::Ice,
-                                            ),
-                                            BaseCard::Trigger(0),
-                                        ],
-                                        vec![],
+                            let mut source_path = None;
+                            let mut drop_path = None;
+                            let mut dock_card = match gui_state.palette_state {
+                                PaletteState::ProjectileModifiers => BaseCard::Projectile(vec![
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Gravity,
+                                        -1,
                                     ),
-                                    PaletteState::AdvancedProjectileModifiers => {
-                                        BaseCard::Projectile(vec![
-                                            ProjectileModifier::OnHit(
-                                                BaseCard::None,
-                                            ),
-                                            ProjectileModifier::OnExpiry(
-                                                BaseCard::None,
-                                            ),
-                                            ProjectileModifier::OnTrigger(
-                                                0,
-                                                BaseCard::None,
-                                            ),
-                                            ProjectileModifier::Trail(
-                                                1,
-                                                BaseCard::None,
-                                            ),
-                                        ])
-                                    }
-                                    PaletteState::MultiCastModifiers => {
-                                        BaseCard::MultiCast(
-                                            vec![],
-                                            vec![
-                                                MultiCastModifier::Spread(1),
-                                                MultiCastModifier::Duplication(1),
-                                            ],
-                                        )
-                                    }
-                                };
-                                ui.scope(|ui| {
-                                    ui.visuals_mut().override_text_color = Some(Color32::WHITE);
-                                    draw_base_card(
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Gravity,
+                                        1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Health,
+                                        -1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Health,
+                                        1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Length,
+                                        -1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Length,
+                                        1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Width,
+                                        -1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Width,
+                                        1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Height,
+                                        -1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Height,
+                                        1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Speed,
+                                        -1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Speed,
+                                        1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Lifetime,
+                                        -1,
+                                    ),
+                                    ProjectileModifier::SimpleModify(
+                                        ProjectileModifierType::Lifetime,
+                                        1,
+                                    ),
+                                    ProjectileModifier::NoEnemyFire,
+                                    ProjectileModifier::FriendlyFire,
+                                    ProjectileModifier::LockToOwner,
+                                    ProjectileModifier::PiercePlayers,
+                                ]),
+                                PaletteState::BaseCards => BaseCard::MultiCast(
+                                    vec![
+                                        BaseCard::Projectile(vec![]),
+                                        BaseCard::MultiCast(vec![], vec![]),
+                                        BaseCard::Effect(Effect::Damage(1)),
+                                        BaseCard::Effect(Effect::Damage(-1)),
+                                        BaseCard::Effect(Effect::Knockback(1)),
+                                        BaseCard::Effect(Effect::Knockback(-1)),
+                                        BaseCard::Effect(Effect::Cleanse),
+                                        BaseCard::Effect(Effect::Teleport),
+                                        BaseCard::CreateMaterial(VoxelMaterial::Dirt),
+                                        BaseCard::CreateMaterial(VoxelMaterial::Stone),
+                                        BaseCard::CreateMaterial(VoxelMaterial::Ice),
+                                        BaseCard::Trigger(0),
+                                    ],
+                                    vec![],
+                                ),
+                                PaletteState::AdvancedProjectileModifiers => {
+                                    BaseCard::Projectile(vec![
+                                        ProjectileModifier::OnHit(BaseCard::None),
+                                        ProjectileModifier::OnExpiry(BaseCard::None),
+                                        ProjectileModifier::OnTrigger(0, BaseCard::None),
+                                        ProjectileModifier::Trail(1, BaseCard::None),
+                                    ])
+                                }
+                                PaletteState::MultiCastModifiers => BaseCard::MultiCast(
+                                    vec![],
+                                    vec![
+                                        MultiCastModifier::Spread(1),
+                                        MultiCastModifier::Duplication(1),
+                                    ],
+                                ),
+                            };
+                            ui.scope(|ui| {
+                                ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+                                draw_base_card(
+                                    ui,
+                                    &dock_card,
+                                    &mut vec![0].into(),
+                                    &mut source_path,
+                                    &mut drop_path,
+                                );
+                            });
+
+                            for (ability_idx, cooldown) in gui_state.gui_cards.iter().enumerate() {
+                                ui.horizontal_top(|ui| {
+                                    draw_cooldown(
                                         ui,
-                                        &dock_card,
-                                        &mut vec![0].into(),
+                                        &cooldown,
+                                        &mut vec![ability_idx as u32 + 1].into(),
                                         &mut source_path,
                                         &mut drop_path,
                                     );
                                 });
+                            }
 
-                                for (ability_idx, cooldown) in
-                                    gui_state.gui_cards.iter().enumerate()
-                                {
-                                    ui.horizontal_top(|ui| {
-                                        draw_cooldown(
-                                            ui,
-                                            &cooldown,
-                                            &mut vec![ability_idx as u32 + 1]
-                                                .into(),
-                                            &mut source_path,
-                                            &mut drop_path,
-                                        );
-                                    });
-                                }
-
-                                if let Some((source_path, source_type)) =
-                                    source_path.as_mut()
-                                {
-                                    if let Some((drop_path, drop_type)) =
-                                        drop_path.as_mut()
+                            if let Some((source_path, source_type)) = source_path.as_mut() {
+                                if let Some((drop_path, drop_type)) = drop_path.as_mut() {
+                                    if ui.input(|i| i.pointer.any_released())
+                                        && is_valid_drag(source_type, drop_type)
                                     {
-                                        if ui.input(|i| i.pointer.any_released())
-                                            && is_valid_drag(source_type, drop_type)
-                                        {
-                                            let source_action_idx =
-                                                source_path.pop_front().unwrap()
-                                                    as usize;
-                                            let drop_action_idx =
-                                                drop_path.pop_front().unwrap()
-                                                    as usize;
-                                            // do the drop:
-                                            let item = if source_action_idx == 0 {
-                                                dock_card
-                                                    .take_from_path(source_path)
-                                            } else {
-                                                gui_state.gui_cards
-                                                    [source_action_idx - 1]
-                                                    .take_from_path(
-                                                        &mut source_path.clone(),
-                                                    )
-                                            };
-                                            if drop_action_idx > 0 {
-                                                gui_state.gui_cards
-                                                    [drop_action_idx - 1]
-                                                    .insert_to_path(
-                                                        drop_path, item,
-                                                    );
-                                            }
-                                            if source_action_idx > 0 {
-                                                gui_state.gui_cards
-                                                    [source_action_idx - 1]
-                                                    .cleanup(source_path);
-                                            }
+                                        let source_action_idx =
+                                            source_path.pop_front().unwrap() as usize;
+                                        let drop_action_idx =
+                                            drop_path.pop_front().unwrap() as usize;
+                                        // do the drop:
+                                        let item = if source_action_idx == 0 {
+                                            dock_card.take_from_path(source_path)
+                                        } else {
+                                            gui_state.gui_cards[source_action_idx - 1]
+                                                .take_from_path(&mut source_path.clone())
+                                        };
+                                        if drop_action_idx > 0 {
+                                            gui_state.gui_cards[drop_action_idx - 1]
+                                                .insert_to_path(drop_path, item);
+                                        }
+                                        if source_action_idx > 0 {
+                                            gui_state.gui_cards[source_action_idx - 1]
+                                                .cleanup(source_path);
                                         }
                                     }
                                 }
-                            },
-                        );
+                            }
+                        });
                     });
             });
         });
 }
 
-pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Player) {
+pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Entity) {
     egui::Area::new("healthbar")
         .anchor(
             Align2::LEFT_BOTTOM,
@@ -985,23 +940,16 @@ pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Play
         .show(ctx, |ui| {
             let thickness = 1.0;
             let color = Color32::from_additive_luminance(255);
-            let (player_health, player_max_health) =
-                spectate_player.get_health_stats();
+            let (player_health, player_max_health) = spectate_player.get_health_stats();
 
-            for AppliedStatusEffect { effect, time_left } in
-                spectate_player.status_effects.iter()
-            {
+            for AppliedStatusEffect { effect, time_left } in spectate_player.status_effects.iter() {
                 let effect_name = match effect {
                     ReferencedStatusEffect::DamageOverTime => "Damage Over Time",
                     ReferencedStatusEffect::HealOverTime => "Heal Over Time",
                     ReferencedStatusEffect::Slow => "Slow",
                     ReferencedStatusEffect::Speed => "Speed",
-                    ReferencedStatusEffect::DecreaceDamageTaken => {
-                        "Decreace Damage Taken"
-                    }
-                    ReferencedStatusEffect::IncreaceDamageTaken => {
-                        "Increase Damage Taken"
-                    }
+                    ReferencedStatusEffect::DecreaceDamageTaken => "Decreace Damage Taken",
+                    ReferencedStatusEffect::IncreaceDamageTaken => "Increase Damage Taken",
                     ReferencedStatusEffect::DecreaceGravity => "Decreace Gravity",
                     ReferencedStatusEffect::IncreaceGravity => "Increase Gravity",
                     ReferencedStatusEffect::Invincibility => "Invincibility",
@@ -1021,15 +969,11 @@ pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Play
             let desired_size = egui::vec2(200.0, 30.0);
             let (_id, rect) = ui.allocate_space(desired_size);
 
-            let to_screen = emath::RectTransform::from_to(
-                Rect::from_x_y_ranges(0.0..=1.0, 0.0..=1.0),
-                rect,
-            );
+            let to_screen =
+                emath::RectTransform::from_to(Rect::from_x_y_ranges(0.0..=1.0, 0.0..=1.0), rect);
 
-            let healthbar_size = Rect::from_min_max(
-                to_screen * pos2(0.0, 0.0),
-                to_screen * pos2(1.0, 1.0),
-            );
+            let healthbar_size =
+                Rect::from_min_max(to_screen * pos2(0.0, 0.0), to_screen * pos2(1.0, 1.0));
             let mut health_rendered = 0.0;
             for health_section in spectate_player.health.iter() {
                 let (health_size, health_color) = match health_section {
@@ -1038,16 +982,8 @@ pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Play
                         health_rendered += current;
                         (
                             Rect::from_min_max(
-                                to_screen
-                                    * pos2(
-                                        prev_health_rendered / player_max_health,
-                                        0.0,
-                                    ),
-                                to_screen
-                                    * pos2(
-                                        health_rendered / player_max_health,
-                                        1.0,
-                                    ),
+                                to_screen * pos2(prev_health_rendered / player_max_health, 0.0),
+                                to_screen * pos2(health_rendered / player_max_health, 1.0),
                             ),
                             Color32::WHITE,
                         )
@@ -1057,16 +993,8 @@ pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Play
                         health_rendered += current;
                         (
                             Rect::from_min_max(
-                                to_screen
-                                    * pos2(
-                                        prev_health_rendered / player_max_health,
-                                        0.0,
-                                    ),
-                                to_screen
-                                    * pos2(
-                                        health_rendered / player_max_health,
-                                        1.0,
-                                    ),
+                                to_screen * pos2(prev_health_rendered / player_max_health, 0.0),
+                                to_screen * pos2(health_rendered / player_max_health, 1.0),
                             ),
                             Color32::GREEN,
                         )

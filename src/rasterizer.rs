@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use cgmath::{InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation3, Vector3};
+use cgmath::{Matrix4, Quaternion, Rad, Rotation3, Vector3};
 use obj::{load_obj, Obj};
 use std::{fs::File, io::BufReader, sync::Arc};
 use vulkano::{
@@ -38,9 +38,6 @@ use crate::rollback_manager::WorldState;
 
 pub struct RasterizerSystem {
     gfx_queue: Arc<Queue>,
-    proj_vertex_buffer: Subbuffer<[TrianglePos]>,
-    proj_normal_buffer: Subbuffer<[TriangleNormal]>,
-    proj_instance_data: Subbuffer<[ProjectileInstanceData; 1024]>,
     player_vertex_buffer: Subbuffer<[TrianglePos]>,
     player_normal_buffer: Subbuffer<[TriangleNormal]>,
     player_instance_data: Subbuffer<[ProjectileInstanceData; 1024]>,
@@ -72,51 +69,6 @@ impl RasterizerSystem {
         command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     ) -> RasterizerSystem {
-        let (proj_vertices, proj_normals) = cube_vecs();
-        let proj_vertex_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            proj_vertices,
-        )
-        .expect("failed to create buffer");
-
-        let proj_normal_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            proj_normals,
-        )
-        .expect("failed to create buffer");
-
-        let proj_instance_data = Buffer::new_sized(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-        )
-        .expect("failed to create buffer");
-
         let (player_vertices, player_normals) = load_obj_to_vecs("assets/player.obj");
         let player_vertex_buffer = Buffer::from_iter(
             memory_allocator.clone(),
@@ -229,9 +181,6 @@ impl RasterizerSystem {
 
         RasterizerSystem {
             gfx_queue,
-            proj_vertex_buffer,
-            proj_normal_buffer,
-            proj_instance_data,
             subpass,
             pipeline,
             command_buffer_allocator,
@@ -266,30 +215,6 @@ impl RasterizerSystem {
             subbuffer
         };
 
-        let mut projectile_writer = self.proj_instance_data.write().unwrap();
-        for (i, projectile) in world_state
-            .projectiles
-            .iter()
-            .filter(|proj| {
-                let proj_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
-                let proj_max_size = proj
-                    .size
-                    .iter()
-                    .max_by(|a, b| a.partial_cmp(b).unwrap())
-                    .unwrap();
-                proj.owner > 0
-                    || proj.lifetime > 0.3
-                    || (proj_pos - world_state.players[0].pos).magnitude() > 0.5 + proj_max_size
-            })
-            .enumerate()
-        {
-            projectile_writer[i].instance_position =
-                [projectile.pos[0], projectile.pos[1], projectile.pos[2]];
-            projectile_writer[i].instance_rotation = projectile.dir;
-            projectile_writer[i].instance_scale =
-                [projectile.size[0], projectile.size[1], projectile.size[2]];
-        }
-
         let mut player_writer = self.player_instance_data.write().unwrap();
         let mut player_buffer_idx = 0;
         for player in world_state.players.iter().skip(1) {
@@ -313,26 +238,6 @@ impl RasterizerSystem {
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
 
-        let proj_color_uniform_buffer_subbuffer = {
-            let uniform_data = fs::Material {
-                material_color: [0.0, 0.0, 0.0, 0.0],
-            };
-
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
-
-            subbuffer
-        };
-        let proj_descriptor_set = PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
-            layout.clone(),
-            [
-                WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer.clone()),
-                WriteDescriptorSet::buffer(1, proj_color_uniform_buffer_subbuffer),
-            ],
-            [],
-        )
-        .unwrap();
         let player_color_uniform_buffer_subbuffer = {
             let uniform_data = fs::Material {
                 material_color: [1.0, 0.0, 0.0, 0.0],
@@ -377,29 +282,6 @@ impl RasterizerSystem {
             )
             .unwrap()
             .bind_pipeline_graphics(self.pipeline.clone())
-            .unwrap()
-            .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                self.pipeline.layout().clone(),
-                0,
-                proj_descriptor_set,
-            )
-            .unwrap()
-            .bind_vertex_buffers(
-                0,
-                (
-                    self.proj_vertex_buffer.clone(),
-                    self.proj_normal_buffer.clone(),
-                    self.proj_instance_data.clone(),
-                ),
-            )
-            .unwrap()
-            .draw(
-                self.proj_vertex_buffer.len() as u32,
-                world_state.projectiles.len() as u32,
-                0,
-                0,
-            )
             .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
@@ -473,95 +355,6 @@ fn load_obj_to_vecs(path: &str) -> (Vec<TrianglePos>, Vec<TriangleNormal>) {
         });
     }
     (positions, normals)
-}
-
-fn cube_vecs() -> (Vec<TrianglePos>, Vec<TriangleNormal>) {
-    (
-        vec![
-            [-1.0, -1.0, -1.0],
-            [-1.0, -1.0, 1.0],
-            [1.0, -1.0, -1.0],
-            [1.0, -1.0, 1.0],
-            [-1.0, -1.0, 1.0],
-            [1.0, -1.0, -1.0],
-            [-1.0, -1.0, -1.0],
-            [-1.0, -1.0, 1.0],
-            [-1.0, 1.0, -1.0],
-            [-1.0, 1.0, 1.0],
-            [-1.0, -1.0, 1.0],
-            [-1.0, 1.0, -1.0],
-            [-1.0, -1.0, -1.0],
-            [-1.0, 1.0, -1.0],
-            [1.0, -1.0, -1.0],
-            [1.0, 1.0, -1.0],
-            [-1.0, 1.0, -1.0],
-            [1.0, -1.0, -1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, -1.0],
-            [-1.0, 1.0, 1.0],
-            [-1.0, 1.0, -1.0],
-            [1.0, 1.0, -1.0],
-            [-1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, -1.0],
-            [1.0, -1.0, 1.0],
-            [1.0, -1.0, -1.0],
-            [1.0, 1.0, -1.0],
-            [1.0, -1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, -1.0, 1.0],
-            [-1.0, 1.0, 1.0],
-            [-1.0, -1.0, 1.0],
-            [1.0, -1.0, 1.0],
-            [-1.0, 1.0, 1.0],
-        ]
-        .iter()
-        .map(|&[x, y, z]| TrianglePos {
-            position: [x, y, z],
-        })
-        .collect(),
-        vec![
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-        ]
-        .iter()
-        .map(|&[x, y, z]| TriangleNormal { normal: [x, y, z] })
-        .collect(),
-    )
 }
 
 mod vs {

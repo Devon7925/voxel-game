@@ -9,7 +9,7 @@
 use cgmath::{Matrix4, SquareMatrix};
 use egui_winit_vulkano::{
     egui::{
-        self, emath, epaint, pos2, Align2, Color32, Rect, RichText, Rounding, ScrollArea, Stroke,
+        self, epaint, pos2, Align2, Color32, Rect, RichText, Stroke,
         Vec2,
     },
     Gui, GuiConfig,
@@ -38,7 +38,7 @@ use crate::{
     gui::{cooldown, GuiElement, card_editor, healthbar},
     raytracer::PointLightingSystem,
     settings_manager::Settings,
-    GuiState, game_manager::{Game, GameSettings}, app::CreationInterface,
+    GuiState, game_manager::{Game, GameSettings, WorldGenSettings}, app::CreationInterface,
 };
 
 #[derive(BufferContents, Vertex)]
@@ -661,6 +661,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 is_remote: false,
                                                 player_count: 1,
                                                 render_size: [16, 16, 16],
+                                                world_gen: WorldGenSettings::Normal,
                                             },
                                             &gui_state.gui_cards,
                                             creation_interface,
@@ -674,6 +675,21 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 is_remote: true,
                                                 player_count: 2,
                                                 render_size: [16, 16, 16],
+                                                world_gen: WorldGenSettings::Normal,
+                                            },
+                                            &gui_state.gui_cards,
+                                            creation_interface,
+                                        ));
+                                    }
+                                    if ui.button("Practice Range").clicked() {
+                                        gui_state.menu_stack.pop();
+                                        *game = Some(Game::new(
+                                            settings,
+                                            GameSettings {
+                                                is_remote: false,
+                                                player_count: 1,
+                                                render_size: [16, 16, 16],
+                                                world_gen: WorldGenSettings::PracticeRange,
                                             },
                                             &gui_state.gui_cards,
                                             creation_interface,

@@ -15,10 +15,17 @@ pub struct Game {
     pub game_state: GameState,
     pub game_settings: GameSettings,
 }
+
+pub enum WorldGenSettings {
+    Normal,
+    PracticeRange,
+}
+
 pub struct GameSettings {
     pub is_remote: bool,
     pub player_count: u32,
     pub render_size: [u32; 3],
+    pub world_gen: WorldGenSettings,
 }
 pub struct GameState {
     pub start_pos: [i32; 3],

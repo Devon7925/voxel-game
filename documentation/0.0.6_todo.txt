@@ -1,1 +1,8 @@
+Convert characters to new format
+    edgy_skeleton
+    hammer_man
+    ice_queen
+    machinegun_grandpa
+    robo_horse
+
 Ensure multiplayer synchronization

@@ -3,6 +3,7 @@
         modifiers: [AddCharge(11)],
         abilities: [
             (
+                keybind: And(OnPressed(Mouse(Left)), Pressed(Mouse(Right))),
                 card: Projectile([
                     SimpleModify(Speed,15),
                     SimpleModify(Width,-10),
@@ -12,9 +13,9 @@
                     SimpleModify(Health,-10),
                     OnHit(Effect(Damage(38)))
                 ]),
-                keybind: And(OnPressed(Mouse(Left)), Pressed(Mouse(Right)))
             ),
             (
+                keybind: OnPressed(Mouse(Left)),
                 card: MultiCast([
                     Projectile([
                         SimpleModify(Speed,2),
@@ -29,7 +30,6 @@
                     Spread(1),
                     Duplication(2),
                 ]),
-                keybind: OnPressed(Mouse(Left))
             ),
         ]
     ),
@@ -37,8 +37,8 @@
         modifiers: [AddCooldown(1)],
         abilities: [
             (
+                keybind: Pressed(Mouse(Right)),
                 card: Effect(StatusEffect(Slow, 1)),
-                keybind: Pressed(Mouse(Right))
             ),
         ]
     ),
@@ -46,6 +46,7 @@
         modifiers: [],
         abilities: [
             (
+                keybind: Pressed(Key(E)),
                 card: Projectile([
                     SimpleModify(Width,-3),
                     SimpleModify(Height,-3),
@@ -67,7 +68,6 @@
                         OnHit(Effect(StatusEffect(DamageOverTime, 10))),
                     ])),
                 ]),
-                keybind: Pressed(Key(E))
             ),
         ]
     ),
@@ -75,6 +75,7 @@
         modifiers: [],
         abilities: [
             (
+                keybind: Pressed(Key(LShift)),
                 card: MultiCast([
                     MultiCast([
                         Projectile([
@@ -93,7 +94,6 @@
                     ]),
                     Effect(Knockback(-20)),
                 ],[]),
-                keybind: Pressed(Key(LShift))
             ),
         ]
     ),
