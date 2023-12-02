@@ -1,7 +1,6 @@
 Convert characters to new format
     hammer_man
         allow seeing players through projectiles
-        fix frame delay on lock-on
 
 Ensure multiplayer synchronization
     fix asynchrounous chunk updates causing non-deterministic chunk update order

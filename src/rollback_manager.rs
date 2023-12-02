@@ -1246,6 +1246,29 @@ impl WorldState {
             })
             .collect();
 
+        {
+            let voxel_reader = voxels.read().unwrap();
+            for (player_idx, (player, entity_action)) in self
+                .players
+                .iter_mut()
+                .zip(player_actions.into_iter())
+                .enumerate()
+            {
+                player.simple_step(
+                    time_step,
+                    entity_action,
+                    &player_stats,
+                    player_idx,
+                    card_manager,
+                    &voxel_reader,
+                    &mut new_projectiles,
+                    &mut voxels_to_write,
+                    &mut new_effects,
+                    &mut step_triggers,
+                );
+            }
+        }
+        
         self.projectiles.iter_mut().for_each(|proj| {
             proj.simple_step(
                 &self.players,
@@ -1275,28 +1298,6 @@ impl WorldState {
             }
         }
 
-        {
-            let voxel_reader = voxels.read().unwrap();
-            for (player_idx, (player, entity_action)) in self
-                .players
-                .iter_mut()
-                .zip(player_actions.into_iter())
-                .enumerate()
-            {
-                player.simple_step(
-                    time_step,
-                    entity_action,
-                    &player_stats,
-                    player_idx,
-                    card_manager,
-                    &voxel_reader,
-                    &mut new_projectiles,
-                    &mut voxels_to_write,
-                    &mut new_effects,
-                    &mut step_triggers,
-                );
-            }
-        }
         for (player_idx, player) in self.players.iter_mut().enumerate() {
             if player.respawn_timer > 0.0 || player_stats[player_idx].invincible {
                 continue;
@@ -1408,11 +1409,17 @@ impl WorldState {
         let mut player_player_collision_pairs: Vec<(usize, usize)> = vec![];
         for i in 0..self.players.len() {
             let player1 = self.players.get(i).unwrap();
+            if player1.respawn_timer > 0.0 || player_stats[i].invincible {
+                continue;
+            }
             for j in 0..self.players.len() {
                 if i == j {
                     continue;
                 }
                 let player2 = self.players.get(j).unwrap();
+                if player2.respawn_timer > 0.0 || player_stats[j].invincible {
+                    continue;
+                }
                 if 5.0 * (player1.size + player2.size) > (player1.pos - player2.pos).magnitude() {
                     for si in 0..Entity::HITSPHERES.len() {
                         for sj in 0..Entity::HITSPHERES.len() {
@@ -1845,6 +1852,7 @@ impl Entity {
             self.respawn_timer -= time_step;
             if self.respawn_timer <= 0.0 {
                 self.pos = SPAWN_LOCATION;
+                self.vel = Vector3::new(0.0, 0.0, 0.0);
                 self.health = vec![HealthSection::Health(100.0, 100.0)];
                 self.status_effects.clear();
             }
