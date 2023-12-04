@@ -278,14 +278,14 @@ pub enum StatusEffect {
 
 impl VoxelMaterial {
     pub const FRICTION_COEFFICIENTS: [f32; 8] = [0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 0.1, 1.0];
-    pub fn to_memory(&self) -> [u32; 2] {
+    pub fn to_memory(&self) -> u32 {
         match self {
-            VoxelMaterial::Air => [0, 0x11111111],
-            VoxelMaterial::Stone => [1, 0x00000000],
-            VoxelMaterial::Dirt => [3, 0x00000000],
-            VoxelMaterial::Grass => [4, 0x00000000],
-            VoxelMaterial::Ice => [6, 0x00000000],
-            VoxelMaterial::Glass => [7, 0x00000000],
+            VoxelMaterial::Air => 0<<24,
+            VoxelMaterial::Stone => 1<<24,
+            VoxelMaterial::Dirt => 3<<24,
+            VoxelMaterial::Grass => 4<<24,
+            VoxelMaterial::Ice => 6<<24,
+            VoxelMaterial::Glass => 7<<24,
         }
     }
 }
@@ -1699,7 +1699,7 @@ impl CardManager {
         is_from_head: bool,
     ) -> (
         Vec<Projectile>,
-        Vec<(Point3<i32>, VoxelMaterial)>,
+        Vec<(Point3<u32>, VoxelMaterial)>,
         Vec<ReferencedEffect>,
         Vec<(ReferencedTrigger, u32)>,
     ) {
@@ -1785,7 +1785,7 @@ impl CardManager {
                 card_idx,
             } => {
                 let material = &self.referenced_material_creators[card_idx];
-                new_voxels.push((pos.cast::<i32>().unwrap(), material.clone()));
+                new_voxels.push((pos.cast::<u32>().unwrap(), material.clone()));
             }
             ReferencedBaseCard {
                 card_type: ReferencedBaseCardType::Effect,

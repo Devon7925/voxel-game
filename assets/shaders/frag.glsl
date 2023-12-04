@@ -8,13 +8,13 @@ layout(input_attachment_index = 1, set = 0, binding = 1) uniform subpassInput u_
 // The `depth_input` parameter of the `draw` method.
 layout(input_attachment_index = 2, set = 0, binding = 2) uniform subpassInput u_depth;
 
-layout(set = 1, binding = 0) buffer VoxelBuffer { uvec2 voxels[]; };
+layout(set = 1, binding = 0) buffer VoxelBuffer { uint voxels[]; };
 
 layout(set = 1, binding = 1) uniform SimData {
     uint max_dist;
     uint projectile_count;
     uvec3 render_size;
-    ivec3 start_pos;
+    uvec3 start_pos;
 } sim_data;
 
 layout(set = 1, binding = 2) buffer Players { Player players[]; };
@@ -36,33 +36,56 @@ layout(location = 0) out vec4 f_color;
 
 const vec3 light_dir = normalize(vec3(0.5, -1, 0.25));
 
-uvec2 get_data(ivec3 global_pos) {
-    ivec3 rel_pos = global_pos - ivec3(CHUNK_SIZE * sim_data.start_pos);
-    if (any(lessThan(rel_pos, ivec3(0))) || any(greaterThanEqual(rel_pos, ivec3(CHUNK_SIZE * sim_data.render_size)))) return uvec2(MAT_OOB, 0);
+uint get_data_unchecked(uvec3 global_pos) {
     uint index = get_index(global_pos, sim_data.render_size);
     return voxels[index];
 }
 
-uint get_dist(uvec2 voxel_data, uint offset) {
-    if (voxel_data.x != MAT_AIR) return 0;
-    return (voxel_data.y >> (offset * 4)) & 0xF;
+uint get_data(uvec3 global_pos) {
+    uvec3 start_offset = CHUNK_SIZE * sim_data.start_pos;
+    if (any(lessThan(global_pos, start_offset))) return MAT_OOB << 24;
+    uvec3 rel_pos = global_pos - start_offset;
+    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE*sim_data.render_size))) return MAT_OOB << 24;
+    return get_data_unchecked(global_pos);
 }
 
-vec3 RayBoxDist(vec3 pos, vec3 ray, vec3 vmin, vec3 vmax) {
+uint get_dist(uint voxel_data, uint offset) {
+    if (voxel_data>>24 != MAT_AIR) return 0;
+    return (voxel_data >> (offset * 3)) & 0x7;
+}
+
+vec3 ray_box_dist(vec3 pos, vec3 ray, vec3 vmin, vec3 vmax) {
     vec3 normMinDiff = (vmin - pos) / ray;
     vec3 normMaxDiff = (vmax - pos) / ray;
     return max(normMinDiff, normMaxDiff);
 }
 
-struct RaycastResult {
+struct RaycastResultLayer {
     vec3 pos;
     vec3 normal;
-    uvec2 voxel_data;
+    uint voxel_data;
     float dist;
-    bool hit;
 };
 
-RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles, float max_depth) {
+struct RaycastResult {
+    RaycastResultLayer layers[5];
+    uint layer_count;
+};
+
+
+const bool is_transparent[] = {
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    false,
+};
+
+RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles) {
     uint offset = 0;
     if(ray.x < 0) offset += 1;
     if(ray.y < 0) offset += 2;
@@ -71,24 +94,78 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
     vec3 ray_pos = pos;
     vec3 normal = vec3(0);
     float depth = 0;
-    uvec2 voxel_data = uvec2(MAT_OOB, 0);
+    uint voxel_data = MAT_OOB << 24;
     bool did_hit = false;
-    for(uint i = 0; i < max_iterations; i++) {
-        voxel_data = get_data(ivec3(floor(ray_pos)));
-        if(voxel_data.x != MAT_AIR) {
+
+    float max_dist = 1000000.0;
+    vec3 end_ray_pos = pos;
+    vec3 end_normal = normal;
+    uint end_voxel_data = voxel_data;
+    float end_depth = depth;
+
+    if (check_projectiles) {
+        //check if primary ray hit projectile
+        vec3 min_normal = vec3(0);
+        for (int i = 0; i < sim_data.projectile_count; i++) {
+            vec4 inv_proj_rot_quaternion = quat_inverse(projectiles[i].dir);
+            vec3 proj_size = projectiles[i].size.xyz;
+            vec3 transformed_pos = quat_transform(inv_proj_rot_quaternion, (pos - projectiles[i].pos.xyz)) / proj_size;
+            vec3 ray = quat_transform(inv_proj_rot_quaternion, ray) / proj_size;
+            vec2 t_x = vec2((-1 - transformed_pos.x) / ray.x, (1 - transformed_pos.x) / ray.x);
+            t_x = vec2(max(min(t_x.x, t_x.y), 0.0), min(max(t_x.x, t_x.y), max_dist));
+            if (t_x.y < 0 || t_x.x > max_dist) continue;
+            vec2 t_y = vec2((-1 - transformed_pos.y) / ray.y, (1 - transformed_pos.y) / ray.y);
+            t_y = vec2(max(min(t_y.x, t_y.y), 0.0), min(max(t_y.x, t_y.y), max_dist));
+            if (t_y.y < 0 || t_y.x > max_dist) continue;
+            vec2 t_z = vec2((-1 - transformed_pos.z) / ray.z, (1 - transformed_pos.z) / ray.z);
+            t_z = vec2(max(min(t_z.x, t_z.y), 0.0), min(max(t_z.x, t_z.y), max_dist));
+            if (t_z.y < 0 || t_z.x > max_dist) continue;
+            float t_min = max(max(t_x.x, t_y.x), t_z.x);
+            float t_max = min(min(t_x.y, t_y.y), t_z.y);
+            if (t_min > t_max) continue;
+            if (t_min < 0.01) continue;
+            if (t_min < max_dist) {
+                max_dist = t_min;
+                if (t_x.x == t_min) {
+                    min_normal = vec3(-sign(ray.x), 0, 0);
+                } else if (t_y.x == t_min) {
+                    min_normal = vec3(0, -sign(ray.y), 0);
+                } else {
+                    min_normal = vec3(0, 0, -sign(ray.z));
+                }
+                min_normal = quat_transform(projectiles[i].dir, min_normal);
+            }
+        }
+        if (length(min_normal) > 0) {
+            end_depth = max_dist;
             did_hit = true;
+            end_ray_pos = pos + max_dist*ray;
+            end_normal = min_normal;
+            end_voxel_data = MAT_PROJECTILE << 24;
+        }
+    }
+
+    for(uint i = 0; i < max_iterations; i++) {
+        vec3 floor_pos = floor(ray_pos);
+        voxel_data = get_data(uvec3(floor_pos));
+        if(voxel_data>>24 != MAT_AIR) {
+            did_hit = true;
+            end_ray_pos = ray_pos;
+            end_depth = depth;
+            end_normal = normal;
+            end_voxel_data = voxel_data;
+            end_depth = depth;
             break;
         }
         uint dist = get_dist(voxel_data, offset);
-        vec3 v_min = floor(ray_pos) - vec3(dist-1);
-        vec3 v_max = floor(ray_pos) + vec3(dist);
-        vec3 delta = RayBoxDist(ray_pos, ray, v_min, v_max);
+        vec3 v_min = floor_pos - vec3(dist);
+        vec3 v_max = floor_pos + vec3(dist + 1);
+        vec3 delta = ray_box_dist(ray_pos, ray, v_min, v_max);
         float dist_diff = min(delta.x, min(delta.y, delta.z));
-        if (depth + dist_diff > max_depth && max_depth > 0) {
-            depth = max_depth;
+        depth += dist_diff;
+        if (depth > max_dist) {
             break;
         }
-        depth += dist_diff;
         ray_pos += ray * dist_diff;
         if (delta.x < delta.y && delta.x < delta.z) {
             normal = vec3(-sign(ray.x), 0, 0);
@@ -114,69 +191,155 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         }
     }
 
-    if (check_projectiles) {
-        //check if primary ray hit projectile
-        float min_dist = 1000000.0;
-        vec3 min_normal = vec3(0);
-        for (int i = 0; i < sim_data.projectile_count; i++) {
-            vec3 proj_pos = projectiles[i].pos.xyz;
-            vec4 inv_proj_rot_quaternion = quat_inverse(projectiles[i].dir);
-            vec3 proj_size = projectiles[i].size.xyz;
-            float does_exist = projectiles[i].pos.w;
-            vec3 transformed_pos = quat_transform(inv_proj_rot_quaternion, (pos - proj_pos)) / proj_size;
-            vec3 ray = quat_transform(inv_proj_rot_quaternion, ray) / proj_size;
-            vec2 t_x = vec2((-1 - transformed_pos.x) / ray.x, (1 - transformed_pos.x) / ray.x);
-            t_x = vec2(max(min(t_x.x, t_x.y), 0.0), min(max(t_x.x, t_x.y), depth));
-            if (t_x.y < 0 || t_x.x > depth) continue;
-            vec2 t_y = vec2((-1 - transformed_pos.y) / ray.y, (1 - transformed_pos.y) / ray.y);
-            t_y = vec2(max(min(t_y.x, t_y.y), 0.0), min(max(t_y.x, t_y.y), depth));
-            if (t_y.y < 0 || t_y.x > depth) continue;
-            vec2 t_z = vec2((-1 - transformed_pos.z) / ray.z, (1 - transformed_pos.z) / ray.z);
-            t_z = vec2(max(min(t_z.x, t_z.y), 0.0), min(max(t_z.x, t_z.y), depth));
-            if (t_z.y < 0 || t_z.x > depth) continue;
-            float t_min = max(max(t_x.x, t_y.x), t_z.x);
-            float t_max = min(min(t_x.y, t_y.y), t_z.y);
-            if (t_min > t_max) continue;
-            if (t_min < 0.01) continue;
-            if (t_min < min_dist) {
-                min_dist = t_min;
-                if (t_x.x == t_min) {
-                    min_normal = vec3(-sign(ray.x), 0, 0);
-                } else if (t_y.x == t_min) {
-                    min_normal = vec3(0, -sign(ray.y), 0);
-                } else {
-                    min_normal = vec3(0, 0, -sign(ray.z));
-                }
-                min_normal = quat_transform(projectiles[i].dir, min_normal);
-            }
+    if (!did_hit) {
+        return RaycastResultLayer(pos, vec3(0.0), MAT_OOB<<24, 0.0);
+    }
+
+    return RaycastResultLayer(end_ray_pos, end_normal, end_voxel_data, end_depth);
+}
+
+const uint LAYER_COUNT = 5;
+RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles, float raster_depth) {
+    RaycastResultLayer[5] layers;
+    uint offset = 0;
+    if(ray.x < 0) offset += 1;
+    if(ray.y < 0) offset += 2;
+    if(ray.z < 0) offset += 4;
+
+    vec3 ray_pos = pos;
+    vec3 normal = vec3(0);
+    float depth = 0;
+    uint voxel_data = MAT_OOB << 24;
+    uint layer_idx = 0;
+    for(uint i = 0; i < max_iterations; i++) {
+        vec3 floor_pos = floor(ray_pos);
+        voxel_data = get_data(uvec3(floor_pos));
+        uint dist = 0;
+        uint voxel_material = voxel_data >> 24;
+        if(voxel_material == MAT_AIR) {
+            dist = get_dist(voxel_data, offset);
+        } else if(is_transparent[voxel_material]) {
+            layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
+            layer_idx++;
+            if(layer_idx >= LAYER_COUNT) break;
+        } else {
+            layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
+            layer_idx++;
+            break;
         }
-        if (length(min_normal) > 0) {
-            depth = min_dist;
-            did_hit = true;
-            ray_pos = pos + min_dist*ray;
-            normal = min_normal;
-            voxel_data = uvec2(MAT_PROJECTILE, 0);
+        vec3 v_min = floor_pos - vec3(dist);
+        vec3 v_max = floor_pos + vec3(dist+1);
+        vec3 delta = ray_box_dist(ray_pos, ray, v_min, v_max);
+        float dist_diff = min(delta.x, min(delta.y, delta.z));
+        if (depth + dist_diff > raster_depth && raster_depth > 0) {
+            depth = raster_depth;
+            ray_pos = pos + depth*ray;
+            break;
+        }
+        depth += dist_diff;
+        ray_pos += ray * dist_diff;
+        if (delta.x < delta.y && delta.x < delta.z) {
+            normal = vec3(-sign(ray.x), 0, 0);
+            if (ray.x < 0 && ray_pos.x >= v_min.x) {
+                ray_pos.x = v_min.x-0.001;
+            }
+        } else if (delta.y < delta.z) {
+            normal = vec3(0, -sign(ray.y), 0);
+            if (ray.y < 0 && ray_pos.y >= v_min.y) {
+                ray_pos.y = v_min.y-0.001;
+            }
+        } else {
+            normal = vec3(0, 0, -sign(ray.z));
+            if (ray.z < 0 && ray_pos.z >= v_min.z) {
+                ray_pos.z = v_min.z-0.001;
+            }
         }
     }
 
-    return RaycastResult(ray_pos, normal, voxel_data, depth, did_hit);
+    if(raster_depth > 0.0 && layer_idx < LAYER_COUNT) {
+        vec3 in_normal = normalize(subpassLoad(u_normals).rgb);
+        vec4 in_diffuse = subpassLoad(u_diffuse);
+        uint raster_material = MAT_PLAYER;
+        if (in_diffuse.x == 0.0) {
+            raster_material = MAT_PROJECTILE;
+        }
+        layers[layer_idx] = RaycastResultLayer(ray_pos, in_normal, raster_material << 24, raster_depth);
+        layer_idx++;
+    }
+
+    if (check_projectiles) {
+        //check if primary ray hit projectile
+        vec3 normal = vec3(0);
+        for (int i = 0; i < sim_data.projectile_count; i++) {
+            vec4 inv_proj_rot_quaternion = quat_inverse(projectiles[i].dir);
+            vec3 proj_size = projectiles[i].size.xyz;
+            vec3 transformed_pos = quat_transform(inv_proj_rot_quaternion, (pos - projectiles[i].pos.xyz)) / proj_size;
+            vec3 ray = quat_transform(inv_proj_rot_quaternion, ray) / proj_size;
+            vec2 t_x = vec2((-1 - transformed_pos.x) / ray.x, (1 - transformed_pos.x) / ray.x);
+            t_x = vec2(max(min(t_x.x, t_x.y), 0.0), min(max(t_x.x, t_x.y), depth));
+            vec2 t_y = vec2((-1 - transformed_pos.y) / ray.y, (1 - transformed_pos.y) / ray.y);
+            t_y = vec2(max(min(t_y.x, t_y.y), 0.0), min(max(t_y.x, t_y.y), depth));
+            vec2 t_z = vec2((-1 - transformed_pos.z) / ray.z, (1 - transformed_pos.z) / ray.z);
+            t_z = vec2(max(min(t_z.x, t_z.y), 0.0), min(max(t_z.x, t_z.y), depth));
+            float dist = max(max(t_x.x, t_y.x), t_z.x);
+            float t_max = min(min(t_x.y, t_y.y), t_z.y);
+            if (t_max < 0 || dist > depth) continue;
+            if (dist > t_max) continue;
+            if (dist < 0.01) continue;
+            if (t_x.x == dist) {
+                normal = vec3(-sign(ray.x), 0, 0);
+            } else if (t_y.x == dist) {
+                normal = vec3(0, -sign(ray.y), 0);
+            } else {
+                normal = vec3(0, 0, -sign(ray.z));
+            }
+            normal = quat_transform(projectiles[i].dir, normal);
+
+            RaycastResultLayer proj_layer = RaycastResultLayer(pos + dist*ray, normal, MAT_PROJECTILE << 24, dist);
+            // insert layer
+            if(layer_idx < LAYER_COUNT) {
+                layer_idx++;
+            }
+            for (uint j = layer_idx-1; j > 0; j--) {
+                if (proj_layer.dist < layers[j-1].dist) {
+                    layers[j] = layers[j-1];
+                    if (j == 1) {
+                        layers[0] = proj_layer;
+                    }
+                } else {
+                    layers[j] = proj_layer;
+                    break;
+                }
+            }
+        }
+    }
+    return RaycastResult(layers, layer_idx);
 }
 
-vec4 hash4( vec3 p ) // replace this by something better
+ivec4 pcg4d(ivec4 v)
 {
-	vec4 p2 = vec4( dot(p,vec3(127.1,311.7, 74.7)),
-			  dot(p,vec3(269.5,183.3,246.1)),
-			  dot(p,vec3(423.6,272.0,188.2)),
-			  dot(p,vec3(113.5,271.9,124.6)));
-
-	return -1.0 + 2.0*fract(sin(p2)*43758.5453123);
+    v = v * 1664525 + 1013904223;
+    
+    v.x += v.y*v.w;
+    v.y += v.z*v.x;
+    v.z += v.x*v.y;
+    v.w += v.y*v.z;
+    
+    v ^= v >> 16;
+    
+    v.x += v.y*v.w;
+    v.y += v.z*v.x;
+    v.z += v.x*v.y;
+    v.w += v.y*v.z;
+    
+    return v;
 }
 
 vec4 voronoise( in vec3 p, float u, float v )
 {
 	float k = 1.0+63.0*pow(1.0-v,6.0);
 
-    vec3 i = floor(p);
+    ivec4 i = ivec4(p, 0);
     vec3 f = fract(p);
     
 	vec2 a = vec2(0.0,0.0);
@@ -186,7 +349,8 @@ vec4 voronoise( in vec3 p, float u, float v )
     for( int x=-2; x<=2; x++ )
     {
         vec3 g = vec3( x, y, z );
-		vec4 o = hash4( i + g )*vec4(vec3(u), 1.0);
+        vec4 hash = vec4(pcg4d(i + ivec4(x, y, z, 0)) & 0xFF) / 128.0 - 1.0;
+		vec4 o = hash*vec4(vec3(u), 1.0);
 		vec3 d = g - f + o.xyz;
 		float w = pow( 1.0-smoothstep(0.0,1.414,length(d)), k );
 		a += vec2(o.w*w,w);
@@ -223,23 +387,25 @@ const MaterialRenderProps material_render_props[] = {
     MaterialRenderProps(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
 };
 
-MaterialProperties material_props(uvec2 voxel_data, vec3 pos, vec3 in_normal) {
-    if (voxel_data.x == MAT_AIR) {
+MaterialProperties material_props(uint voxel_data, vec3 pos, vec3 in_normal) {
+    uint material = voxel_data >> 24;
+    uint data = voxel_data & 0xFFFFFF;
+    if (material == MAT_AIR) {
         // air: invalid state
         return MaterialProperties(vec3(1.0, 0.0, 0.0), in_normal, 0.0, 0.0);
-    } else if (voxel_data.x == MAT_OOB) {
+    } else if (material == MAT_OOB) {
         // out of bounds: invalid state
         return MaterialProperties(vec3(0.0, 0.0, 1.0), in_normal, 0.0, 0.0);
-    } else if (voxel_data.x == MAT_PROJECTILE) {
+    } else if (material == MAT_PROJECTILE) {
         return MaterialProperties(vec3(1.0, 0.3, 0.3), in_normal, 0.0, 0.5);
-    } else if (voxel_data.x == MAT_PLAYER) {
+    } else if (material == MAT_PLAYER) {
         return MaterialProperties(vec3(0.8, 0.8, 0.8), in_normal, 0.2, 0.0);
     }
-    MaterialRenderProps mat_render_props = material_render_props[voxel_data.x];
+    MaterialRenderProps mat_render_props = material_render_props[material];
     vec4 noise = voronoise(mat_render_props.noise_scale*pos, 1.0, 1.0);
     vec3 normal = normalize(in_normal + mat_render_props.normal_noise_impact * noise.xyz);
     return MaterialProperties(
-        mix(mat_render_props.light_color, mat_render_props.dark_color, noise.w) * (1.0 - float(voxel_data.y) / material_damage_threshhold[voxel_data.x]),
+        mix(mat_render_props.light_color, mat_render_props.dark_color, noise.w) * (1.0 - float(data) / material_damage_threshhold[material]),
         normal,
         mat_render_props.shine,
         mat_render_props.transparency
@@ -249,50 +415,42 @@ MaterialProperties material_props(uvec2 voxel_data, vec3 pos, vec3 in_normal) {
 vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
     vec3 color = vec3(0.0);
     float multiplier = 1.0;
+    int i = 0;
 
-    while (multiplier > 0.05) {
-        if (primary_ray.voxel_data.x == MAT_OOB) {
+    while(multiplier > 0.05 && i < primary_ray.layer_count) {
+        if (primary_ray.layers[i].voxel_data >> 24 == MAT_OOB) {
             float sky_brightness = max(dot(ray, -light_dir), 0.0);
             sky_brightness += pow(sky_brightness, 10.0); 
             color += multiplier * (sky_brightness * vec3(0.429, 0.608, 0.622) + vec3(0.1, 0.1, 0.4));
             break;
         }
-        MaterialProperties mat_props = material_props(primary_ray.voxel_data, primary_ray.pos, primary_ray.normal);
+        MaterialProperties mat_props = material_props(primary_ray.layers[i].voxel_data, primary_ray.layers[i].pos, primary_ray.layers[i].normal);
         color += (1 - mat_props.transparency) * multiplier * 0.15 * mat_props.color;
 
-        RaycastResult shade_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, -light_dir, push_constants.shadow_ray_dist, true, 0.0);
-        float shade_transparency = material_render_props[shade_check.voxel_data.x].transparency;
+        RaycastResultLayer shade_check = simple_raycast(primary_ray.layers[i].pos + 0.015*primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist, true);
+        float shade_transparency = material_render_props[shade_check.voxel_data >> 24].transparency;
         if (shade_transparency > 0.0) {
             vec3 v_min = floor(shade_check.pos);
             vec3 v_max = floor(shade_check.pos) + vec3(1);
-            vec3 delta = RayBoxDist(shade_check.pos, -light_dir, v_min, v_max);
+            vec3 delta = ray_box_dist(shade_check.pos, -light_dir, v_min, v_max);
             float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
-            shade_check = raycast(shade_check.pos - dist_diff * light_dir, -light_dir, push_constants.transparent_shadow_ray_dist, false, 0.0);
+            shade_check = simple_raycast(shade_check.pos - dist_diff * light_dir, -light_dir, push_constants.transparent_shadow_ray_dist, false);
         }
-        if (!shade_check.hit || shade_check.voxel_data.x == MAT_OOB) {
+        if (shade_check.dist == 0.0 || shade_check.voxel_data >> 24 == MAT_OOB) {
             float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
             vec3 reflected = reflect(-ray, mat_props.normal);
             float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
             color += shade_transparency * (1 - mat_props.transparency) * multiplier * (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
         }
-        RaycastResult ao_check = raycast(primary_ray.pos + 0.015*primary_ray.normal, mat_props.normal, push_constants.ao_ray_dist, false, 0.0);
-        if (!ao_check.hit || ao_check.voxel_data.x == MAT_OOB) {
+        RaycastResultLayer ao_check = simple_raycast(primary_ray.layers[i].pos + 0.015*primary_ray.layers[i].normal, mat_props.normal, push_constants.ao_ray_dist, false);
+        if (ao_check.dist == 0 || ao_check.voxel_data >> 24 == MAT_OOB) {
             vec3 reflected = reflect(-ray, mat_props.normal);
             float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
             color += (1 - mat_props.transparency) * multiplier * 0.2 * (0.65 + mat_props.shine * specular)*mat_props.color;
         }
         
         multiplier *= mat_props.transparency;
-
-        vec3 v_min = floor(primary_ray.pos);
-        vec3 v_max = floor(primary_ray.pos) + vec3(1);
-        vec3 delta = RayBoxDist(primary_ray.pos, ray, v_min, v_max);
-        float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
-        primary_ray = raycast(primary_ray.pos+dist_diff*ray, ray, push_constants.transparency_ray_dist, true, 0.0);
-        if (!primary_ray.hit) {
-            color += multiplier * vec3(1.0, 0.0, 0.0);
-            break;
-        }
+        i++;
     }
 
     return color;
@@ -318,26 +476,9 @@ void main() {
 
     RaycastResult primary_ray = raycast(pos, ray, push_constants.primary_ray_dist, true, max_depth);
     
-    if (!primary_ray.hit) {
-        if (in_depth >= 1.0) {
-            f_color = vec4(1.0, 0.0, 0.0, 1.0);
-            return;
-        }
-        vec3 in_normal = normalize(subpassLoad(u_normals).rgb);
-
-        vec4 in_diffuse = subpassLoad(u_diffuse);
-        
-        primary_ray.hit = true;
-        primary_ray.normal = in_normal;
-        primary_ray.pos = pos + max_depth*ray;
-        primary_ray.dist = max_depth;
-
-        uint raster_material = MAT_PROJECTILE;
-        if (in_diffuse.x == 1.0) {
-            raster_material = MAT_PLAYER;
-        }
-
-        primary_ray.voxel_data = uvec2(raster_material, 0);
+    if (primary_ray.layer_count == 0) {
+        f_color = vec4(1.0, 0.0, 0.0, 1.0);
+        return;
     }
 
     f_color = vec4(get_color(pos, ray, primary_ray), 1.0);

@@ -3,40 +3,36 @@
 
 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer VoxelBuffer { uvec2 voxels[]; };
+layout(set = 0, binding = 0) buffer VoxelBuffer { uint voxels[]; };
 
 layout(set = 0, binding = 1) buffer Projectiles { Projectile projectiles[]; };
 
 layout(set = 0, binding = 2) uniform SimData {
     uint max_dist;
     uvec3 render_size;
-    ivec3 start_pos;
+    uvec3 start_pos;
     float dt;
     uint projectile_count;
 } sim_data;
 
-uvec2 get_data_unchecked(ivec3 global_pos) {
+uint get_data_unchecked(uvec3 global_pos) {
     uint index = get_index(global_pos, sim_data.render_size);
     return voxels[index];
 }
 
-uvec2 get_data(ivec3 global_pos) {
-    ivec3 rel_pos = global_pos - int(CHUNK_SIZE) * sim_data.start_pos;
-    if (
-        any(lessThan(rel_pos, ivec3(0)))
-        ||
-        any(greaterThanEqual(rel_pos, ivec3(CHUNK_SIZE*sim_data.render_size)))
-    ) return uvec2(2, 0);
+uint get_data(uvec3 global_pos) {
+    uvec3 start_offset = CHUNK_SIZE * sim_data.start_pos;
+    if (any(lessThan(global_pos, start_offset))) return MAT_OOB << 24;
+    uvec3 rel_pos = global_pos - start_offset;
+    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE*sim_data.render_size))) return MAT_OOB << 24;
     return get_data_unchecked(global_pos);
 }
 
-void set_data(ivec3 global_pos, uvec2 data) {
-    ivec3 rel_pos = global_pos - int(CHUNK_SIZE) * sim_data.start_pos;
-    if (
-        any(lessThan(rel_pos, ivec3(0)))
-        ||
-        any(greaterThanEqual(rel_pos, ivec3(CHUNK_SIZE*sim_data.render_size)))
-    ) return;
+void set_data(uvec3 global_pos, uint data) {
+    uvec3 start_offset = CHUNK_SIZE * sim_data.start_pos;
+    if (any(lessThan(global_pos, start_offset))) return;
+    uvec3 rel_pos = global_pos - start_offset;
+    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE*sim_data.render_size))) return;
     uint index = get_index(global_pos, sim_data.render_size);
     voxels[index] = data;
 }
@@ -65,10 +61,11 @@ void main() {
             for (int k = 0; k <= grid_iteration_count.z; k++) {
                 vec3 pos = start + dir*grid_dist.z*k + right*grid_dist.x*i + up*grid_dist.y*j;
                 ivec3 voxel_pos = ivec3(pos);
-                uvec2 data = get_data(voxel_pos);
-                if (data.x == MAT_AIR) {
+                uint data = get_data(voxel_pos);
+                uint voxel_mat = data >> 24;
+                if (voxel_mat == MAT_AIR) {
                     continue;
-                } else if (data.x == MAT_OOB) {
+                } else if (voxel_mat == MAT_OOB) {
                     projectile.health = 0.0;
                     projectiles[projectile_idx] = projectile;
                     return;
@@ -97,7 +94,7 @@ void main() {
 
                 if (projectile.damage > 0) {
                     uint vox_index = get_index(voxel_pos, sim_data.render_size);
-                    atomicAdd(voxels[vox_index].y, int(projectile.damage));
+                    atomicAdd(voxels[vox_index], int(projectile.damage));
                 }
 
                 projectile.chunk_update_pos = ivec4(voxel_pos, 0);

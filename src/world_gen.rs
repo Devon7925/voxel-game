@@ -14,7 +14,7 @@ impl WorldGen {
             pillar_density,
         }
     }
-    pub fn gen_chunk(&self, chunk_location: [i32; 3]) -> Vec<[u32; 2]> {
+    pub fn gen_chunk(&self, chunk_location: [u32; 3]) -> Vec<u32> {
         (0..CHUNK_SIZE)
             .flat_map(|x| {
                 (0..CHUNK_SIZE)
@@ -22,9 +22,9 @@ impl WorldGen {
                         (0..CHUNK_SIZE)
                             .map(|z| {
                                 let true_pos = [
-                                    (chunk_location[0] * (CHUNK_SIZE as i32) + (x as i32)) as f64,
-                                    (chunk_location[1] * (CHUNK_SIZE as i32) + (y as i32)) as f64,
-                                    (chunk_location[2] * (CHUNK_SIZE as i32) + (z as i32)) as f64,
+                                    (chunk_location[0] * (CHUNK_SIZE as u32) + (x as u32)) as f64,
+                                    (chunk_location[1] * (CHUNK_SIZE as u32) + (y as u32)) as f64,
+                                    (chunk_location[2] * (CHUNK_SIZE as u32) + (z as u32)) as f64,
                                 ];
                                 let density = self.world_density.get(true_pos) - ((true_pos[1] - 1800.0) / 15.0);
                                 let pillar_density = self.pillar_density.get(true_pos) - ((true_pos[1] - 1800.0) / 80.0);

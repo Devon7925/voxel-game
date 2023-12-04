@@ -51,11 +51,11 @@ pub struct WindowProperties {
     pub fullscreen: bool,
 }
 
-pub const FIRST_START_POS: [i32; 3] = [100, 105, 100];
+pub const FIRST_START_POS: [u32; 3] = [100, 105, 100];
 pub const SPAWN_LOCATION: Point3<f32> = Point3::new(
-    ((FIRST_START_POS[0] + (RENDER_SIZE[0] as i32) / 2) * CHUNK_SIZE as i32) as f32,
-    ((FIRST_START_POS[1] + (RENDER_SIZE[1] as i32) / 2) * CHUNK_SIZE as i32) as f32,
-    ((FIRST_START_POS[2] + (RENDER_SIZE[2] as i32) / 2) * CHUNK_SIZE as i32) as f32,
+    ((FIRST_START_POS[0] as i32 + (RENDER_SIZE[0] as i32) / 2) * CHUNK_SIZE as i32) as f32,
+    ((FIRST_START_POS[1] as i32 + (RENDER_SIZE[1] as i32) / 2) * CHUNK_SIZE as i32) as f32,
+    ((FIRST_START_POS[2] as i32 + (RENDER_SIZE[2] as i32) / 2) * CHUNK_SIZE as i32) as f32,
 );
 
 pub const PLAYER_HITBOX_OFFSET: Vector3<f32> = Vector3::new(0.0, -2.0, 0.0);

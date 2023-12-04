@@ -1170,7 +1170,7 @@ impl WorldState {
     ) {
         let voxels = vox_compute.voxels();
         let mut new_projectiles = Vec::new();
-        let mut voxels_to_write: Vec<(Point3<i32>, [u32; 2])> = Vec::new();
+        let mut voxels_to_write: Vec<(Point3<u32>, u32)> = Vec::new();
         let mut new_effects: Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)> = Vec::new();
         let mut step_triggers: Vec<(ReferencedTrigger, u32)> = Vec::new();
 
@@ -1714,7 +1714,7 @@ impl Projectile {
         card_manager: &CardManager,
         time_step: f32,
         new_projectiles: &mut Vec<Projectile>,
-        voxels_to_write: &mut Vec<(Point3<i32>, [u32; 2])>,
+        voxels_to_write: &mut Vec<(Point3<u32>, u32)>,
         new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
         step_triggers: &mut Vec<(ReferencedTrigger, u32)>,
     ) {
@@ -1812,18 +1812,17 @@ impl Projectile {
     }
 }
 
-pub fn get_index(global_pos: Point3<i32>) -> i32 {
-    const SIGNED_CHUNK_SIZE: i32 = CHUNK_SIZE as i32;
-    let chunk_pos = (global_pos / SIGNED_CHUNK_SIZE)
-        .zip(Point3::from(RENDER_SIZE).map(|c| c as i32), |a, b| a % b);
-    let pos_in_chunk = global_pos % SIGNED_CHUNK_SIZE;
-    let chunk_idx = chunk_pos.x * (RENDER_SIZE[1] as i32) * (RENDER_SIZE[2] as i32)
-        + chunk_pos.y * (RENDER_SIZE[2] as i32)
+pub fn get_index(global_pos: Point3<u32>) -> u32 {
+    let chunk_pos = (global_pos / CHUNK_SIZE)
+        .zip(Point3::from(RENDER_SIZE), |a, b| a % b);
+    let pos_in_chunk = global_pos % CHUNK_SIZE;
+    let chunk_idx = chunk_pos.x * RENDER_SIZE[1] * RENDER_SIZE[2]
+        + chunk_pos.y * RENDER_SIZE[2]
         + chunk_pos.z;
-    let idx_in_chunk = pos_in_chunk.x * SIGNED_CHUNK_SIZE * SIGNED_CHUNK_SIZE
-        + pos_in_chunk.y * SIGNED_CHUNK_SIZE
+    let idx_in_chunk = pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE
+        + pos_in_chunk.y * CHUNK_SIZE
         + pos_in_chunk.z;
-    return chunk_idx * SIGNED_CHUNK_SIZE * SIGNED_CHUNK_SIZE * SIGNED_CHUNK_SIZE + idx_in_chunk;
+    return chunk_idx * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE + idx_in_chunk;
 }
 
 impl Entity {
@@ -1842,9 +1841,9 @@ impl Entity {
         player_stats: &Vec<PlayerEffectStats>,
         player_idx: usize,
         card_manager: &CardManager,
-        voxel_reader: &BufferReadGuard<'_, [[u32; 2]]>,
+        voxel_reader: &BufferReadGuard<'_, [u32]>,
         new_projectiles: &mut Vec<Projectile>,
-        voxels_to_write: &mut Vec<(Point3<i32>, [u32; 2])>,
+        voxels_to_write: &mut Vec<(Point3<u32>, u32)>,
         new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
         step_triggers: &mut Vec<(ReferencedTrigger, u32)>,
     ) {
@@ -1979,7 +1978,7 @@ impl Entity {
     fn collide_player(
         &mut self,
         time_step: f32,
-        voxel_reader: &BufferReadGuard<'_, [[u32; 2]]>,
+        voxel_reader: &BufferReadGuard<'_, [u32]>,
         prev_collision_vec: Vector3<i32>,
     ) {
         let mut player_move_pos = self.pos
@@ -2062,14 +2061,14 @@ impl Entity {
                     let mut z_vec = Vector3::new(0.0, 0.0, 0.0);
                     x_vec[(component + 1) % 3] = 1.0;
                     z_vec[(component + 2) % 3] = 1.0;
-                    'outer: for x_iter in 0..=(x_iter_count as i32) {
-                        for z_iter in 0..=(z_iter_count as i32) {
+                    'outer: for x_iter in 0..=(x_iter_count as u32) {
+                        for z_iter in 0..=(z_iter_count as u32) {
                             let pos = start_pos
                                 + x_dist * x_iter as f32 * x_vec
                                 + z_dist * z_iter as f32 * z_vec;
-                            let voxel_pos = pos.map(|c| c.floor() as i32);
+                            let voxel_pos = pos.map(|c| c.floor() as u32);
                             let voxel = voxel_reader[get_index(voxel_pos) as usize];
-                            if voxel[0] != 0 {
+                            if voxel>>24 != 0 {
                                 if component != 1
                                     && prev_collision_vec[1] == 1
                                     && (pos - start_pos).y < 1.0
@@ -2089,7 +2088,7 @@ impl Entity {
                                 );
                                 if perp_vel.magnitude() > 0.0 {
                                     let friction_factor =
-                                        VoxelMaterial::FRICTION_COEFFICIENTS[voxel[0] as usize];
+                                        VoxelMaterial::FRICTION_COEFFICIENTS[(voxel >> 24) as usize];
                                     self.vel[(component + 1) % 3] -=
                                         (friction_factor * 0.5 * perp_vel.normalize().x
                                             + friction_factor * perp_vel.x)
@@ -2113,7 +2112,7 @@ impl Entity {
 
     fn can_step_up(
         &self,
-        voxel_reader: &BufferReadGuard<'_, [[u32; 2]]>,
+        voxel_reader: &BufferReadGuard<'_, [u32]>,
         component: usize,
         player_move_pos: Point3<f32>,
     ) -> bool {
@@ -2132,13 +2131,13 @@ impl Entity {
         let mut z_vec = Vector3::new(0.0, 0.0, 0.0);
         x_vec[(component + 1) % 3] = 1.0;
         z_vec[(component + 2) % 3] = 1.0;
-        for x_iter in 0..=(x_iter_count as i32) {
-            for z_iter in 0..=(z_iter_count as i32) {
+        for x_iter in 0..=(x_iter_count as u32) {
+            for z_iter in 0..=(z_iter_count as u32) {
                 let pos =
                     start_pos + x_dist * x_iter as f32 * x_vec + z_dist * z_iter as f32 * z_vec;
-                let voxel_pos = pos.map(|c| c.floor() as i32);
+                let voxel_pos = pos.map(|c| c.floor() as u32);
                 let voxel = voxel_reader[get_index(voxel_pos) as usize];
-                if voxel[0] != 0 {
+                if voxel>>24 != 0 {
                     return false;
                 }
             }

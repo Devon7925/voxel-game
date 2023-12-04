@@ -1,7 +1,5 @@
 local_url: ws://127.0.0.1:3536/extreme_bevy?next=
 remote_url: ws://primd.net:3536/extreme_bevy?next=
-is_remote: false
-player_count: 1
 fullscreen_toggle: F11
 card_file: decks/characters/hammer_man.ron
 movement_controls:
@@ -22,5 +20,5 @@ delta_time: 0.03
 replay_settings:
     replay_file: replay.txt
     replay_mode: None
-do_profiling: false
+do_profiling: true
 crash_log: crash_log.txt

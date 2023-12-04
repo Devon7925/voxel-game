@@ -54,7 +54,7 @@ pub struct ProjectileComputePipeline {
 #[repr(C)]
 pub struct Projectile {
     pub pos: [f32; 4],
-    pub chunk_update_pos: [i32; 4],
+    pub chunk_update_pos: [u32; 4],
     pub dir: [f32; 4],
     pub size: [f32; 4],
     pub vel: f32,

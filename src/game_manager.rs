@@ -28,7 +28,7 @@ pub struct GameSettings {
     pub world_gen: WorldGenSettings,
 }
 pub struct GameState {
-    pub start_pos: [i32; 3],
+    pub start_pos: [u32; 3],
 }
 
 impl Game {
