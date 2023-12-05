@@ -29,8 +29,7 @@ use crate::{
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     settings_manager::{Control, ReplayMode, Settings},
     voxel_sim_manager::VoxelComputePipeline,
-    WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RENDER_SIZE,
-    SPAWN_LOCATION,
+    WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
 };
 
 #[derive(Clone, Debug)]
@@ -50,6 +49,7 @@ pub trait PlayerSim {
         card_manager: &mut CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     );
 
     fn get_current_state(&self) -> &WorldState;
@@ -59,6 +59,7 @@ pub trait PlayerSim {
         card_manager: &mut CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     );
 
     fn download_projectiles(
@@ -66,6 +67,7 @@ pub trait PlayerSim {
         card_manager: &CardManager,
         projectile_compute: &ProjectileComputePipeline,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     );
 
     fn get_camera(&self) -> Camera;
@@ -80,7 +82,7 @@ pub trait PlayerSim {
     fn projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]>;
     fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]>;
 
-    fn update(&mut self);
+    fn update(&mut self, settings: &GameSettings);
 
     fn process_event(
         &mut self,
@@ -306,6 +308,7 @@ impl PlayerSim for RollbackData {
         card_manager: &mut CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     ) {
         if let Some(replay_file) = self.replay_file.as_mut() {
             write!(replay_file, "\nTIME {}", self.current_time).unwrap();
@@ -350,6 +353,7 @@ impl PlayerSim for RollbackData {
                 card_manager,
                 time_step,
                 vox_compute,
+                game_settings,
             );
         }
     }
@@ -363,6 +367,7 @@ impl PlayerSim for RollbackData {
         card_manager: &mut CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     ) {
         let on_ground = self
             .get_spectate_player()
@@ -382,10 +387,10 @@ impl PlayerSim for RollbackData {
             .iter_mut()
             .for_each(|cd| cd.iter_mut().for_each(|ability| ability.clear()));
         puffin::profile_function!();
-        self.update_rollback_state(card_manager, time_step, vox_compute);
+        self.update_rollback_state(card_manager, time_step, vox_compute, game_settings);
         self.current_time += 1;
         self.entity_metadata.iter_mut().for_each(|x| x.step());
-        self.cached_current_state = self.gen_current_state(card_manager, time_step, vox_compute);
+        self.cached_current_state = self.gen_current_state(card_manager, time_step, vox_compute, game_settings);
         //send projectiles
         let projectile_count = 128.min(self.cached_current_state.projectiles.len());
         {
@@ -424,9 +429,10 @@ impl PlayerSim for RollbackData {
         card_manager: &CardManager,
         projectile_compute: &ProjectileComputePipeline,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings
     ) {
         self.rollback_state.projectiles =
-            projectile_compute.download_projectiles(card_manager, vox_compute);
+            projectile_compute.download_projectiles(card_manager, vox_compute, game_settings);
     }
 
     fn get_camera(&self) -> Camera {
@@ -459,7 +465,7 @@ impl PlayerSim for RollbackData {
         self.rollback_state.players.len()
     }
 
-    fn update(&mut self) {
+    fn update(&mut self, settings: &GameSettings) {
         let Some(network_connection) = self.network_connection.as_mut() else {
             return;
         };
@@ -476,7 +482,7 @@ impl PlayerSim for RollbackData {
                         .insert(peer, self.rollback_state.players.len());
 
                     let new_player = Entity {
-                        pos: SPAWN_LOCATION,
+                        pos: settings.spawn_location.into(),
                         ..Default::default()
                     };
 
@@ -706,7 +712,7 @@ impl RollbackData {
             .then(|| std::fs::File::create(settings.replay_settings.replay_file.clone()).unwrap());
 
         if let Some(replay_file) = replay_file.as_mut() {
-            write!(replay_file, "PLAYER COUNT {}\n", game_settings.player_count).unwrap();
+            write!(replay_file, "GAME SETTINGS {}\n", ron::ser::to_string(game_settings).unwrap()).unwrap();
             write!(replay_file, "PLAYER DECK ").unwrap();
             ron::ser::to_writer(replay_file, &deck).unwrap();
         }
@@ -721,7 +727,7 @@ impl RollbackData {
         let mut entity_metadata = Vec::new();
 
         let first_player = Entity {
-            pos: SPAWN_LOCATION,
+            pos: game_settings.spawn_location.into(),
             abilities: deck
                 .iter()
                 .map(|card| PlayerAbility {
@@ -741,7 +747,7 @@ impl RollbackData {
 
         if matches!(game_settings.world_gen, WorldGenSettings::PracticeRange) {
             let bot = Entity {
-                pos: SPAWN_LOCATION,
+                pos: game_settings.spawn_location.into(),
                 abilities: vec![],
                 ..Default::default()
             };
@@ -798,6 +804,7 @@ impl RollbackData {
         card_manager: &CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     ) -> WorldState {
         let mut state = self.rollback_state.clone();
         for i in self.rollback_time..self.current_time {
@@ -806,7 +813,7 @@ impl RollbackData {
                 .iter()
                 .map(|e| e.get_action(i - self.rollback_time))
                 .collect();
-            state.step_sim(actions, false, card_manager, time_step, vox_compute);
+            state.step_sim(actions, false, card_manager, time_step, vox_compute, game_settings);
         }
         state
     }
@@ -924,6 +931,7 @@ impl PlayerSim for ReplayData {
         card_manager: &mut CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     ) {
         self.current_time += 1;
         let rollback_actions: Vec<Action> = self.actions.pop_front().unwrap();
@@ -956,7 +964,7 @@ impl PlayerSim for ReplayData {
         }
         {
             self.state
-                .step_sim(rollback_actions, true, card_manager, time_step, vox_compute);
+                .step_sim(rollback_actions, true, card_manager, time_step, vox_compute, game_settings);
         }
     }
 
@@ -969,9 +977,10 @@ impl PlayerSim for ReplayData {
         card_manager: &mut CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     ) {
         puffin::profile_function!();
-        self.update_rollback_state(card_manager, time_step, vox_compute);
+        self.update_rollback_state(card_manager, time_step, vox_compute, game_settings);
         //send projectiles
         let projectile_count = 128.min(self.state.projectiles.len());
         {
@@ -1010,8 +1019,9 @@ impl PlayerSim for ReplayData {
         card_manager: &CardManager,
         projectile_compute: &ProjectileComputePipeline,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     ) {
-        self.state.projectiles = projectile_compute.download_projectiles(card_manager, vox_compute);
+        self.state.projectiles = projectile_compute.download_projectiles(card_manager, vox_compute, game_settings);
     }
 
     fn get_camera(&self) -> Camera {
@@ -1044,7 +1054,7 @@ impl PlayerSim for ReplayData {
         self.state.players.len()
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self, settings: &GameSettings) {}
 
     fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
         self.player_buffer.clone()
@@ -1120,15 +1130,22 @@ impl ReplayData {
         let mut actions = VecDeque::new();
         let mut delta_time = settings.delta_time;
         let mut lines = reader.lines();
+        let mut game_settings: Option<GameSettings> = None;
         while let Some(line) = lines.next() {
             let Ok(line) = line else {
                 continue;
             };
-            if line.starts_with("PLAYER COUNT ") {
+            if let Some(game_settings_string) = line.strip_prefix("GAME SETTINGS ") {
+                game_settings = ron::de::from_str(game_settings_string).unwrap();
             } else if let Some(deck_string) = line.strip_prefix("PLAYER DECK ") {
                 let deck: Vec<Cooldown> = ron::de::from_str(deck_string).unwrap();
+
+                let Some(ref game_settings) = game_settings else {
+                    panic!("game settings must be defined before deck");
+                };
+
                 state.players.push(Entity {
-                    pos: SPAWN_LOCATION,
+                    pos: game_settings.spawn_location.into(),
                     abilities: deck
                         .iter()
                         .map(|card| PlayerAbility {
@@ -1176,6 +1193,7 @@ impl WorldState {
         card_manager: &CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings,
     ) {
         let voxels = vox_compute.voxels();
         let mut new_projectiles = Vec::new();
@@ -1274,6 +1292,7 @@ impl WorldState {
                     &mut voxels_to_write,
                     &mut new_effects,
                     &mut step_triggers,
+                    game_settings,
                 );
             }
         }
@@ -1548,7 +1567,7 @@ impl WorldState {
             let mut writer = voxels.write().unwrap();
             for (pos, material) in voxels_to_write {
                 vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
-                writer[get_index(pos) as usize] = material;
+                writer[get_index(pos, game_settings) as usize] = material;
             }
         }
 
@@ -1821,12 +1840,12 @@ impl Projectile {
     }
 }
 
-pub fn get_index(global_pos: Point3<u32>) -> u32 {
+pub fn get_index(global_pos: Point3<u32>, game_settings: &GameSettings) -> u32 {
     let chunk_pos = (global_pos / CHUNK_SIZE)
-        .zip(Point3::from(RENDER_SIZE), |a, b| a % b);
+        .zip(Point3::from(game_settings.render_size), |a, b| a % b);
     let pos_in_chunk = global_pos % CHUNK_SIZE;
-    let chunk_idx = chunk_pos.x * RENDER_SIZE[1] * RENDER_SIZE[2]
-        + chunk_pos.y * RENDER_SIZE[2]
+    let chunk_idx = chunk_pos.x * game_settings.render_size[1] * game_settings.render_size[2]
+        + chunk_pos.y * game_settings.render_size[2]
         + chunk_pos.z;
     let idx_in_chunk = pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE
         + pos_in_chunk.y * CHUNK_SIZE
@@ -1855,11 +1874,12 @@ impl Entity {
         voxels_to_write: &mut Vec<(Point3<u32>, u32)>,
         new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
         step_triggers: &mut Vec<(ReferencedTrigger, u32)>,
+        game_settings: &GameSettings,
     ) {
         if self.respawn_timer > 0.0 {
             self.respawn_timer -= time_step;
             if self.respawn_timer <= 0.0 {
-                self.pos = SPAWN_LOCATION;
+                self.pos = Point3::from(game_settings.spawn_location);
                 self.vel = Vector3::new(0.0, 0.0, 0.0);
                 self.health = vec![HealthSection::Health(100.0, 100.0)];
                 self.status_effects.clear();
@@ -1968,7 +1988,7 @@ impl Entity {
         }
         let prev_collision_vec = self.collision_vec.clone();
         self.collision_vec = Vector3::new(0, 0, 0);
-        self.collide_player(time_step, voxel_reader, prev_collision_vec);
+        self.collide_player(time_step, voxel_reader, prev_collision_vec, game_settings);
 
         for health_section in self.health.iter_mut() {
             match health_section {
@@ -1989,6 +2009,7 @@ impl Entity {
         time_step: f32,
         voxel_reader: &BufferReadGuard<'_, [u32]>,
         prev_collision_vec: Vector3<i32>,
+        game_settings: &GameSettings,
     ) {
         let mut player_move_pos = self.pos
             + PLAYER_HITBOX_OFFSET
@@ -2076,12 +2097,12 @@ impl Entity {
                                 + x_dist * x_iter as f32 * x_vec
                                 + z_dist * z_iter as f32 * z_vec;
                             let voxel_pos = pos.map(|c| c.floor() as u32);
-                            let voxel = voxel_reader[get_index(voxel_pos) as usize];
+                            let voxel = voxel_reader[get_index(voxel_pos, game_settings) as usize];
                             if voxel>>24 != 0 {
                                 if component != 1
                                     && prev_collision_vec[1] == 1
                                     && (pos - start_pos).y < 1.0
-                                    && self.can_step_up(voxel_reader, component, player_move_pos)
+                                    && self.can_step_up(voxel_reader, component, player_move_pos, game_settings)
                                 {
                                     self.pos[1] += 1.0;
                                     player_move_pos[1] += 1.0;
@@ -2124,6 +2145,7 @@ impl Entity {
         voxel_reader: &BufferReadGuard<'_, [u32]>,
         component: usize,
         player_move_pos: Point3<f32>,
+        game_settings: &GameSettings,
     ) -> bool {
         let x_iter_count =
             (0.99 * self.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]).ceil() + 1.0;
@@ -2145,7 +2167,7 @@ impl Entity {
                 let pos =
                     start_pos + x_dist * x_iter as f32 * x_vec + z_dist * z_iter as f32 * z_vec;
                 let voxel_pos = pos.map(|c| c.floor() as u32);
-                let voxel = voxel_reader[get_index(voxel_pos) as usize];
+                let voxel = voxel_reader[get_index(voxel_pos, game_settings) as usize];
                 if voxel>>24 != 0 {
                     return false;
                 }

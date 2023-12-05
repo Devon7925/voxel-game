@@ -19,7 +19,7 @@ use crate::{
     gui::{GuiElement, GuiState, PaletteState},
     settings_manager::Settings,
 };
-use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
+use cgmath::{EuclideanSpace, Matrix4, Rad, SquareMatrix, Vector3};
 use multipass_system::Pass;
 use std::io::Write;
 use std::{fs, panic, time::Instant};
@@ -39,7 +39,6 @@ use winit::{
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
-pub const RENDER_SIZE: [u32; 3] = [16, 16, 16];
 pub const CHUNK_SIZE: u32 = 16;
 const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
 
@@ -50,13 +49,6 @@ pub struct WindowProperties {
     pub height: u32,
     pub fullscreen: bool,
 }
-
-pub const FIRST_START_POS: [u32; 3] = [100, 105, 100];
-pub const SPAWN_LOCATION: Point3<f32> = Point3::new(
-    ((FIRST_START_POS[0] as i32 + (RENDER_SIZE[0] as i32) / 2) * CHUNK_SIZE as i32) as f32,
-    ((FIRST_START_POS[1] as i32 + (RENDER_SIZE[1] as i32) / 2) * CHUNK_SIZE as i32) as f32,
-    ((FIRST_START_POS[2] as i32 + (RENDER_SIZE[2] as i32) / 2) * CHUNK_SIZE as i32) as f32,
-);
 
 pub const PLAYER_HITBOX_OFFSET: Vector3<f32> = Vector3::new(0.0, -2.0, 0.0);
 pub const PLAYER_HITBOX_SIZE: Vector3<f32> = Vector3::new(1.8, 4.8, 1.8);
@@ -147,7 +139,7 @@ fn main() {
             let skip_render = (Instant::now() - time).as_secs_f32() > 0.0;
             if let Some(game) = app.game.as_mut() {
                 if !skip_render {
-                    game.rollback_data.update();
+                    game.rollback_data.update(&game.game_settings);
                 }
                 if game.rollback_data.is_sim_behind() {
                     time += std::time::Duration::from_secs_f32(game.rollback_data.get_delta_time());
@@ -273,6 +265,13 @@ fn handle_events(
                                         }
                                     }
                                 }
+                                winit::event::VirtualKeyCode::F1 => {
+                                    if input.state == ElementState::Released {
+                                        if let Some(game) = app.game.as_ref() {
+                                            println!("Chunk update count: {}", game.voxel_compute.update_count());
+                                        }
+                                    }
+                                }
                                 _ => (),
                             }
                         });
@@ -368,11 +367,13 @@ fn compute_then_render(
                 &game.card_manager,
                 &game.projectile_compute,
                 &mut game.voxel_compute,
+                &game.game_settings
             );
             game.rollback_data.step(
                 &mut game.card_manager,
                 time_step,
                 &mut game.voxel_compute,
+                &game.game_settings,
             );
             game
                 .projectile_compute

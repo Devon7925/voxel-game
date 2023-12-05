@@ -11,7 +11,6 @@ layout(input_attachment_index = 2, set = 0, binding = 2) uniform subpassInput u_
 layout(set = 1, binding = 0) buffer VoxelBuffer { uint voxels[]; };
 
 layout(set = 1, binding = 1) uniform SimData {
-    uint max_dist;
     uint projectile_count;
     uvec3 render_size;
     uvec3 start_pos;

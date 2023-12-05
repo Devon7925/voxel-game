@@ -190,7 +190,6 @@ impl ProjectileComputePipeline {
 
         let uniform_buffer_subbuffer = {
             let uniform_data = compute_projs_cs::SimData {
-                max_dist: 15.into(),
                 render_size: game_settings.render_size.into(),
                 start_pos: game_state.start_pos.into(),
                 dt: rollback_data.get_delta_time().into(),
@@ -230,6 +229,7 @@ impl ProjectileComputePipeline {
         &self,
         card_manager: &CardManager,
         vox_compute: &mut VoxelComputePipeline,
+        game_settings: &GameSettings
     ) -> Vec<Projectile> {
         let mut projectiles = Vec::new();
         let mut new_voxels = Vec::new();
@@ -270,7 +270,7 @@ impl ProjectileComputePipeline {
             let mut writer = voxels.write().unwrap();
             for (pos, material) in new_voxels {
                 vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
-                writer[get_index(pos) as usize] = material.to_memory();
+                writer[get_index(pos, game_settings) as usize] = material.to_memory();
             }
         }
 

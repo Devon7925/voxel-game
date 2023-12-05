@@ -7,7 +7,6 @@ layout(set = 0, binding = 0) buffer VoxelBuffer { uint voxels[]; };
 layout(set = 0, binding = 1) buffer ChunkUpdates { ivec4 chunk_updates[]; };
 
 layout(set = 0, binding = 2) uniform SimData {
-    uint max_dist;
     uvec3 render_size;
     uvec3 start_pos;
 } sim_data;
@@ -59,7 +58,7 @@ void main() {
             ivec3 dir = d * ivec3(j % 2, (j / 2) % 2, j / 4);
             uint dir_data = get_data(pos + dir);
             if (dir_data >> 24 == MAT_OOB) {
-                direction_dist = min(direction_dist, ((voxel_data >> (3*(7 - i))) & 0x7) - 1);
+                direction_dist = min(direction_dist, ((voxel_data >> (3*(7 - i))) & 0x7));
                 continue;
             } else if (dir_data >> 24 != MAT_AIR) {
                 direction_dist = 0;

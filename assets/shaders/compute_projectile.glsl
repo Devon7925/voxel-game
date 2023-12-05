@@ -8,7 +8,6 @@ layout(set = 0, binding = 0) buffer VoxelBuffer { uint voxels[]; };
 layout(set = 0, binding = 1) buffer Projectiles { Projectile projectiles[]; };
 
 layout(set = 0, binding = 2) uniform SimData {
-    uint max_dist;
     uvec3 render_size;
     uvec3 start_pos;
     float dt;
