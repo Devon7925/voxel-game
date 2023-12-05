@@ -1,6 +1,2 @@
-Convert characters to new format
-    hammer_man
-        allow seeing players through projectiles
-
 Ensure multiplayer synchronization
     fix asynchrounous chunk updates causing non-deterministic chunk update order
