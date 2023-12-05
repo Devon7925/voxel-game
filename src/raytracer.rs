@@ -182,7 +182,7 @@ impl PointLightingSystem {
         let sim_uniform_buffer_subbuffer = {
             let uniform_data = fs::SimData {
                 render_size: game.game_settings.render_size.into(),
-                projectile_count: (game.rollback_data.get_projectiles().len() as u32).into(),
+                projectile_count: (game.rollback_data.get_render_projectiles().len() as u32).into(),
                 max_dist: 15,
                 start_pos: game.game_state.start_pos.into(),
             };

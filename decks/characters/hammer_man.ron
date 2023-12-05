@@ -16,7 +16,6 @@
                         PiercePlayers,
                     ]),
                     Effect(StatusEffect(Slow, 3)),
-                    Effect(StatusEffect(Slow, 3)),
                 ],[]),
     
             ),
@@ -29,6 +28,7 @@
                     SimpleModify(Speed,-1),
                     SimpleModify(Lifetime,-6),
                     SimpleModify(Health,-10),
+                    SimpleModify(Gravity,2),
                     LockToOwner,
                     PiercePlayers,
                     OnHit(Effect(Damage(42))),

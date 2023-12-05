@@ -73,6 +73,7 @@ pub trait PlayerSim {
 
     fn get_delta_time(&self) -> f32;
     fn get_projectiles(&self) -> &Vec<Projectile>;
+    fn get_render_projectiles(&self) -> &Vec<Projectile>;
     fn get_players(&self) -> &Vec<Entity>;
     fn player_count(&self) -> usize;
 
@@ -444,6 +445,10 @@ impl PlayerSim for RollbackData {
 
     fn get_projectiles(&self) -> &Vec<Projectile> {
         &self.rollback_state.projectiles
+    }
+
+    fn get_render_projectiles(&self) -> &Vec<Projectile> {
+        &self.cached_current_state.projectiles
     }
 
     fn get_players(&self) -> &Vec<Entity> {
@@ -1024,6 +1029,10 @@ impl PlayerSim for ReplayData {
     }
 
     fn get_projectiles(&self) -> &Vec<Projectile> {
+        &self.state.projectiles
+    }
+
+    fn get_render_projectiles(&self) -> &Vec<Projectile> {
         &self.state.projectiles
     }
 
