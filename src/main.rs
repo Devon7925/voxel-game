@@ -40,7 +40,7 @@ use winit::{
 pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
 pub const CHUNK_SIZE: u32 = 16;
-const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
+const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 16;
 
 const DEFAULT_DELTA_TIME: f32 = 1.0 / 60.0;
 

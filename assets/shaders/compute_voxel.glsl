@@ -9,6 +9,7 @@ layout(set = 0, binding = 1) buffer ChunkUpdates { ivec4 chunk_updates[]; };
 layout(set = 0, binding = 2) uniform SimData {
     uvec3 render_size;
     uvec3 start_pos;
+    uvec3 update_offset;
 } sim_data;
 
 layout(set = 0, binding = 3) buffer Projectiles { Projectile projectiles[]; };
@@ -35,39 +36,61 @@ void set_data(uvec3 global_pos, uint data) {
 }
 
 void main() {
-    ivec3 pos = ivec3(gl_WorkGroupSize)*chunk_updates[gl_WorkGroupID.x].xyz + ivec3(gl_LocalInvocationID); 
-    uint pos_data = get_data(pos);
-    uint voxel_mat = pos_data >> 24;
-    uint voxel_data = pos_data & 0xFFFFFF;
-
-    if (voxel_mat != MAT_AIR) {
-        if (voxel_data >= material_damage_threshhold[voxel_mat]) {
-            set_data(pos, MAT_AIR << 24);
-            return;
-        }
-        set_data(pos, pos_data);
-        return;
-    }
-
-    uint voxel_dist = 0;
-    for (uint i = 0; i < 8; i++) {
-        voxel_dist = voxel_dist << 3;
-        ivec3 d = ivec3(i%2, (i / 2) % 2, i / 4) * ivec3(2) - ivec3(1);
-        uint direction_dist = 7;
-        for (uint j = 1; j < 8; j++) {
-            ivec3 dir = d * ivec3(j % 2, (j / 2) % 2, j / 4);
-            uint dir_data = get_data(pos + dir);
-            if (dir_data >> 24 == MAT_OOB) {
-                direction_dist = min(direction_dist, ((voxel_data >> (3*(7 - i))) & 0x7));
-                continue;
-            } else if (dir_data >> 24 != MAT_AIR) {
-                direction_dist = 0;
-                break;
+    ivec3 pos = 2*ivec3(gl_WorkGroupSize)*chunk_updates[gl_WorkGroupID.x].xyz + 2*ivec3(gl_LocalInvocationID) + ivec3(sim_data.update_offset); 
+    uvec2 pos_data[2][2][2];
+    for (uint i = 0; i < 2; i++) {
+        for (uint j = 0; j < 2; j++) {
+            for (uint k = 0; k < 2; k++) {
+                uint raw_voxel = get_data(pos + ivec3(i, j, k));
+                pos_data[i][j][k] = uvec2(raw_voxel >> 24, raw_voxel & 0xFFFFFF);
+                if (pos_data[i][j][k].x == MAT_OOB) {
+                    return;
+                }
             }
-            direction_dist = min(direction_dist, ((dir_data >> (3*(7 - i))) & 0x7) + 1);
         }
-        voxel_dist |= direction_dist & 0x7;
     }
-    voxel_data = voxel_dist;
-    set_data(pos, voxel_data);
+
+    for (uint i = 0; i < 2; i++) {
+        for (uint j = 0; j < 2; j++) {
+            for (uint k = 0; k < 2; k++) {
+                if (pos_data[i][j][k].x != MAT_AIR) {
+                    if (pos_data[i][j][k].y >= material_damage_threshhold[pos_data[i][j][k].x]) {
+                        pos_data[i][j][k] = uvec2(MAT_AIR, 0);
+                    }
+                }
+            }
+        }
+    }
+
+    for (uint i = 0; i < 2; i++) {
+        for (uint j = 0; j < 2; j++) {
+            for (uint k = 0; k < 2; k++) {
+                if (pos_data[i][j][k].x == MAT_AIR) {
+                    int offset = 3*int(((k << 2) | (j << 1) | i));
+                    ivec3 d = ivec3(1) - ivec3(i, j, k) * ivec3(2);
+                    uint direction_dist = 7;
+                    for (uint m = 1; m < 8; m++) {
+                        ivec3 dir = d * ivec3(m % 2, (m / 2) % 2, m / 4) + ivec3(i, j, k);
+                        if (pos_data[dir.x][dir.y][dir.z].x == MAT_OOB) {
+                            direction_dist = min(direction_dist, bitfieldExtract(pos_data[i][j][k].y, offset, 3));
+                            continue;
+                        } else if (pos_data[dir.x][dir.y][dir.z].x != MAT_AIR) {
+                            direction_dist = 0;
+                            break;
+                        }
+                        direction_dist = min(direction_dist, bitfieldExtract(pos_data[dir.x][dir.y][dir.z].y, offset, 3) + 1);
+                    }
+                    pos_data[i][j][k].y = bitfieldInsert(pos_data[i][j][k].y, direction_dist, offset, 3);
+                }
+            }
+        }
+    }
+
+    for (uint i = 0; i < 2; i++) {
+        for (uint j = 0; j < 2; j++) {
+            for (uint k = 0; k < 2; k++) {
+                set_data(pos + ivec3(i, j, k), (pos_data[i][j][k].x << 24) | pos_data[i][j][k].y);
+            }
+        }
+    }
 }

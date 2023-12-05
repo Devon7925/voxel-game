@@ -1,2 +1,0 @@
-Ensure multiplayer synchronization
-    fix asynchrounous chunk updates causing non-deterministic chunk update order

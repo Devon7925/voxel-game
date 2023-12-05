@@ -10,7 +10,7 @@
 use crate::{
     app::CreationInterface,
     game_manager::{GameSettings, GameState},
-    utils::QueueSet,
+    utils::VoxelUpdateQueue,
     world_gen::WorldGen,
     CHUNK_SIZE, SUB_CHUNK_COUNT,
 };
@@ -49,7 +49,7 @@ pub struct VoxelComputePipeline {
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     voxel_buffer: Subbuffer<[u32]>,
-    chunk_update_queue: QueueSet<[u32; 3]>,
+    chunk_update_queue: VoxelUpdateQueue,
     chunk_updates: Subbuffer<[[u32; 4]; 256]>,
     uniform_buffer: SubbufferAllocator,
     world_gen: WorldGen,
@@ -157,7 +157,7 @@ impl VoxelComputePipeline {
             command_buffer_allocator: creation_interface.command_buffer_allocator.clone(),
             descriptor_set_allocator: creation_interface.descriptor_set_allocator.clone(),
             voxel_buffer,
-            chunk_update_queue: QueueSet::with_capacity(256),
+            chunk_update_queue: VoxelUpdateQueue::with_capacity(256),
             chunk_updates,
             uniform_buffer,
             world_gen,
@@ -171,7 +171,7 @@ impl VoxelComputePipeline {
 
     pub fn queue_updates(&mut self, queued: &[[u32; 3]]) {
         for item in queued {
-            self.chunk_update_queue.push(*item);
+            self.chunk_update_queue.push_all(*item);
         }
     }
 
@@ -181,7 +181,7 @@ impl VoxelComputePipeline {
             queued[1].floor() as u32 * SUB_CHUNK_COUNT / CHUNK_SIZE,
             queued[2].floor() as u32 * SUB_CHUNK_COUNT / CHUNK_SIZE,
         ];
-        self.chunk_update_queue.push(chunk_location);
+        self.chunk_update_queue.push_all(chunk_location);
     }
 
     pub fn queue_update_from_voxel_pos(&mut self, queued: &[u32; 3]) {
@@ -190,7 +190,7 @@ impl VoxelComputePipeline {
             queued[1] * SUB_CHUNK_COUNT / CHUNK_SIZE,
             queued[2] * SUB_CHUNK_COUNT / CHUNK_SIZE,
         ];
-        self.chunk_update_queue.push(chunk_location);
+        self.chunk_update_queue.push_all(chunk_location);
     }
 
     fn get_chunk_idx(&self, pos: [u32; 3], game_settings: &GameSettings) -> usize {
@@ -218,7 +218,7 @@ impl VoxelComputePipeline {
         for i in 0..SUB_CHUNK_COUNT {
             for j in 0..SUB_CHUNK_COUNT {
                 for k in 0..SUB_CHUNK_COUNT {
-                    self.chunk_update_queue.push([
+                    self.chunk_update_queue.push_all([
                         chunk_location[0] * SUB_CHUNK_COUNT + i as u32,
                         chunk_location[1] * SUB_CHUNK_COUNT + j as u32,
                         chunk_location[2] * SUB_CHUNK_COUNT + k as u32,
@@ -320,7 +320,7 @@ impl VoxelComputePipeline {
                     for i in 0..SUB_CHUNK_COUNT {
                         for j in 0..SUB_CHUNK_COUNT {
                             for k in 0..SUB_CHUNK_COUNT {
-                                self.chunk_update_queue.push([
+                                self.chunk_update_queue.push_all([
                                     chunk_location[0] * SUB_CHUNK_COUNT + i,
                                     chunk_location[1] * SUB_CHUNK_COUNT + j,
                                     chunk_location[2] * SUB_CHUNK_COUNT + k,
@@ -345,7 +345,7 @@ impl VoxelComputePipeline {
                 for x_offset in -1..=1 {
                     for y_offset in -1..=1 {
                         for z_offset in -1..=1 {
-                            self.chunk_update_queue.push([
+                            self.chunk_update_queue.push_all([
                                 read_update[0].wrapping_add_signed(x_offset),
                                 read_update[1].wrapping_add_signed(y_offset),
                                 read_update[2].wrapping_add_signed(z_offset),
@@ -364,7 +364,7 @@ impl VoxelComputePipeline {
                     let i = chunk_location[0] * SUB_CHUNK_COUNT + chunk_i;
                     let j = chunk_location[1] * SUB_CHUNK_COUNT + chunk_j;
                     let k = chunk_location[2] * SUB_CHUNK_COUNT + chunk_k;
-                    self.chunk_update_queue.push([i, j, k]);
+                    self.chunk_update_queue.push_all([i, j, k]);
                 }
             }
         }
@@ -422,22 +422,11 @@ impl VoxelComputePipeline {
         let pipeline_layout = self.compute_life_pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
 
-        let uniform_buffer_subbuffer = {
-            let uniform_data = compute_dists_cs::SimData {
-                render_size: game_settings.render_size.into(),
-                start_pos: game_state.start_pos.into(),
-            };
-
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
-
-            subbuffer
-        };
-
         //send chunk updates
         let mut chunk_update_count = 0;
         {
             let mut chunk_updates_buffer = self.chunk_updates.write().unwrap();
+            self.chunk_update_queue.swap_queue_set();
             while let Some(loc) = self.chunk_update_queue.pop() {
                 if loc[0] >= SUB_CHUNK_COUNT * game_state.start_pos[0]
                     && loc[0]
@@ -461,6 +450,19 @@ impl VoxelComputePipeline {
             }
         }
         self.last_update_count = chunk_update_count;
+
+        let uniform_buffer_subbuffer = {
+            let uniform_data = compute_dists_cs::SimData {
+                render_size: game_settings.render_size.into(),
+                start_pos: game_state.start_pos.into(),
+                update_offset: self.chunk_update_queue.queue_set_idx().into(),
+            };
+
+            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *subbuffer.write().unwrap() = uniform_data;
+
+            subbuffer
+        };
 
         let set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
