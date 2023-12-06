@@ -196,10 +196,11 @@ impl PointLightingSystem {
             &self.descriptor_set_allocator,
             layout.clone(),
             [
-                WriteDescriptorSet::buffer(0, game.voxel_compute.voxels().clone()),
-                WriteDescriptorSet::buffer(1, sim_uniform_buffer_subbuffer),
-                WriteDescriptorSet::buffer(2, game.rollback_data.player_buffer()),
-                WriteDescriptorSet::buffer(3, game.rollback_data.projectile_buffer()),
+                WriteDescriptorSet::buffer(0, game.voxel_compute.chunks().clone()),
+                WriteDescriptorSet::buffer(1, game.voxel_compute.voxels().clone()),
+                WriteDescriptorSet::buffer(2, sim_uniform_buffer_subbuffer),
+                WriteDescriptorSet::buffer(3, game.rollback_data.player_buffer()),
+                WriteDescriptorSet::buffer(4, game.rollback_data.projectile_buffer()),
             ],
             [],
         )

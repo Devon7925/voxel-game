@@ -653,7 +653,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     Color32::BLACK,
                                 );
                                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                                    let spawn_location = [1728.0, 1805.0, 1728.0];
+                                    let spawn_location = [10000.0, 1810.0, 10000.0];
                                     if ui.button("Singleplayer").clicked() {
                                         gui_state.menu_stack.pop();
                                         *game = Some(Game::new(
@@ -664,6 +664,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 render_size: [16, 8, 16],
                                                 world_gen: WorldGenSettings::Normal,
                                                 spawn_location,
+                                                max_loaded_chunks: 2048,
                                             },
                                             &gui_state.gui_cards,
                                             creation_interface,
@@ -679,6 +680,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 render_size: [16, 8, 16],
                                                 world_gen: WorldGenSettings::Normal,
                                                 spawn_location,
+                                                max_loaded_chunks: 2048,
                                             },
                                             &gui_state.gui_cards,
                                             creation_interface,
@@ -694,6 +696,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 render_size: [8, 8, 8],
                                                 world_gen: WorldGenSettings::PracticeRange,
                                                 spawn_location,
+                                                max_loaded_chunks: 2048,
                                             },
                                             &gui_state.gui_cards,
                                             creation_interface,

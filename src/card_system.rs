@@ -244,10 +244,11 @@ pub enum MultiCastModifier {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum VoxelMaterial {
+    Air,
     Stone,
+    Unloaded,
     Dirt,
     Grass,
-    Air,
     Ice,
     Glass,
 }
@@ -282,6 +283,7 @@ impl VoxelMaterial {
         match self {
             VoxelMaterial::Air => 0<<24,
             VoxelMaterial::Stone => 1<<24,
+            VoxelMaterial::Unloaded => 2<<24,
             VoxelMaterial::Dirt => 3<<24,
             VoxelMaterial::Grass => 4<<24,
             VoxelMaterial::Ice => 6<<24,
@@ -616,6 +618,7 @@ impl BaseCard {
                 let material_value = match material {
                     VoxelMaterial::Air => 0.0,
                     VoxelMaterial::Stone => 1.0,
+                    VoxelMaterial::Unloaded => panic!("Invalid state"),
                     VoxelMaterial::Dirt => 0.5,
                     VoxelMaterial::Grass => 0.5,
                     VoxelMaterial::Ice => 2.0,

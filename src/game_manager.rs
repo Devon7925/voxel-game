@@ -1,12 +1,13 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::{
+    app::CreationInterface,
     card_system::{CardManager, Cooldown},
     projectile_sim_manager::ProjectileComputePipeline,
     rollback_manager::{PlayerSim, ReplayData, RollbackData},
     settings_manager::{ReplayMode, Settings},
     voxel_sim_manager::VoxelComputePipeline,
-    app::CreationInterface, CHUNK_SIZE,
+    CHUNK_SIZE,
 };
 
 pub struct Game {
@@ -30,6 +31,7 @@ pub struct GameSettings {
     pub player_count: u32,
     pub render_size: [u32; 3],
     pub spawn_location: [f32; 3],
+    pub max_loaded_chunks: u32,
     pub world_gen: WorldGenSettings,
 }
 pub struct GameState {
@@ -45,9 +47,12 @@ impl Game {
     ) -> Self {
         let game_state = GameState {
             start_pos: [
-                game_settings.spawn_location[0] as u32 / CHUNK_SIZE - game_settings.render_size[0] / 2,
-                game_settings.spawn_location[1] as u32 / CHUNK_SIZE - game_settings.render_size[1] / 2,
-                game_settings.spawn_location[2] as u32 / CHUNK_SIZE - game_settings.render_size[2] / 2,
+                game_settings.spawn_location[0] as u32 / CHUNK_SIZE
+                    - game_settings.render_size[0] / 2,
+                game_settings.spawn_location[1] as u32 / CHUNK_SIZE
+                    - game_settings.render_size[1] / 2,
+                game_settings.spawn_location[2] as u32 / CHUNK_SIZE
+                    - game_settings.render_size[2] / 2,
             ],
         };
         let mut card_manager = CardManager::default();
@@ -70,10 +75,10 @@ impl Game {
             };
 
         let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);
-        let projectile_compute =
-            ProjectileComputePipeline::new(creation_interface);
+        let projectile_compute = ProjectileComputePipeline::new(creation_interface);
 
-        voxel_compute.load_chunks(game_state.start_pos, &game_settings);
+        voxel_compute.queue_update_from_world_pos(&game_settings.spawn_location, &game_settings);
+        voxel_compute.queue_update_from_world_pos(&[game_settings.spawn_location[0], game_settings.spawn_location[1] - 16.0, game_settings.spawn_location[2]], &game_settings);
 
         Game {
             voxel_compute,

@@ -1,0 +1,5 @@
+Chunk Updates
+    Only update neighboring chunks when neccessary
+    Allow for all air chunks to be unloaded
+    Improve chunk loading/unloading logic
+    Try 3D texture for chunk storage

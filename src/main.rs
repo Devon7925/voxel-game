@@ -10,7 +10,6 @@ mod rollback_manager;
 mod settings_manager;
 mod utils;
 mod voxel_sim_manager;
-mod world_gen;
 mod game_manager;
 
 use crate::{
@@ -41,6 +40,7 @@ pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
 pub const CHUNK_SIZE: u32 = 16;
 const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 16;
+const WORLDGEN_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
 
 const DEFAULT_DELTA_TIME: f32 = 1.0 / 60.0;
 
@@ -360,7 +360,7 @@ fn compute_then_render(
         if let Some(game) = app.game.as_mut() {
             puffin::profile_scope!("do compute");
             let time_step = game.rollback_data.get_delta_time();
-            game.voxel_compute.push_updates_from_changed();
+            game.voxel_compute.push_updates_from_changed(&game.game_settings);
 
             // Compute.
             game.rollback_data.download_projectiles(

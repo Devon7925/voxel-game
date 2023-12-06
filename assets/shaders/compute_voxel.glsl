@@ -3,20 +3,25 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-layout(set = 0, binding = 0) buffer VoxelBuffer { uint voxels[]; };
-layout(set = 0, binding = 1) buffer ChunkUpdates { ivec4 chunk_updates[]; };
+layout(set = 0, binding = 0) buffer ChunkBuffer { uint chunks[]; };
+layout(set = 0, binding = 1) buffer VoxelBuffer { uint voxels[]; };
+layout(set = 0, binding = 2) buffer ChunkUpdates { ivec4 chunk_updates[]; };
 
-layout(set = 0, binding = 2) uniform SimData {
+layout(set = 0, binding = 3) uniform SimData {
     uvec3 render_size;
     uvec3 start_pos;
     uvec3 update_offset;
 } sim_data;
 
-layout(set = 0, binding = 3) buffer Projectiles { Projectile projectiles[]; };
+layout(set = 0, binding = 4) buffer Projectiles { Projectile projectiles[]; };
+
+uint get_index(uvec3 global_pos) {
+    uvec2 indicies = get_indicies(global_pos, sim_data.render_size);
+    return chunks[indicies.x] * CHUNK_VOLUME + indicies.y;
+}
 
 uint get_data_unchecked(uvec3 global_pos) {
-    uint index = get_index(global_pos, sim_data.render_size);
-    return voxels[index];
+    return voxels[get_index(global_pos)];
 }
 
 uint get_data(uvec3 global_pos) {
@@ -28,10 +33,12 @@ uint get_data(uvec3 global_pos) {
 }
 
 void set_data(uvec3 global_pos, uint data) {
-    uint index = get_index(global_pos, sim_data.render_size);
-    if(voxels[index] != data) {
+    uint og_voxel_data = get_data(global_pos);
+    if(og_voxel_data >> 24 == MAT_OOB) return;
+    if(og_voxel_data != data) {
         chunk_updates[gl_WorkGroupID.x].w = 1;
     }
+    uint index = get_index(global_pos);
     voxels[index] = data;
 }
 
@@ -43,9 +50,6 @@ void main() {
             for (uint k = 0; k < 2; k++) {
                 uint raw_voxel = get_data(pos + ivec3(i, j, k));
                 pos_data[i][j][k] = uvec2(raw_voxel >> 24, raw_voxel & 0xFFFFFF);
-                if (pos_data[i][j][k].x == MAT_OOB) {
-                    return;
-                }
             }
         }
     }

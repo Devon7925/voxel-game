@@ -14,10 +14,8 @@ Card Editor
     Import/Export buttons
 
 World Gen
-    Move to GPU compute
-    Support unloaded chunks
-    Support multiplayer dynamic loading with fixed center
     Enable dynamic center for single player
+    Figure out high max_loaded_chunks performance issue
 
 Multiplayer
     Ensure proper game exiting

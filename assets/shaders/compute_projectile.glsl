@@ -3,20 +3,25 @@
 
 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer VoxelBuffer { uint voxels[]; };
+layout(set = 0, binding = 0) buffer ChunkBuffer { uint chunks[]; };
+layout(set = 0, binding = 1) buffer VoxelBuffer { uint voxels[]; };
 
-layout(set = 0, binding = 1) buffer Projectiles { Projectile projectiles[]; };
+layout(set = 0, binding = 2) buffer Projectiles { Projectile projectiles[]; };
 
-layout(set = 0, binding = 2) uniform SimData {
+layout(set = 0, binding = 3) uniform SimData {
     uvec3 render_size;
     uvec3 start_pos;
     float dt;
     uint projectile_count;
 } sim_data;
 
+uint get_index(uvec3 global_pos) {
+    uvec2 indicies = get_indicies(global_pos, sim_data.render_size);
+    return chunks[indicies.x] * CHUNK_VOLUME + indicies.y;
+}
+
 uint get_data_unchecked(uvec3 global_pos) {
-    uint index = get_index(global_pos, sim_data.render_size);
-    return voxels[index];
+    return voxels[get_index(global_pos)];
 }
 
 uint get_data(uvec3 global_pos) {
@@ -32,7 +37,7 @@ void set_data(uvec3 global_pos, uint data) {
     if (any(lessThan(global_pos, start_offset))) return;
     uvec3 rel_pos = global_pos - start_offset;
     if (any(greaterThanEqual(rel_pos, CHUNK_SIZE*sim_data.render_size))) return;
-    uint index = get_index(global_pos, sim_data.render_size);
+    uint index = get_index(global_pos);
     voxels[index] = data;
 }
 
@@ -66,6 +71,7 @@ void main() {
                     continue;
                 } else if (voxel_mat == MAT_OOB) {
                     projectile.health = 0.0;
+                    projectile.chunk_update_pos.w = 0;
                     projectiles[projectile_idx] = projectile;
                     return;
                 }
@@ -92,11 +98,11 @@ void main() {
                 }
 
                 if (projectile.damage > 0) {
-                    uint vox_index = get_index(voxel_pos, sim_data.render_size);
+                    uint vox_index = get_index(voxel_pos);
                     atomicAdd(voxels[vox_index], int(projectile.damage));
                 }
 
-                projectile.chunk_update_pos = ivec4(voxel_pos, 0);
+                projectile.chunk_update_pos = ivec4(voxel_pos, 1);
 
                 projectile.health = 0.0;
                 projectiles[projectile_idx] = projectile;

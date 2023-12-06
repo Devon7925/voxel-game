@@ -8,16 +8,17 @@ layout(input_attachment_index = 1, set = 0, binding = 1) uniform subpassInput u_
 // The `depth_input` parameter of the `draw` method.
 layout(input_attachment_index = 2, set = 0, binding = 2) uniform subpassInput u_depth;
 
-layout(set = 1, binding = 0) buffer VoxelBuffer { uint voxels[]; };
+layout(set = 1, binding = 0) buffer ChunkBuffer { uint chunks[]; };
+layout(set = 1, binding = 1) buffer VoxelBuffer { uint voxels[]; };
 
-layout(set = 1, binding = 1) uniform SimData {
+layout(set = 1, binding = 2) uniform SimData {
     uint projectile_count;
     uvec3 render_size;
     uvec3 start_pos;
 } sim_data;
 
-layout(set = 1, binding = 2) buffer Players { Player players[]; };
-layout(set = 1, binding = 3) buffer Projectiles { Projectile projectiles[]; };
+layout(set = 1, binding = 3) buffer Players { Player players[]; };
+layout(set = 1, binding = 4) buffer Projectiles { Projectile projectiles[]; };
 
 layout(push_constant) uniform PushConstants {
     // The `screen_to_world` parameter of the `draw` method.
@@ -36,8 +37,8 @@ layout(location = 0) out vec4 f_color;
 const vec3 light_dir = normalize(vec3(0.5, -1, 0.25));
 
 uint get_data_unchecked(uvec3 global_pos) {
-    uint index = get_index(global_pos, sim_data.render_size);
-    return voxels[index];
+    uvec2 indicies = get_indicies(global_pos, sim_data.render_size);
+    return voxels[chunks[indicies.x] * CHUNK_VOLUME + indicies.y];
 }
 
 uint get_data(uvec3 global_pos) {
@@ -313,50 +314,6 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         }
     }
     return RaycastResult(layers, layer_idx);
-}
-
-ivec4 pcg4d(ivec4 v)
-{
-    v = v * 1664525 + 1013904223;
-    
-    v.x += v.y*v.w;
-    v.y += v.z*v.x;
-    v.z += v.x*v.y;
-    v.w += v.y*v.z;
-    
-    v ^= v >> 16;
-    
-    v.x += v.y*v.w;
-    v.y += v.z*v.x;
-    v.z += v.x*v.y;
-    v.w += v.y*v.z;
-    
-    return v;
-}
-
-vec4 voronoise( in vec3 p, float u, float v )
-{
-	float k = 1.0+63.0*pow(1.0-v,6.0);
-
-    ivec4 i = ivec4(p, 0);
-    vec3 f = fract(p);
-    
-	vec2 a = vec2(0.0,0.0);
-    vec3 dir = vec3(0.0);
-    for( int z=-2; z<=2; z++ )
-    for( int y=-2; y<=2; y++ )
-    for( int x=-2; x<=2; x++ )
-    {
-        vec3 g = vec3( x, y, z );
-        vec4 hash = vec4(pcg4d(i + ivec4(x, y, z, 0)) & 0xFF) / 128.0 - 1.0;
-		vec4 o = hash*vec4(vec3(u), 1.0);
-		vec3 d = g - f + o.xyz;
-		float w = pow( 1.0-smoothstep(0.0,1.414,length(d)), k );
-		a += vec2(o.w*w,w);
-        dir += d * (2.0*o.w - 1.0) * w;
-    }
-	
-    return vec4(dir, a.x)/a.y;
 }
 
 struct MaterialProperties {

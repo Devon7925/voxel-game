@@ -205,9 +205,10 @@ impl ProjectileComputePipeline {
             &self.descriptor_set_allocator,
             desc_layout.clone(),
             [
-                WriteDescriptorSet::buffer(0, voxel_compute.voxels()),
-                WriteDescriptorSet::buffer(1, self.projectile_buffer.clone()),
-                WriteDescriptorSet::buffer(2, uniform_buffer_subbuffer),
+                WriteDescriptorSet::buffer(0, voxel_compute.chunks()),
+                WriteDescriptorSet::buffer(1, voxel_compute.voxels()),
+                WriteDescriptorSet::buffer(2, self.projectile_buffer.clone()),
+                WriteDescriptorSet::buffer(3, uniform_buffer_subbuffer),
             ],
             [],
         )
@@ -236,12 +237,12 @@ impl ProjectileComputePipeline {
         let projectiles_buffer = self.projectile_buffer.read().unwrap();
         for i in 0..self.upload_projectile_count {
             let projectile = projectiles_buffer[i];
-            if projectile.health == 0.0 {
+            if projectile.health == 0.0 && projectile.chunk_update_pos[3] == 1 {
                 vox_compute.queue_update_from_voxel_pos(&[
                     projectile.chunk_update_pos[0],
                     projectile.chunk_update_pos[1],
                     projectile.chunk_update_pos[2],
-                ]);
+                ], game_settings);
                 for card_ref in card_manager
                     .get_referenced_proj(projectile.proj_card_idx as usize)
                     .on_hit
@@ -267,10 +268,12 @@ impl ProjectileComputePipeline {
 
         if new_voxels.len() > 0 {
             let voxels = vox_compute.voxels();
+            let chunks = vox_compute.chunks();
             let mut writer = voxels.write().unwrap();
+            let chunk_reader = chunks.read().unwrap();
             for (pos, material) in new_voxels {
-                vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z]);
-                writer[get_index(pos, game_settings) as usize] = material.to_memory();
+                vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z], game_settings);
+                writer[get_index(pos, &chunk_reader, game_settings) as usize] = material.to_memory();
             }
         }
 
