@@ -55,5 +55,7 @@ uint get_worldgen(uvec3 global_pos) {
 
 void main() {
     uvec3 pos = gl_WorkGroupSize*chunk_loads[gl_WorkGroupID.x].xyz + gl_LocalInvocationID;
+    uvec2 indicies = get_indicies(pos, sim_data.render_size);
+    chunks[indicies.x] = chunk_loads[gl_WorkGroupID.x].w;
     set_data(pos, get_worldgen(pos));
 }

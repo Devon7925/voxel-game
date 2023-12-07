@@ -11,10 +11,10 @@ use crate::{
     app::CreationInterface,
     card_system::VoxelMaterial,
     game_manager::{GameSettings, GameState},
-    utils::{VoxelUpdateQueue, QueueSet},
+    utils::{QueueSet, VoxelUpdateQueue},
     CHUNK_SIZE, SUB_CHUNK_COUNT, WORLDGEN_CHUNK_COUNT,
 };
-use std::{sync::Arc, iter};
+use std::{iter, sync::Arc, collections::{HashSet, HashMap}};
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
@@ -52,7 +52,7 @@ pub struct VoxelComputePipeline {
     available_chunks: Vec<u32>,
     chunk_update_queue: VoxelUpdateQueue,
     chunk_updates: Subbuffer<[[u32; 4]; 256]>,
-    worldgen_update_queue: QueueSet<[u32;3]>,
+    worldgen_update_queue: QueueSet<[u32; 3]>,
     worldgen_updates: Subbuffer<[[u32; 4]; 256]>,
     uniform_buffer: SubbufferAllocator,
     last_update_count: usize,
@@ -146,7 +146,8 @@ impl VoxelComputePipeline {
         };
 
         let compute_worldgen_pipeline = {
-            let shader = compute_worldgen_cs::load(creation_interface.queue.device().clone()).unwrap();
+            let shader =
+                compute_worldgen_cs::load(creation_interface.queue.device().clone()).unwrap();
 
             let cs = shader.entry_point("main").unwrap();
             let stage = PipelineShaderStageCreateInfo::new(cs);
@@ -232,28 +233,13 @@ impl VoxelComputePipeline {
 
     pub fn queue_update(&mut self, queued: [u32; 3], game_settings: &GameSettings) {
         let chunk = queued.map(|e| e / SUB_CHUNK_COUNT);
-        let chunk_idx = ((chunk[0] % game_settings.render_size[0]) * game_settings.render_size[1] * game_settings.render_size[2]
-            + (chunk[1] % game_settings.render_size[1]) * game_settings.render_size[2]
-            + (chunk[2] % game_settings.render_size[2])) as usize;
+        let chunk_idx = self.get_idx_of_chunk(chunk, game_settings);
         if self.chunk_buffer.read().unwrap()[chunk_idx] == 0 {
-            let mut chunk_writer = self.chunk_buffer.write().unwrap();
-            let Some(available_chunk_idx) = self.available_chunks.pop() else {
-                return;
-            };
-            chunk_writer[chunk_idx] = available_chunk_idx;
-            for i in 0..WORLDGEN_CHUNK_COUNT {
-                for j in 0..WORLDGEN_CHUNK_COUNT {
-                    for k in 0..WORLDGEN_CHUNK_COUNT {
-                        self.worldgen_update_queue.push([
-                            chunk[0] * WORLDGEN_CHUNK_COUNT + i,
-                            chunk[1] * WORLDGEN_CHUNK_COUNT + j,
-                            chunk[2] * WORLDGEN_CHUNK_COUNT + k,
-                        ]);
-                    }
-                }
-            }
+            self.worldgen_update_queue
+                .push([chunk[0], chunk[1], chunk[2]]);
+        } else {
+            self.chunk_update_queue.push_all(queued);
         }
-        self.chunk_update_queue.push_all(queued);
     }
 
     pub fn queue_update_from_world_pos(&mut self, queued: &[f32; 3], game_settings: &GameSettings) {
@@ -274,7 +260,7 @@ impl VoxelComputePipeline {
         self.queue_update(chunk_location, game_settings);
     }
 
-    fn get_chunk_idx(&self, pos: [u32; 3], game_settings: &GameSettings) -> usize {
+    fn get_idx_of_chunk(&self, pos: [u32; 3], game_settings: &GameSettings) -> usize {
         let adj_pos = [0, 1, 2].map(|i| pos[i].rem_euclid(game_settings.render_size[i]));
         (adj_pos[0] * game_settings.render_size[1] * game_settings.render_size[2]
             + adj_pos[1] * game_settings.render_size[2]
@@ -356,8 +342,9 @@ impl VoxelComputePipeline {
     pub fn push_updates_from_changed(&mut self, game_settings: &GameSettings) {
         puffin::profile_function!();
         // last component of 1 means the chunk was changed and therefore means it and surrounding chunks need to be updated
-        let mut updates_todo = Vec::new();
+        let mut updates_todo = HashSet::new();
         {
+            puffin::profile_scope!("count updates");
             let reader = self.chunk_updates.read().unwrap();
             for i in 0..self.last_update_count {
                 let read_update = reader[i];
@@ -365,7 +352,7 @@ impl VoxelComputePipeline {
                     for x_offset in -1..=1 {
                         for y_offset in -1..=1 {
                             for z_offset in -1..=1 {
-                                updates_todo.push([
+                                updates_todo.insert([
                                     read_update[0].wrapping_add_signed(x_offset),
                                     read_update[1].wrapping_add_signed(y_offset),
                                     read_update[2].wrapping_add_signed(z_offset),
@@ -376,8 +363,26 @@ impl VoxelComputePipeline {
                 }
             }
         }
+        let mut chunk_loaded_cache: HashMap<usize, bool> = HashMap::new();
+        let chunk_reader = self.chunk_buffer.read().unwrap();
         for update in updates_todo {
-            self.queue_update(update, game_settings);
+            {
+                let chunk = update.map(|e| e / SUB_CHUNK_COUNT);
+                let chunk_idx = self.get_idx_of_chunk(chunk, game_settings);
+                let is_chunk_loaded = if let Some(cached_loaded) = chunk_loaded_cache.get(&chunk_idx) {
+                    *cached_loaded
+                } else {
+                    let is_chunk_loaded = chunk_reader[chunk_idx] != 0;
+                    chunk_loaded_cache.insert(chunk_idx, is_chunk_loaded);
+                    is_chunk_loaded
+                };
+                if !is_chunk_loaded {
+                    self.worldgen_update_queue
+                        .push([chunk[0], chunk[1], chunk[2]]);
+                } else {
+                    self.chunk_update_queue.push_all(update);
+                }
+            };
         }
     }
 
@@ -396,6 +401,14 @@ impl VoxelComputePipeline {
 
     pub fn update_count(&self) -> usize {
         self.chunk_update_queue.len()
+    }
+
+    pub fn worldgen_count(&self) -> usize {
+        self.worldgen_update_queue.len()
+    }
+
+    pub fn worldgen_capacity(&self) -> usize {
+        self.available_chunks.len()
     }
 
     pub fn compute<F>(
@@ -480,18 +493,40 @@ impl VoxelComputePipeline {
         {
             let mut worldgen_updates_buffer = self.worldgen_updates.write().unwrap();
             while let Some(loc) = self.worldgen_update_queue.pop() {
-                if loc[0] >= WORLDGEN_CHUNK_COUNT * game_state.start_pos[0]
-                    && loc[0]
-                        < WORLDGEN_CHUNK_COUNT * (game_state.start_pos[0] + game_settings.render_size[0])
-                    && loc[1] >= WORLDGEN_CHUNK_COUNT * game_state.start_pos[1]
-                    && loc[1]
-                        < WORLDGEN_CHUNK_COUNT * (game_state.start_pos[1] + game_settings.render_size[1])
-                    && loc[2] >= WORLDGEN_CHUNK_COUNT * game_state.start_pos[2]
-                    && loc[2]
-                        < WORLDGEN_CHUNK_COUNT * (game_state.start_pos[2] + game_settings.render_size[2])
+                if loc[0] >= game_state.start_pos[0]
+                    && loc[0] < (game_state.start_pos[0] + game_settings.render_size[0])
+                    && loc[1] >= game_state.start_pos[1]
+                    && loc[1] < (game_state.start_pos[1] + game_settings.render_size[1])
+                    && loc[2] >= game_state.start_pos[2]
+                    && loc[2] < (game_state.start_pos[2] + game_settings.render_size[2])
                 {
-                    worldgen_updates_buffer[worldgen_update_count] = [loc[0], loc[1], loc[2], 0];
-                    worldgen_update_count += 1;
+                    let Some(available_chunk_idx) = self.available_chunks.pop() else {
+                        break;
+                    };
+                    for i in 0..WORLDGEN_CHUNK_COUNT {
+                        for j in 0..WORLDGEN_CHUNK_COUNT {
+                            for k in 0..WORLDGEN_CHUNK_COUNT {
+                                worldgen_updates_buffer[worldgen_update_count] = [
+                                    WORLDGEN_CHUNK_COUNT * loc[0] + i,
+                                    WORLDGEN_CHUNK_COUNT * loc[1] + j,
+                                    WORLDGEN_CHUNK_COUNT * loc[2] + k,
+                                    available_chunk_idx,
+                                ];
+                                worldgen_update_count += 1;
+                            }
+                        }
+                    }
+                    for i in 0..SUB_CHUNK_COUNT {
+                        for j in 0..SUB_CHUNK_COUNT {
+                            for k in 0..SUB_CHUNK_COUNT {
+                                self.chunk_update_queue.push_all([
+                                    SUB_CHUNK_COUNT * loc[0] + i,
+                                    SUB_CHUNK_COUNT * loc[1] + j,
+                                    SUB_CHUNK_COUNT * loc[2] + k,
+                                ]);
+                            }
+                        }
+                    }
                     if worldgen_update_count >= 256 {
                         break;
                     }

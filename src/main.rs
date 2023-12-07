@@ -269,6 +269,8 @@ fn handle_events(
                                     if input.state == ElementState::Released {
                                         if let Some(game) = app.game.as_ref() {
                                             println!("Chunk update count: {}", game.voxel_compute.update_count());
+                                            println!("Chunk worldgen count: {}", game.voxel_compute.worldgen_count());
+                                            println!("Chunk capacity: {}", game.voxel_compute.worldgen_capacity());
                                         }
                                     }
                                 }

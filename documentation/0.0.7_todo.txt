@@ -15,7 +15,6 @@ Card Editor
 
 World Gen
     Enable dynamic center for single player
-    Figure out high max_loaded_chunks performance issue
 
 Multiplayer
     Ensure proper game exiting
