@@ -13,9 +13,6 @@ Card Editor
     Display keybind
     Import/Export buttons
 
-World Gen
-    Enable dynamic center for single player
-
 Multiplayer
     Ensure proper game exiting
     Add single player button

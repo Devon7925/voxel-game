@@ -20,5 +20,5 @@ delta_time: 0.03
 replay_settings:
     replay_file: replay.txt
     replay_mode: None
-do_profiling: true
+do_profiling: false
 crash_log: crash_log.txt

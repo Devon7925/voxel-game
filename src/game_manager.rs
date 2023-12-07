@@ -1,3 +1,4 @@
+use cgmath::{Point3, Vector3, EuclideanSpace};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -29,13 +30,15 @@ pub enum WorldGenSettings {
 pub struct GameSettings {
     pub is_remote: bool,
     pub player_count: u32,
-    pub render_size: [u32; 3],
-    pub spawn_location: [f32; 3],
+    pub render_size: Vector3<u32>,
+    pub spawn_location: Point3<f32>,
     pub max_loaded_chunks: u32,
     pub world_gen: WorldGenSettings,
+    pub fixed_center: bool,
 }
 pub struct GameState {
-    pub start_pos: [u32; 3],
+    pub start_pos: Point3<u32>,
+    pub players_center: Point3<f32>,
 }
 
 impl Game {
@@ -46,14 +49,8 @@ impl Game {
         creation_interface: &CreationInterface,
     ) -> Self {
         let game_state = GameState {
-            start_pos: [
-                game_settings.spawn_location[0] as u32 / CHUNK_SIZE
-                    - game_settings.render_size[0] / 2,
-                game_settings.spawn_location[1] as u32 / CHUNK_SIZE
-                    - game_settings.render_size[1] / 2,
-                game_settings.spawn_location[2] as u32 / CHUNK_SIZE
-                    - game_settings.render_size[2] / 2,
-            ],
+            start_pos: game_settings.spawn_location.zip(Point3::from_vec(game_settings.render_size), |spawn, size| spawn as u32 / CHUNK_SIZE - size / 2),
+            players_center: game_settings.spawn_location.into(),
         };
         let mut card_manager = CardManager::default();
 
@@ -78,7 +75,6 @@ impl Game {
         let projectile_compute = ProjectileComputePipeline::new(creation_interface);
 
         voxel_compute.queue_update_from_world_pos(&game_settings.spawn_location, &game_settings);
-        voxel_compute.queue_update_from_world_pos(&[game_settings.spawn_location[0], game_settings.spawn_location[1] - 16.0, game_settings.spawn_location[2]], &game_settings);
 
         Game {
             voxel_compute,

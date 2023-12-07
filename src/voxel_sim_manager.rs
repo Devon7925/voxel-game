@@ -15,6 +15,7 @@ use crate::{
     CHUNK_SIZE, SUB_CHUNK_COUNT, WORLDGEN_CHUNK_COUNT,
 };
 use std::{iter, sync::Arc, collections::{HashSet, HashMap}};
+use cgmath::{Point3, Vector3, EuclideanSpace};
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
@@ -242,7 +243,7 @@ impl VoxelComputePipeline {
         }
     }
 
-    pub fn queue_update_from_world_pos(&mut self, queued: &[f32; 3], game_settings: &GameSettings) {
+    pub fn queue_update_from_world_pos(&mut self, queued: &Point3<f32>, game_settings: &GameSettings) {
         let chunk_location = [
             queued[0].floor() as u32 * SUB_CHUNK_COUNT / CHUNK_SIZE,
             queued[1].floor() as u32 * SUB_CHUNK_COUNT / CHUNK_SIZE,
@@ -270,14 +271,10 @@ impl VoxelComputePipeline {
     pub fn move_start_pos(
         &mut self,
         game_state: &mut GameState,
-        offset: [i32; 3],
+        offset: Vector3<i32>,
         game_settings: &GameSettings,
     ) {
-        game_state.start_pos = [0, 1, 2].map(|i| {
-            game_state.start_pos[i]
-                .checked_add_signed(offset[i])
-                .unwrap()
-        });
+        game_state.start_pos = game_state.start_pos.zip(Point3::from_vec(offset), |a, b| a.checked_add_signed(b).unwrap());
 
         let [load_range_x, load_range_y, load_range_z] = [0, 1, 2].map(|i| {
             if offset[i] > 0 {
@@ -287,7 +284,71 @@ impl VoxelComputePipeline {
                 0..=-offset[i] - 1
             }
         });
+        
+        {
+            let chunk_reader = self.chunk_buffer.read().unwrap();
+            for x_offset in load_range_x.clone() {
+                for y_i in 0..game_settings.render_size[1] {
+                    for z_i in 0..game_settings.render_size[2] {
+                        let chunk_location = [
+                            game_state.start_pos[0].wrapping_add_signed(x_offset),
+                            game_state.start_pos[1] + y_i,
+                            game_state.start_pos[2] + z_i,
+                        ];
+                        let chunk_idx = self.get_idx_of_chunk(chunk_location, game_settings);
+                        let current_chunk_ref = chunk_reader[chunk_idx];
+                        if current_chunk_ref != 0 {
+                            self.available_chunks.push(current_chunk_ref);
+                        }
+                    }
+                }
+            }
 
+            for x_i in 0..game_settings.render_size[0] {
+                if load_range_x.contains(&(x_i as i32)) {
+                    continue;
+                }
+                for y_offset in load_range_y.clone() {
+                    for z_i in 0..game_settings.render_size[2] {
+                        let chunk_location = [
+                            game_state.start_pos[0] + x_i,
+                            game_state.start_pos[1].wrapping_add_signed(y_offset),
+                            game_state.start_pos[2] + z_i,
+                        ];
+                        let chunk_idx = self.get_idx_of_chunk(chunk_location, game_settings);
+                        let current_chunk_ref = chunk_reader[chunk_idx];
+                        if current_chunk_ref != 0 {
+                            self.available_chunks.push(current_chunk_ref);
+                        }
+                    }
+                }
+            }
+
+            for x_i in 0..game_settings.render_size[0] {
+                if load_range_x.contains(&(x_i as i32)) {
+                    continue;
+                }
+                for y_i in 0..game_settings.render_size[1] {
+                    if load_range_y.contains(&(y_i as i32)) {
+                        continue;
+                    }
+                    for z_offset in load_range_z.clone() {
+                        let chunk_location = [
+                            game_state.start_pos[0] + x_i,
+                            game_state.start_pos[1] + y_i,
+                            game_state.start_pos[2].wrapping_add_signed(z_offset),
+                        ];
+                        let chunk_idx = self.get_idx_of_chunk(chunk_location, game_settings);
+                        let current_chunk_ref = chunk_reader[chunk_idx];
+                        if current_chunk_ref != 0 {
+                            self.available_chunks.push(current_chunk_ref);
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut chunk_writer = self.chunk_buffer.write().unwrap();
         for x_offset in load_range_x.clone() {
             for y_i in 0..game_settings.render_size[1] {
                 for z_i in 0..game_settings.render_size[2] {
@@ -296,7 +357,8 @@ impl VoxelComputePipeline {
                         game_state.start_pos[1] + y_i,
                         game_state.start_pos[2] + z_i,
                     ];
-                    //todo
+                    let chunk_idx = self.get_idx_of_chunk(chunk_location, game_settings);
+                    chunk_writer[chunk_idx] = 0;
                 }
             }
         }
@@ -312,7 +374,8 @@ impl VoxelComputePipeline {
                         game_state.start_pos[1].wrapping_add_signed(y_offset),
                         game_state.start_pos[2] + z_i,
                     ];
-                    //todo
+                    let chunk_idx = self.get_idx_of_chunk(chunk_location, game_settings);
+                    chunk_writer[chunk_idx] = 0;
                 }
             }
         }
@@ -331,7 +394,8 @@ impl VoxelComputePipeline {
                         game_state.start_pos[1] + y_i,
                         game_state.start_pos[2].wrapping_add_signed(z_offset),
                     ];
-                    //todo
+                    let chunk_idx = self.get_idx_of_chunk(chunk_location, game_settings);
+                    chunk_writer[chunk_idx] = 0;
                 }
             }
         }
@@ -414,7 +478,7 @@ impl VoxelComputePipeline {
     pub fn compute<F>(
         &mut self,
         before_future: F,
-        game_state: &GameState,
+        game_state: &mut GameState,
         game_settings: &GameSettings,
     ) -> Box<dyn GpuFuture>
     where
@@ -536,7 +600,7 @@ impl VoxelComputePipeline {
 
         let uniform_buffer_subbuffer = {
             let uniform_data = compute_worldgen_cs::SimData {
-                render_size: game_settings.render_size.into(),
+                render_size: Into::<[u32;3]>::into(game_settings.render_size).into(),
                 start_pos: game_state.start_pos.into(),
             };
 
@@ -605,8 +669,8 @@ impl VoxelComputePipeline {
 
         let uniform_buffer_subbuffer = {
             let uniform_data = compute_dists_cs::SimData {
-                render_size: game_settings.render_size.into(),
-                start_pos: game_state.start_pos.into(),
+                render_size:  Into::<[u32;3]>::into(game_settings.render_size).into(),
+                start_pos:  Into::<[u32;3]>::into(game_state.start_pos).into(),
                 update_offset: self.chunk_update_queue.queue_set_idx().into(),
             };
 

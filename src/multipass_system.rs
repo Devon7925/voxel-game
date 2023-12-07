@@ -6,7 +6,7 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
-use cgmath::{Matrix4, SquareMatrix};
+use cgmath::{Matrix4, SquareMatrix, Point3, Vector3};
 use egui_winit_vulkano::{
     egui::{
         self, epaint, pos2, Align2, Color32, Rect, RichText, Stroke,
@@ -653,7 +653,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     Color32::BLACK,
                                 );
                                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                                    let spawn_location = [10000.0, 1810.0, 10000.0];
+                                    let spawn_location = Point3::new(10000.0, 1810.0, 10000.0);
                                     if ui.button("Singleplayer").clicked() {
                                         gui_state.menu_stack.pop();
                                         *game = Some(Game::new(
@@ -661,10 +661,11 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             GameSettings {
                                                 is_remote: false,
                                                 player_count: 1,
-                                                render_size: [64, 8, 64],
+                                                render_size: Vector3::new(64, 8, 64),
                                                 world_gen: WorldGenSettings::Normal,
                                                 spawn_location,
                                                 max_loaded_chunks: 9000,
+                                                fixed_center: false,
                                             },
                                             &gui_state.gui_cards,
                                             creation_interface,
@@ -677,10 +678,11 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             GameSettings {
                                                 is_remote: true,
                                                 player_count: 2,
-                                                render_size: [16, 8, 16],
+                                                render_size: Vector3::new(16, 8, 16),
                                                 world_gen: WorldGenSettings::Normal,
                                                 spawn_location,
                                                 max_loaded_chunks: 2048,
+                                                fixed_center: false,
                                             },
                                             &gui_state.gui_cards,
                                             creation_interface,
@@ -693,10 +695,11 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             GameSettings {
                                                 is_remote: false,
                                                 player_count: 1,
-                                                render_size: [8, 8, 8],
+                                                render_size: Vector3::new(8, 8, 8),
                                                 world_gen: WorldGenSettings::PracticeRange,
                                                 spawn_location,
                                                 max_loaded_chunks: 512,
+                                                fixed_center: true,
                                             },
                                             &gui_state.gui_cards,
                                             creation_interface,

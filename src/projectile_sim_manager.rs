@@ -13,6 +13,7 @@ use crate::{
 };
 use bytemuck::{Pod, Zeroable};
 use cgmath::{Point3, Quaternion};
+use core::panic;
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -190,7 +191,7 @@ impl ProjectileComputePipeline {
 
         let uniform_buffer_subbuffer = {
             let uniform_data = compute_projs_cs::SimData {
-                render_size: game_settings.render_size.into(),
+                render_size:  Into::<[u32;3]>::into(game_settings.render_size).into(),
                 start_pos: game_state.start_pos.into(),
                 dt: rollback_data.get_delta_time().into(),
                 projectile_count: self.upload_projectile_count as u32,
@@ -230,6 +231,7 @@ impl ProjectileComputePipeline {
         &self,
         card_manager: &CardManager,
         vox_compute: &mut VoxelComputePipeline,
+        game_state: &GameState,
         game_settings: &GameSettings
     ) -> Vec<Projectile> {
         let mut projectiles = Vec::new();
@@ -273,7 +275,10 @@ impl ProjectileComputePipeline {
             let chunk_reader = chunks.read().unwrap();
             for (pos, material) in new_voxels {
                 vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z], game_settings);
-                writer[get_index(pos, &chunk_reader, game_settings) as usize] = material.to_memory();
+                let Some(index) = get_index(pos, &chunk_reader, game_state, game_settings) else {
+                    panic!("Voxel pos out of bounds");
+                };
+                writer[index as usize] = material.to_memory();
             }
         }
 
