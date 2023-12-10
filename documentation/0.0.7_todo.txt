@@ -1,16 +1,10 @@
 Card Editor
-    Fix increaced height when adding modifiers
-    Add wrapping to the modifier list
-    Add material palette and dragging
-    Add effect palette and dragging
-    Add status effect palette and dragging
     Support adjusting remaining card settings
         Trail frequency
         Status effect duration
         Damage & Knockback magnitude
         Decreace multi modifier's magnitude
     Show cooldowns
-    Display keybind
     Import/Export buttons
 
 Multiplayer

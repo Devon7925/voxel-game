@@ -208,6 +208,7 @@ pub enum BaseCard {
     CreateMaterial(VoxelMaterial),
     Effect(Effect),
     Trigger(u32),
+    Palette(Vec<DraggableCard>, bool),
     None,
 }
 
@@ -223,6 +224,23 @@ pub enum ProjectileModifier {
     LockToOwner,
     PiercePlayers,
     WallBounce,
+}
+
+impl ProjectileModifier {
+    pub fn is_advanced(&self) -> bool {
+        match self {
+            ProjectileModifier::SimpleModify(_, _) => false,
+            ProjectileModifier::FriendlyFire => false,
+            ProjectileModifier::NoEnemyFire => false,
+            ProjectileModifier::OnHit(_) => true,
+            ProjectileModifier::OnExpiry(_) => true,
+            ProjectileModifier::OnTrigger(_, _) => true,
+            ProjectileModifier::Trail(_, _) => true,
+            ProjectileModifier::LockToOwner => false,
+            ProjectileModifier::PiercePlayers => false,
+            ProjectileModifier::WallBounce => false,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -799,6 +817,7 @@ impl BaseCard {
             },
             BaseCard::Trigger(_id) => vec![],
             BaseCard::None => vec![],
+            BaseCard::Palette(..) => panic!("Invalid state"),
         }
     }
 
@@ -882,6 +901,7 @@ impl BaseCard {
             },
             BaseCard::Trigger(_) => {}
             BaseCard::None => {}
+            BaseCard::Palette(..) => panic!("Invalid state"),
         }
         return true;
     }
@@ -956,7 +976,11 @@ impl BaseCard {
                 assert!(path.pop_front().unwrap() == 0);
                 card.take_from_path(path)
             }
-            invalid_take => panic!("Invalid state: cannot take from {:?}", invalid_take),
+            BaseCard::Palette(cards, _) => {
+                let card_idx = path.pop_front().unwrap() as usize;
+                cards[card_idx].clone()
+            }
+            invalid_take@(BaseCard::CreateMaterial(_) | BaseCard::None | BaseCard::Trigger(_)| BaseCard::Effect(_)) => panic!("Invalid state: cannot take from {:?}", invalid_take),
         }
     }
 
@@ -1143,7 +1167,7 @@ impl BaseCard {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DraggableCard {
     ProjectileModifier(ProjectileModifier),
     MultiCastModifier(MultiCastModifier),
@@ -1690,6 +1714,7 @@ impl CardManager {
                 card_type: ReferencedBaseCardType::None,
                 card_idx: 0,
             },
+            BaseCard::Palette(..) => panic!("Invalid state"),
         }
     }
 

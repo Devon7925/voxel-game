@@ -1,3 +1,9 @@
 Unloaded chunks
 GPU Chunk loading
 Dynamic world center
+Card Editor
+    Add wrapping to the modifier list
+    Add material palette and dragging
+    Add effect palette and dragging
+    Add status effect palette and dragging
+    Display keybind
