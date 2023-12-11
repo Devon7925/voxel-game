@@ -1,9 +1,4 @@
 Card Editor
-    Support adjusting remaining card settings
-        Trail frequency
-        Status effect duration
-        Damage & Knockback magnitude
-        Decreace multi modifier's magnitude
     Show cooldowns
     Import/Export buttons
 

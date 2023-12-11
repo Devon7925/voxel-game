@@ -1,10 +1,13 @@
 use std::collections::VecDeque;
 
 use egui_winit_vulkano::egui::{
-    self, emath, epaint, pos2,
+    self, emath,
+    epaint::{self, tessellator::path},
+    pos2,
     text::LayoutJob,
-    Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse, Label, LayerId, Order, Rect,
-    Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke, TextFormat, Ui, Vec2,
+    Align, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label, LayerId, Link,
+    Order, Rect, Response, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke, TextFormat,
+    Ui, Vec2, Widget, WidgetInfo, WidgetText, WidgetType,
 };
 
 use crate::{
@@ -199,6 +202,12 @@ pub enum DropableType {
     Cooldown,
 }
 
+#[derive(Debug)]
+pub enum ModificationType {
+    Add,
+    Remove,
+}
+
 pub fn is_valid_drag(from: &DragableType, to: &DropableType) -> bool {
     match (from, to) {
         (DragableType::ProjectileModifier, DropableType::BaseProjectile) => true,
@@ -217,6 +226,7 @@ pub fn draw_cooldown(
     path: &mut VecDeque<u32>,
     source_path: &mut Option<(VecDeque<u32>, DragableType)>,
     drop_path: &mut Option<(VecDeque<u32>, DropableType)>,
+    modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
 ) {
     let can_accept_what_is_being_dragged = true;
     let id_source = "my_drag_and_drop_demo";
@@ -241,6 +251,7 @@ pub fn draw_cooldown(
                         path,
                         source_path,
                         drop_path,
+                        modify_path,
                     );
                     path.pop_back();
                 }
@@ -252,7 +263,7 @@ pub fn draw_cooldown(
                 path.push_back(ability_idx as u32);
                 ui.horizontal(|ui| {
                     draw_keybind(ui, &ability.keybind);
-                    draw_base_card(ui, &ability.card, path, source_path, drop_path);
+                    draw_base_card(ui, &ability.card, path, source_path, drop_path, modify_path);
                 });
                 path.pop_back();
             }
@@ -319,32 +330,57 @@ impl DraggableCard {
         path: &mut VecDeque<u32>,
         source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
+        modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
     ) {
         let id_source = "my_drag_and_drop_demo";
         match self {
             DraggableCard::BaseCard(card) => {
-                draw_base_card(ui, card, path, source_path, dest_path);
+                draw_base_card(ui, card, path, source_path, dest_path, modify_path);
             }
             DraggableCard::CooldownModifier(modifier) => {
                 let item_id = egui::Id::new(id_source).with(path.clone());
                 match modifier {
-                    CooldownModifier::AddCharge(v) => {
-                        add_hoverable_basic_modifer(ui, item_id, "Add Charge", *v, String::new())
-                    }
-                    CooldownModifier::AddCooldown(v) => {
-                        add_hoverable_basic_modifer(ui, item_id, "Add Cooldown", *v, String::new())
-                    }
+                    CooldownModifier::AddCharge(v) => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Add Charge",
+                        *v,
+                        String::new(),
+                        modify_path,
+                        path,
+                    ),
+                    CooldownModifier::AddCooldown(v) => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Add Cooldown",
+                        *v,
+                        String::new(),
+                        modify_path,
+                        path,
+                    ),
                 }
             }
             DraggableCard::MultiCastModifier(modifier) => {
                 let item_id = egui::Id::new(id_source).with(path.clone());
                 drag_source(ui, item_id, |ui| match modifier {
-                    MultiCastModifier::Spread(v) => {
-                        add_hoverable_basic_modifer(ui, item_id, "Spread", *v, String::new())
-                    }
-                    MultiCastModifier::Duplication(v) => {
-                        add_hoverable_basic_modifer(ui, item_id, "Duplication", *v, String::new())
-                    }
+                    MultiCastModifier::Spread(v) => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Spread",
+                        *v,
+                        String::new(),
+                        modify_path,
+                        path,
+                    ),
+                    MultiCastModifier::Duplication(v) => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Duplication",
+                        *v,
+                        String::new(),
+                        modify_path,
+                        path,
+                    ),
                 });
             }
             DraggableCard::ProjectileModifier(modifier) => {
@@ -367,6 +403,8 @@ impl DraggableCard {
                             name,
                             *v,
                             modifier.get_hover_text(),
+                            modify_path,
+                            path,
                         )
                     }
                     ProjectileModifier::NoEnemyFire => add_hoverable_basic_modifer(
@@ -375,6 +413,8 @@ impl DraggableCard {
                         "No Enemy Fire",
                         "",
                         modifier.get_hover_text(),
+                        modify_path,
+                        path,
                     ),
                     ProjectileModifier::FriendlyFire => add_hoverable_basic_modifer(
                         ui,
@@ -382,6 +422,8 @@ impl DraggableCard {
                         "Friendly Fire",
                         "",
                         modifier.get_hover_text(),
+                        modify_path,
+                        path,
                     ),
                     ProjectileModifier::LockToOwner => add_hoverable_basic_modifer(
                         ui,
@@ -389,6 +431,8 @@ impl DraggableCard {
                         "Lock To Owner",
                         "",
                         modifier.get_hover_text(),
+                        modify_path,
+                        path,
                     ),
                     ProjectileModifier::PiercePlayers => add_hoverable_basic_modifer(
                         ui,
@@ -396,6 +440,8 @@ impl DraggableCard {
                         "Pierce Players",
                         "",
                         modifier.get_hover_text(),
+                        modify_path,
+                        path,
                     ),
                     ProjectileModifier::WallBounce => add_hoverable_basic_modifer(
                         ui,
@@ -403,6 +449,8 @@ impl DraggableCard {
                         "Wall Bounce",
                         "",
                         modifier.get_hover_text(),
+                        modify_path,
+                        path,
                     ),
                     modifier if modifier.is_advanced() => {
                         advanced_modifier = true;
@@ -417,7 +465,14 @@ impl DraggableCard {
                                 drag_source(ui, item_id, |ui| {
                                     ui.label("On Hit");
                                     path.push_back(0);
-                                    draw_base_card(ui, base_card, path, source_path, dest_path);
+                                    draw_base_card(
+                                        ui,
+                                        base_card,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                    );
                                     path.pop_back();
                                 });
                             }
@@ -425,42 +480,44 @@ impl DraggableCard {
                                 drag_source(ui, item_id, |ui| {
                                     ui.label("On Expiry");
                                     path.push_back(0);
-                                    draw_base_card(ui, base_card, path, source_path, dest_path);
+                                    draw_base_card(
+                                        ui,
+                                        base_card,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                    );
                                     path.pop_back();
                                 });
                             }
                             ProjectileModifier::OnTrigger(id, base_card) => {
                                 drag_source(ui, item_id, |ui| {
-                                    ui.label(format!("On Trigger {}", id));
+                                    add_basic_modifer(ui, "On Trigger", *id, modify_path, path);
                                     path.push_back(0);
-                                    draw_base_card(ui, base_card, path, source_path, dest_path);
+                                    draw_base_card(
+                                        ui,
+                                        base_card,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                    );
                                     path.pop_back();
                                 });
                             }
                             ProjectileModifier::Trail(frequency, base_card) => {
                                 drag_source(ui, item_id, |ui| {
-                                    let mut job = LayoutJob::default();
-                                    job.append(
-                                        "Trail",
-                                        0.0,
-                                        TextFormat {
-                                            color: Color32::WHITE,
-                                            ..Default::default()
-                                        },
-                                    );
-                                    job.append(
-                                        format!("{}", frequency).as_str(),
-                                        0.0,
-                                        TextFormat {
-                                            color: Color32::WHITE,
-                                            font_id: FontId::proportional(7.0),
-                                            valign: Align::TOP,
-                                            ..Default::default()
-                                        },
-                                    );
-                                    ui.label(job);
+                                    add_basic_modifer(ui, "Trail", *frequency, modify_path, path);
                                     path.push_back(0);
-                                    draw_base_card(ui, base_card, path, source_path, dest_path);
+                                    draw_base_card(
+                                        ui,
+                                        base_card,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                    );
                                     path.pop_back();
                                 });
                             }
@@ -479,6 +536,7 @@ pub fn draw_base_card(
     path: &mut VecDeque<u32>,
     source_path: &mut Option<(VecDeque<u32>, DragableType)>,
     dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
+    modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
 ) {
     let id_source = "my_drag_and_drop_demo";
 
@@ -504,7 +562,13 @@ pub fn draw_base_card(
                                     }
                                     path.push_back(modifier_idx as u32);
                                     DraggableCard::ProjectileModifier(modifier.clone())
-                                        .draw_draggable(ui, path, source_path, dest_path);
+                                        .draw_draggable(
+                                            ui,
+                                            path,
+                                            source_path,
+                                            dest_path,
+                                            modify_path,
+                                        );
                                     path.pop_back();
                                 }
                             });
@@ -516,6 +580,7 @@ pub fn draw_base_card(
                                     path,
                                     source_path,
                                     dest_path,
+                                    modify_path,
                                 );
                                 path.pop_back();
                             }
@@ -557,6 +622,7 @@ pub fn draw_base_card(
                             path,
                             source_path,
                             dest_path,
+                            modify_path,
                         );
                         path.pop_back();
                     }
@@ -567,7 +633,7 @@ pub fn draw_base_card(
                 ui.vertical(|ui| {
                     for (card_idx, card) in cards.iter().enumerate() {
                         path.push_back(card_idx as u32);
-                        draw_base_card(ui, card, path, source_path, dest_path);
+                        draw_base_card(ui, card, path, source_path, dest_path, modify_path);
                         path.pop_back();
                     }
                 });
@@ -625,15 +691,22 @@ pub fn draw_base_card(
                     ui.add_space(CARD_UI_SPACING);
                     ui.label("Apply Effect");
                     match effect {
-                        Effect::Damage(v) => add_basic_modifer(ui, "Damage", *v),
-                        Effect::Knockback(v) => add_basic_modifer(ui, "Knockback", *v),
-                        Effect::Cleanse => add_basic_modifer(ui, "Cleanse", ""),
-                        Effect::Teleport => add_basic_modifer(ui, "Teleport", ""),
+                        Effect::Damage(v) => add_basic_modifer(ui,"Damage", *v, modify_path, path),
+                        Effect::Knockback(v) => add_basic_modifer(ui,"Knockback", *v, modify_path, path),
+                        Effect::Cleanse => add_basic_modifer(ui,"Cleanse", "", modify_path, path),
+                        Effect::Teleport => add_basic_modifer(ui,"Teleport", "", modify_path, path),
                         Effect::StatusEffect(e, t) => {
                             if let StatusEffect::OnHit(base_card) = e {
-                                ui.label("On Hit");
+                                add_basic_modifer(ui,"On Hit", *t, modify_path, path);
                                 path.push_back(0);
-                                draw_base_card(ui, base_card, path, source_path, dest_path);
+                                draw_base_card(
+                                    ui,
+                                    base_card,
+                                    path,
+                                    source_path,
+                                    dest_path,
+                                    modify_path,
+                                );
                                 path.pop_back();
                             } else {
                                 let effect_name = match e {
@@ -651,7 +724,7 @@ pub fn draw_base_card(
                                         panic!("OnHit should be handled above")
                                     }
                                 };
-                                add_basic_modifer(ui, effect_name, *t)
+                                add_basic_modifer(ui,effect_name, *t, modify_path, path)
                             }
                         }
                     }
@@ -677,7 +750,7 @@ pub fn draw_base_card(
                 ui.add_space(CARD_UI_SPACING);
                 ui.horizontal(|ui| {
                     ui.add_space(CARD_UI_SPACING);
-                    ui.label(format!("Trigger {}", id));
+                    add_basic_modifer(ui, "Trigger", *id, modify_path, path);
                     ui.add_space(CARD_UI_SPACING);
                 });
                 ui.add_space(CARD_UI_SPACING);
@@ -723,7 +796,7 @@ pub fn draw_base_card(
             ui.with_layout(layout, |ui| {
                 for (card_idx, card) in palette_cards.iter().enumerate() {
                     path.push_back(card_idx as u32);
-                    card.draw_draggable(ui, path, source_path, dest_path);
+                    card.draw_draggable(ui, path, source_path, dest_path, modify_path);
                     path.pop_back();
                 }
             });
@@ -745,7 +818,13 @@ pub fn draw_base_card(
     }
 }
 
-pub fn add_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display) {
+pub fn add_basic_modifer(
+    ui: &mut Ui,
+    name: &str,
+    count: impl std::fmt::Display,
+    modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+    path: &mut VecDeque<u32>,
+) {
     let mut job = LayoutJob::default();
     job.append(
         name,
@@ -765,7 +844,23 @@ pub fn add_basic_modifer(ui: &mut Ui, name: &str, count: impl std::fmt::Display)
             ..Default::default()
         },
     );
-    ui.label(job);
+    let widget = if ui.input(|i| i.modifiers.ctrl) {
+        Label::new(job).sense(Sense::click())
+    } else {
+        Label::new(job)
+    };
+    let response = ui.add(widget);
+
+    if response.clicked() {
+        if modify_path.is_none() {
+            let modification_type = if ui.input(|i| i.modifiers.shift) {
+                ModificationType::Remove
+            } else {
+                ModificationType::Add
+            };
+            *modify_path = Some((path.clone(), modification_type));
+        }
+    }
 }
 
 pub fn add_hoverable_basic_modifer(
@@ -774,6 +869,8 @@ pub fn add_hoverable_basic_modifer(
     name: &str,
     count: impl std::fmt::Display,
     hover_text: String,
+    modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+    path: &mut VecDeque<u32>,
 ) {
     ui.style_mut().wrap = Some(false);
     let mut job = LayoutJob::default();
@@ -807,7 +904,23 @@ pub fn add_hoverable_basic_modifer(
                 ui.ctx().set_cursor_icon(CursorIcon::Grab);
             }
         }
-        let response = ui.add(Label::new(job)).on_hover_text(hover_text);
+        let widget = if ui.input(|i| i.modifiers.ctrl) {
+            Label::new(job).sense(Sense::click())
+        } else {
+            Label::new(job)
+        };
+        let response = ui.add(widget).on_hover_text(hover_text);
+
+        if response.clicked() {
+            if modify_path.is_none() {
+                let modification_type = if ui.input(|i| i.modifiers.shift) {
+                    ModificationType::Remove
+                } else {
+                    ModificationType::Add
+                };
+                *modify_path = Some((path.clone(), modification_type));
+            }
+        }
         //store for next frame
         ui.data_mut(|d| d.insert_temp(id, response.rect));
     } else {
@@ -907,6 +1020,7 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
 
                             let mut source_path = None;
                             let mut drop_path = None;
+                            let mut modify_path = None;
                             let mut dock_card = BaseCard::Palette(
                                 match gui_state.palette_state {
                                     PaletteState::ProjectileModifiers => vec![
@@ -1142,6 +1256,7 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                     &mut vec![0].into(),
                                     &mut source_path,
                                     &mut drop_path,
+                                    &mut modify_path,
                                 );
                             });
 
@@ -1153,10 +1268,16 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                         &mut vec![ability_idx as u32 + 1].into(),
                                         &mut source_path,
                                         &mut drop_path,
+                                        &mut modify_path,
                                     );
                                 });
                             }
 
+                            if let Some((modify_path, modify_type)) = modify_path.as_mut() {
+                                let modify_action_idx = modify_path.pop_front().unwrap() as usize;
+                                gui_state.gui_cards[modify_action_idx - 1]
+                                    .modify_from_path(&mut modify_path.clone(), modify_type);
+                            }
                             if let Some((source_path, source_type)) = source_path.as_mut() {
                                 if let Some((drop_path, drop_type)) = drop_path.as_mut() {
                                     if ui.input(|i| i.pointer.any_released())
