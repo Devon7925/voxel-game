@@ -1,6 +1,5 @@
 Card Editor
     Show cooldowns
-    Import/Export buttons
 
 Multiplayer
     Ensure proper game exiting

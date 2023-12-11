@@ -8,3 +8,4 @@ Card Editor
     Add status effect palette and dragging
     Display keybind
     Modify values using ctrl+click and ctrl+shift+click
+    Import/export to clipboard

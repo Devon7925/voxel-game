@@ -974,7 +974,30 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                             ui.set_clip_rect(menu_size);
-                            ui.label(RichText::new("Card Editor").color(Color32::WHITE));
+                            
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(RichText::new("Card Editor").color(Color32::WHITE));
+                                if ui.button("Export to Clipboard").clicked() {
+                                    let export = ron::to_string(&gui_state.gui_cards).unwrap();
+                                    ui.output_mut(|o| o.copied_text = export);
+                                }
+
+                                if ui.button("Import from Clipboard").clicked() {
+                                    let mut clipboard = clippers::Clipboard::get();
+                                    let import: Option<Vec<Cooldown>> = match clipboard.read() {
+                                        Some(clippers::ClipperData::Text(text)) => {
+                                            ron::from_str(text.as_str()).ok()
+                                        },
+                                        _ => None
+                                    };
+                                    if let Some(import) = import {
+                                        gui_state.gui_cards = import;
+                                    } else {
+                                        println!("Failed to import from clipboard");
+                                    }
+                                }
+                            });
+                            
                             ui.horizontal_wrapped(|ui| {
                                 ui.selectable_value(
                                     &mut gui_state.palette_state,
@@ -1248,6 +1271,7 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                     PaletteState::Materials => true,
                                 },
                             );
+
                             ui.scope(|ui| {
                                 ui.visuals_mut().override_text_color = Some(Color32::WHITE);
                                 draw_base_card(
