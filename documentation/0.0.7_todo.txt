@@ -1,10 +1,8 @@
-Card Editor
-    Show cooldowns
-
 Multiplayer
+    Main menu
+        Center buttons
+        Add play replay button
     Ensure proper game exiting
-    Add single player button
-    Add play replay button
     Add lobby system
         Create Lobby
         Lobby settings (from settings file)

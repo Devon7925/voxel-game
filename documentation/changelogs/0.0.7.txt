@@ -3,9 +3,9 @@ GPU Chunk loading
 Dynamic world center
 Card Editor
     Add wrapping to the modifier list
-    Add material palette and dragging
-    Add effect palette and dragging
-    Add status effect palette and dragging
+    Better card palette
+    Added ability to drag all neccessary cards
     Display keybind
     Modify values using ctrl+click and ctrl+shift+click
     Import/export to clipboard
+    Visible cooldown values

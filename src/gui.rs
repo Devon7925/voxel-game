@@ -2,12 +2,11 @@ use std::collections::VecDeque;
 
 use egui_winit_vulkano::egui::{
     self, emath,
-    epaint::{self, tessellator::path},
+    epaint::{self},
     pos2,
     text::LayoutJob,
-    Align, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label, LayerId, Link,
-    Order, Rect, Response, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke, TextFormat,
-    Ui, Vec2, Widget, WidgetInfo, WidgetText, WidgetType,
+    Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse, Label, LayerId, Order, Rect,
+    Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke, TextFormat, Ui, Vec2,
 };
 
 use crate::{
@@ -222,7 +221,7 @@ pub fn is_valid_drag(from: &DragableType, to: &DropableType) -> bool {
 
 pub fn draw_cooldown(
     ui: &mut Ui,
-    cooldown: &Cooldown,
+    cooldown: &mut Cooldown,
     path: &mut VecDeque<u32>,
     source_path: &mut Option<(VecDeque<u32>, DragableType)>,
     drop_path: &mut Option<(VecDeque<u32>, DropableType)>,
@@ -230,9 +229,11 @@ pub fn draw_cooldown(
 ) {
     let can_accept_what_is_being_dragged = true;
     let id_source = "my_drag_and_drop_demo";
+    let cooldown_value = cooldown.get_and_cache_cooldown();
     let Cooldown {
         abilities,
         modifiers,
+        cached_cooldown: _,
     } = cooldown;
     ui.visuals_mut().widgets.active.rounding = Rounding::from(CARD_UI_ROUNDING);
     ui.visuals_mut().widgets.inactive.rounding = Rounding::from(CARD_UI_ROUNDING);
@@ -243,6 +244,7 @@ pub fn draw_cooldown(
             ui.horizontal(|ui| {
                 ui.add_space(CARD_UI_SPACING);
                 ui.label("Ability");
+                ui.label(format!("{:.2}s", cooldown_value));
                 path.push_back(0);
                 for (mod_idx, modifier) in modifiers.iter().enumerate() {
                     path.push_back(mod_idx as u32);
@@ -691,13 +693,17 @@ pub fn draw_base_card(
                     ui.add_space(CARD_UI_SPACING);
                     ui.label("Apply Effect");
                     match effect {
-                        Effect::Damage(v) => add_basic_modifer(ui,"Damage", *v, modify_path, path),
-                        Effect::Knockback(v) => add_basic_modifer(ui,"Knockback", *v, modify_path, path),
-                        Effect::Cleanse => add_basic_modifer(ui,"Cleanse", "", modify_path, path),
-                        Effect::Teleport => add_basic_modifer(ui,"Teleport", "", modify_path, path),
+                        Effect::Damage(v) => add_basic_modifer(ui, "Damage", *v, modify_path, path),
+                        Effect::Knockback(v) => {
+                            add_basic_modifer(ui, "Knockback", *v, modify_path, path)
+                        }
+                        Effect::Cleanse => add_basic_modifer(ui, "Cleanse", "", modify_path, path),
+                        Effect::Teleport => {
+                            add_basic_modifer(ui, "Teleport", "", modify_path, path)
+                        }
                         Effect::StatusEffect(e, t) => {
                             if let StatusEffect::OnHit(base_card) = e {
-                                add_basic_modifer(ui,"On Hit", *t, modify_path, path);
+                                add_basic_modifer(ui, "On Hit", *t, modify_path, path);
                                 path.push_back(0);
                                 draw_base_card(
                                     ui,
@@ -724,7 +730,7 @@ pub fn draw_base_card(
                                         panic!("OnHit should be handled above")
                                     }
                                 };
-                                add_basic_modifer(ui,effect_name, *t, modify_path, path)
+                                add_basic_modifer(ui, effect_name, *t, modify_path, path)
                             }
                         }
                     }
@@ -974,7 +980,7 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                             ui.set_clip_rect(menu_size);
-                            
+
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(RichText::new("Card Editor").color(Color32::WHITE));
                                 if ui.button("Export to Clipboard").clicked() {
@@ -987,8 +993,8 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                     let import: Option<Vec<Cooldown>> = match clipboard.read() {
                                         Some(clippers::ClipperData::Text(text)) => {
                                             ron::from_str(text.as_str()).ok()
-                                        },
-                                        _ => None
+                                        }
+                                        _ => None,
                                     };
                                     if let Some(import) = import {
                                         gui_state.gui_cards = import;
@@ -997,7 +1003,7 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                     }
                                 }
                             });
-                            
+
                             ui.horizontal_wrapped(|ui| {
                                 ui.selectable_value(
                                     &mut gui_state.palette_state,
@@ -1284,11 +1290,13 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                 );
                             });
 
-                            for (ability_idx, cooldown) in gui_state.gui_cards.iter().enumerate() {
+                            for (ability_idx, mut cooldown) in
+                                gui_state.gui_cards.iter_mut().enumerate()
+                            {
                                 ui.horizontal_top(|ui| {
                                     draw_cooldown(
                                         ui,
-                                        &cooldown,
+                                        &mut cooldown,
                                         &mut vec![ability_idx as u32 + 1].into(),
                                         &mut source_path,
                                         &mut drop_path,

@@ -7,3 +7,9 @@ Chunk Updates
 
 Rendering
     Improve ice rendering with depth based transparency
+
+Card Editor
+    Multicast modifier hovers
+    Cooldown modifier hovers
+
+Update winit

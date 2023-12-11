@@ -1,0 +1,20 @@
+SOON
+Card Editor
+    Add/Remove cooldown
+    Remove Ability
+    Keybinds
+        Editor
+        Keybind Chords
+Update game_design.md
+Update lore.md
+Cards
+    Character modifiers
+        Health
+        Size
+    Modifier shortcuts: modifiers that act like multiple other modifiers
+        Projectile Size
+
+EVENTUALLY
+Settings editor
+Card Editor
+    Modifier icons
