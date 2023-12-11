@@ -1,6 +1,5 @@
 Multiplayer
     Main menu
-        Center buttons
         Add play replay button
     Ensure proper game exiting
     Add lobby system

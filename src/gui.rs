@@ -44,6 +44,32 @@ pub struct GuiState {
     pub should_exit: bool,
 }
 
+// Helper function to center arbitrary widgets. It works by measuring the width of the widgets after rendering, and
+// then using that offset on the next frame.
+pub fn centerer(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
+    ui.vertical(|ui| {
+        let id = ui.id().with("_centerer");
+        let last_height: Option<f32> = ui.memory_mut(|mem| mem.data.get_temp(id));
+        if let Some(last_height) = last_height {
+            ui.add_space((ui.available_height() - last_height) / 2.0);
+        }
+        let res = ui
+            .scope(|ui| {
+                add_contents(ui);
+            })
+            .response;
+        let height = res.rect.height();
+        ui.memory_mut(|mem| mem.data.insert_temp(id, height));
+
+        // Repaint if height changed
+        match last_height {
+            None => ui.ctx().request_repaint(),
+            Some(last_height) if last_height != height => ui.ctx().request_repaint(),
+            Some(_) => {}
+        }
+    });
+}
+
 fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -> egui::Response {
     let desired_size = ui.spacing().interact_size.y * egui::vec2(3.0, 3.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());

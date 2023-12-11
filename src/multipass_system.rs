@@ -35,7 +35,7 @@ use vulkano::{
 use winit::event_loop::EventLoop;
 
 use crate::{
-    gui::{cooldown, GuiElement, card_editor, healthbar},
+    gui::{cooldown, GuiElement, card_editor, healthbar, centerer},
     raytracer::PointLightingSystem,
     settings_manager::Settings,
     GuiState, game_manager::{Game, GameSettings, WorldGenSettings}, app::CreationInterface,
@@ -652,7 +652,8 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     0.0,
                                     Color32::BLACK,
                                 );
-                                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                centerer(ui, |ui| {
+                                ui.vertical_centered(|ui| {
                                     let spawn_location = Point3::new(10000.0, 1810.0, 10000.0);
                                     if ui.button("Singleplayer").clicked() {
                                         gui_state.menu_stack.pop();
@@ -711,6 +712,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     if ui.button("Exit to Desktop").clicked() {
                                         gui_state.should_exit = true;
                                     }
+                                });
                                 });
                             });
                         });
