@@ -345,6 +345,8 @@ pub enum StatusEffect {
     DecreaceGravity,
     Overheal,
     Invincibility,
+    Trapped,
+    Lockout,
     OnHit(Box<BaseCard>),
 }
 
@@ -774,7 +776,7 @@ impl BaseCard {
                         if is_direct {
                             vec![CardValue {
                                 damage: 0.0,
-                                generic: Self::EFFECT_LENGTH_SCALE * -7.0 * (*duration as f32),
+                                generic: Self::EFFECT_LENGTH_SCALE * -1.0 * (*duration as f32),
                                 range_probabilities: core::array::from_fn(|idx| {
                                     if idx == 0 {
                                         1.0
@@ -799,7 +801,7 @@ impl BaseCard {
                     }
                     StatusEffect::HealOverTime => vec![CardValue {
                         damage: 0.0,
-                        generic: Self::EFFECT_LENGTH_SCALE * 7.0 * (*duration as f32),
+                        generic: Self::EFFECT_LENGTH_SCALE * 1.0 * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
@@ -843,6 +845,26 @@ impl BaseCard {
                     StatusEffect::Invincibility => vec![CardValue {
                         damage: 0.0,
                         generic: Self::EFFECT_LENGTH_SCALE * 10.0 * (*duration as f32),
+                        range_probabilities: core::array::from_fn(
+                            |idx| if idx == 0 { 1.0 } else { 0.0 },
+                        ),
+                    }],
+                    StatusEffect::Trapped => vec![CardValue {
+                        damage: 0.0,
+                        generic: Self::EFFECT_LENGTH_SCALE
+                            * (if is_direct { -1.0 } else { 1.0 })
+                            * 5.0
+                            * (*duration as f32),
+                        range_probabilities: core::array::from_fn(
+                            |idx| if idx == 0 { 1.0 } else { 0.0 },
+                        ),
+                    }],
+                    StatusEffect::Lockout => vec![CardValue {
+                        damage: 0.0,
+                        generic: Self::EFFECT_LENGTH_SCALE
+                            * (if is_direct { -1.0 } else { 1.0 })
+                            * 5.0
+                            * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
@@ -1663,6 +1685,8 @@ pub enum ReferencedStatusEffect {
     DecreaceGravity,
     Overheal,
     Invincibility,
+    Trapped,
+    Lockout,
     OnHit(ReferencedBaseCard),
 }
 
@@ -1884,6 +1908,8 @@ impl CardManager {
                             }
                             StatusEffect::Overheal => ReferencedStatusEffect::Overheal,
                             StatusEffect::Invincibility => ReferencedStatusEffect::Invincibility,
+                            StatusEffect::Trapped => ReferencedStatusEffect::Trapped,
+                            StatusEffect::Lockout => ReferencedStatusEffect::Lockout,
                             StatusEffect::OnHit(card) => {
                                 ReferencedStatusEffect::OnHit(self.register_base_card(*card))
                             }

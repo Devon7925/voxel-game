@@ -27,6 +27,8 @@
                     SimpleModify(Health,-10),
                     OnHit(Effect(Damage(30))),
                     OnHit(Effect(Knockback(20))),
+                    OnHit(Effect(StatusEffect(Trapped, 1))),
+                    OnHit(Effect(StatusEffect(Lockout, 1))),
                 ]),
     
             ),

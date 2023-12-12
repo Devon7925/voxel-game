@@ -1,0 +1,24 @@
+Sounds should be played when players activate abilities in pvp
+    What determines what sound should play?
+        Players can pick their own sounds
+            This would be minorly inconvenient for players to do
+            Could be an option for players to do if they want
+        Players could pick sounds for enemy abilities
+            This would be highly inconvenient for players to do every game
+            Could be an option for players to do if they want
+        Having enemies pick sounds for their abilities
+            enemies could use misleading sounds to trick players
+            enemies could use the same sound for multiple abilities to prevent ability tracking
+                even preventing this they could use similar sounds
+                preventing it would also stop players from using the same sound for similar abilities
+        Automatically determining sounds
+            Hard to do
+            Likely inaccurate in many cases
+            Abilities would share sounds which would prevent distinguishing between them
+            Potentially viable for some simple abilities and then use something else to determine sounds for the rest
+        A simple system could be to have set sounds for each ability player pair
+            These sounds would make no sense and would require players to keep track of what sounds mean per game which would be annoying
+    What if a player creates an ability just to play sounds to annoy enemies
+    What about impact sounds
+        All the same problems as ability sounds
+        not all abilities should have impact sounds

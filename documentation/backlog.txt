@@ -11,10 +11,14 @@ Cards
     Character modifiers
         Health
         Size
-    Modifier shortcuts: modifiers that act like multiple other modifiers
+    Card shortcuts: cards that act like multiple other cards
         Projectile Size
+        Pinpoint Projectile
+        Stun Effect
+    Move issue tracking to github
 
 EVENTUALLY
 Settings editor
 Card Editor
     Modifier icons
+Player Step sounds

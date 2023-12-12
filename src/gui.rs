@@ -639,33 +639,33 @@ pub fn draw_base_card(
         BaseCard::MultiCast(cards, modifiers) => {
             ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(0.5, Color32::YELLOW);
             let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add_space(CARD_UI_SPACING);
-                    ui.label("Multicast");
-                    path.push_back(0);
-                    for (mod_idx, modifier) in modifiers.iter().enumerate() {
-                        path.push_back(mod_idx as u32);
-                        DraggableCard::MultiCastModifier(modifier.clone()).draw_draggable(
-                            ui,
-                            path,
-                            source_path,
-                            dest_path,
-                            modify_path,
-                        );
-                        path.pop_back();
-                    }
-                    path.pop_back();
-                    ui.add_space(CARD_UI_SPACING);
-                });
-                path.push_back(1);
                 ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.add_space(CARD_UI_SPACING);
+                        ui.label("Multicast");
+                        path.push_back(0);
+                        for (mod_idx, modifier) in modifiers.iter().enumerate() {
+                            path.push_back(mod_idx as u32);
+                            DraggableCard::MultiCastModifier(modifier.clone()).draw_draggable(
+                                ui,
+                                path,
+                                source_path,
+                                dest_path,
+                                modify_path,
+                            );
+                            path.pop_back();
+                        }
+                        path.pop_back();
+                        ui.add_space(CARD_UI_SPACING);
+                    });
+                    path.push_back(1);
                     for (card_idx, card) in cards.iter().enumerate() {
                         path.push_back(card_idx as u32);
                         draw_base_card(ui, card, path, source_path, dest_path, modify_path);
                         path.pop_back();
                     }
+                    path.pop_back();
                 });
-                path.pop_back();
 
                 path.push_back(0);
                 for (modifier_idx, _modifier) in modifiers.iter().enumerate() {
@@ -752,6 +752,8 @@ pub fn draw_base_card(
                                     StatusEffect::IncreaceGravity => "Increace Gravity",
                                     StatusEffect::Overheal => "Overheal",
                                     StatusEffect::Invincibility => "Invincibility",
+                                    StatusEffect::Trapped => "Trapped",
+                                    StatusEffect::Lockout => "Lockout",
                                     StatusEffect::OnHit(_base_card) => {
                                         panic!("OnHit should be handled above")
                                     }
@@ -1393,6 +1395,8 @@ pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Enti
                     ReferencedStatusEffect::Invincibility => "Invincibility",
                     ReferencedStatusEffect::Overheal => "Overheal",
                     ReferencedStatusEffect::OnHit(_) => "On Player Hit",
+                    ReferencedStatusEffect::Trapped => "Trapped",
+                    ReferencedStatusEffect::Lockout => "Lockout",
                 };
                 ui.label(
                     RichText::new(format!("{}: {:.1}s", effect_name, time_left))

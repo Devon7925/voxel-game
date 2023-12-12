@@ -12,9 +12,6 @@ Multiplayer
 
 Cards
     On headshot
-    StatusEffect
-        lock out
-        stop
     Multi cooldown balancing
     Cooldown modifiers
         Reduce cooldown

@@ -10,3 +10,7 @@ Card Editor
     Import/export to clipboard
     Visible cooldown values
 Add play replay button and selector
+Cards
+    StatusEffect
+        lock out
+        stop

@@ -4,5 +4,5 @@ projectile health system problems
 projectile lifetime problems
     some projectiles (turrets) lifetime should not be limited
     some projectiles (ex. projectiles) only need to exist for 1 simulation frame, but should be visible to the player
-players need a way to make some of their abilities more powerful than others
 damage taken modifiers modify healing as well
+Tiny fast projectiles are hard to see

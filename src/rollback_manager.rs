@@ -259,6 +259,7 @@ struct PlayerEffectStats {
     damage_taken: f32,
     gravity: f32,
     invincible: bool,
+    lockout: bool,
 }
 
 impl Default for PlayerAction {
@@ -1237,6 +1238,7 @@ impl WorldState {
                 let mut damage_taken = 1.0;
                 let mut gravity = 1.0;
                 let mut invincible = false;
+                let mut lockout = false;
 
                 for status_effect in player.status_effects.iter_mut() {
                     match status_effect.effect {
@@ -1270,6 +1272,12 @@ impl WorldState {
                         ReferencedStatusEffect::Invincibility => {
                             invincible = true;
                         }
+                        ReferencedStatusEffect::Trapped => {
+                            speed *= 0.0;
+                        }
+                        ReferencedStatusEffect::Lockout => {
+                            lockout = true;
+                        }
                         ReferencedStatusEffect::OnHit(_) => {
                             // managed seperately
                         }
@@ -1297,6 +1305,7 @@ impl WorldState {
                     damage_taken,
                     gravity,
                     invincible,
+                    lockout,
                 }
             })
             .collect();
@@ -1992,7 +2001,7 @@ impl Entity {
                     && cooldown.recovery <= 0.0
                 {
                     for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
-                        if action.activate_ability[cooldown_idx][ability_idx] {
+                        if action.activate_ability[cooldown_idx][ability_idx] && !player_stats[player_idx].lockout {
                             cooldown.cooldown += cooldown.value.0;
                             cooldown.recovery = cooldown.value.1[ability_idx];
                             let (proj_effects, vox_effects, effects, triggers) = card_manager
