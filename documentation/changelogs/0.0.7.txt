@@ -9,3 +9,4 @@ Card Editor
     Modify values using ctrl+click and ctrl+shift+click
     Import/export to clipboard
     Visible cooldown values
+Add play replay button and selector

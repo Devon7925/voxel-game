@@ -136,7 +136,12 @@ fn main() {
             puffin::GlobalProfiler::lock().new_frame();
             previous_frame_end.as_mut().unwrap().cleanup_finished();
             time += std::time::Duration::from_secs_f32(app.game.as_ref().map(|game| game.rollback_data.get_delta_time()).unwrap_or(DEFAULT_DELTA_TIME));
-            let skip_render = (Instant::now() - time).as_secs_f32() > 0.0;
+            let skip_render = if app.game.is_some() {
+                (Instant::now() - time).as_secs_f32() > 0.0
+            } else {
+                time = Instant::now();
+                false
+            };
             if let Some(game) = app.game.as_mut() {
                 if !skip_render {
                     game.rollback_data.update(&game.game_settings);

@@ -18,7 +18,7 @@ graphics_settings:
   ao_ray_dist: 25
 delta_time: 0.03
 replay_settings:
-    replay_file: replay.txt
-    replay_mode: None
+    replay_folder: replays
+    record_replay: false
 do_profiling: false
 crash_log: crash_log.txt

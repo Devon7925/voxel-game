@@ -1,4 +1,6 @@
-use cgmath::{Point3, Vector3, EuclideanSpace};
+use std::{io::{BufReader, BufRead}, path::Path};
+
+use cgmath::{EuclideanSpace, Point3, Vector3};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -6,7 +8,7 @@ use crate::{
     card_system::{CardManager, Cooldown},
     projectile_sim_manager::ProjectileComputePipeline,
     rollback_manager::{PlayerSim, ReplayData, RollbackData},
-    settings_manager::{ReplayMode, Settings},
+    settings_manager::Settings,
     voxel_sim_manager::VoxelComputePipeline,
     CHUNK_SIZE,
 };
@@ -49,27 +51,75 @@ impl Game {
         creation_interface: &CreationInterface,
     ) -> Self {
         let game_state = GameState {
-            start_pos: game_settings.spawn_location.zip(Point3::from_vec(game_settings.render_size), |spawn, size| spawn as u32 / CHUNK_SIZE - size / 2),
+            start_pos: game_settings.spawn_location.zip(
+                Point3::from_vec(game_settings.render_size),
+                |spawn, size| spawn as u32 / CHUNK_SIZE - size / 2,
+            ),
             players_center: game_settings.spawn_location.into(),
         };
         let mut card_manager = CardManager::default();
 
-        let rollback_data: Box<dyn PlayerSim> =
-            if settings.replay_settings.replay_mode == ReplayMode::Playback {
-                Box::new(ReplayData::new(
-                    &creation_interface.memory_allocator,
-                    &settings,
-                    &mut card_manager,
-                ))
-            } else {
-                Box::new(RollbackData::new(
-                    &creation_interface.memory_allocator,
-                    &settings,
-                    &game_settings,
-                    deck,
-                    &mut card_manager,
-                ))
-            };
+        let rollback_data: Box<dyn PlayerSim> = Box::new(RollbackData::new(
+            &creation_interface.memory_allocator,
+            &settings,
+            &game_settings,
+            deck,
+            &mut card_manager,
+        ));
+
+        let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);
+        let projectile_compute = ProjectileComputePipeline::new(creation_interface);
+
+        voxel_compute.queue_update_from_world_pos(&game_settings.spawn_location, &game_settings);
+
+        Game {
+            voxel_compute,
+            projectile_compute,
+            rollback_data,
+            card_manager,
+            game_state,
+            game_settings,
+        }
+    }
+
+    pub fn from_replay(
+        settings: &Settings,
+        replay_file: &Path,
+        creation_interface: &CreationInterface,
+    ) -> Self {
+        
+        let replay_file =
+            std::fs::File::open(replay_file).unwrap();
+        let reader = BufReader::new(replay_file);
+        let mut replay_lines = reader.lines();
+        let game_settings: GameSettings = 'game_settings: {
+            while let Some(line) = replay_lines.next() {
+                let Ok(line) = line else {
+                    continue;
+                };
+                if let Some(game_settings_string) = line.strip_prefix("GAME SETTINGS ") {
+                    break 'game_settings ron::de::from_str(game_settings_string).unwrap();
+                }
+            }
+            panic!("No game settings found in replay file");
+        };
+        
+        let game_state = GameState {
+            start_pos: game_settings.spawn_location.zip(
+                Point3::from_vec(game_settings.render_size),
+                |spawn, size| spawn as u32 / CHUNK_SIZE - size / 2,
+            ),
+            players_center: game_settings.spawn_location.into(),
+        };
+        let mut card_manager = CardManager::default();
+
+        let rollback_data: Box<dyn PlayerSim> = Box::new(ReplayData::new(
+            &creation_interface.memory_allocator,
+            &settings,
+            &game_settings,
+            &mut replay_lines,
+            &mut card_manager,
+        ));
 
         let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);
         let projectile_compute = ProjectileComputePipeline::new(creation_interface);

@@ -2,8 +2,8 @@ use core::panic;
 use std::{
     collections::{HashMap, VecDeque},
     f32::consts::PI,
-    fs::File,
-    io::{BufRead, BufReader, Write},
+    fs::{File, self},
+    io::{BufReader, Write, Lines},
     sync::Arc,
 };
 
@@ -28,7 +28,7 @@ use crate::{
     gui::{GuiElement, GuiState},
     networking::{NetworkConnection, NetworkPacket},
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
-    settings_manager::{Control, ReplayMode, Settings},
+    settings_manager::{Control, Settings},
     voxel_sim_manager::VoxelComputePipeline,
     WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
 };
@@ -716,8 +716,15 @@ impl RollbackData {
         )
         .unwrap();
 
-        let mut replay_file = (settings.replay_settings.replay_mode == ReplayMode::Record)
-            .then(|| std::fs::File::create(settings.replay_settings.replay_file.clone()).unwrap());
+        let mut replay_file_path = std::env::current_dir().unwrap();
+        replay_file_path.push(settings.replay_settings.replay_folder.clone());
+        fs::create_dir_all(replay_file_path.clone()).unwrap();
+        replay_file_path.push(format!(
+            "replay_{}.replay",
+            chrono::Local::now().format("%Y-%m-%d_%H-%M-%S"),
+        ));
+        let mut replay_file = settings.replay_settings.record_replay
+            .then(|| std::fs::File::create(replay_file_path).unwrap());
 
         if let Some(replay_file) = replay_file.as_mut() {
             write!(replay_file, "GAME SETTINGS {}\n", ron::ser::to_string(game_settings).unwrap()).unwrap();
@@ -943,6 +950,9 @@ impl PlayerSim for ReplayData {
         game_state: &GameState,
         game_settings: &GameSettings,
     ) {
+        if self.actions.is_empty() {
+            return;
+        }
         self.current_time += 1;
         let rollback_actions: Vec<Action> = self.actions.pop_front().unwrap();
         {
@@ -1103,6 +1113,8 @@ impl ReplayData {
     pub fn new(
         memory_allocator: &Arc<StandardMemoryAllocator>,
         settings: &Settings,
+        game_settings: &GameSettings,
+        replay_lines: &mut Lines<BufReader<File>>,
         card_manager: &mut CardManager,
     ) -> Self {
         let projectile_buffer = Buffer::new_sized(
@@ -1136,25 +1148,16 @@ impl ReplayData {
         let current_time: u64 = 0;
 
         let mut state = WorldState::new();
-        let replay_file =
-            std::fs::File::open(settings.replay_settings.replay_file.clone()).unwrap();
-        let reader = BufReader::new(replay_file);
         let mut actions = VecDeque::new();
         let mut delta_time = settings.delta_time;
-        let mut lines = reader.lines();
-        let mut game_settings: Option<GameSettings> = None;
-        while let Some(line) = lines.next() {
+        while let Some(line) = replay_lines.next() {
             let Ok(line) = line else {
                 continue;
             };
-            if let Some(game_settings_string) = line.strip_prefix("GAME SETTINGS ") {
-                game_settings = ron::de::from_str(game_settings_string).unwrap();
+            if let Some(_game_settings_string) = line.strip_prefix("GAME SETTINGS ") {
+                panic!("Game settings should have already been handled")
             } else if let Some(deck_string) = line.strip_prefix("PLAYER DECK ") {
                 let deck: Vec<Cooldown> = ron::de::from_str(deck_string).unwrap();
-
-                let Some(ref game_settings) = game_settings else {
-                    panic!("game settings must be defined before deck");
-                };
 
                 state.players.push(Entity {
                     pos: game_settings.spawn_location.into(),
@@ -1169,15 +1172,26 @@ impl ReplayData {
                         .collect(),
                     ..Default::default()
                 });
+
+                if matches!(game_settings.world_gen, WorldGenSettings::PracticeRange) {
+                    let bot = Entity {
+                        pos: game_settings.spawn_location.into(),
+                        abilities: vec![],
+                        ..Default::default()
+                    };
+                    state.players.push(bot.clone());
+                }
             } else if let Some(dt_string) = line.strip_prefix("PERSONAL DT ") {
                 delta_time = dt_string.parse().unwrap();
             } else if let Some(_time_stamp_string) = line.strip_prefix("TIME ") {
-                let actions_string = lines.next().unwrap().unwrap();
+                let actions_string = replay_lines.next().unwrap().unwrap();
                 let line_actions: Vec<Action> =
                     ron::de::from_str(&actions_string).unwrap();
                 actions.push_back(line_actions);
             }
         }
+
+        println!("Loaded replay with {} actions", actions.len());
 
         ReplayData {
             current_time,
