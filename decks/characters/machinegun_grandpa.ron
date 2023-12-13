@@ -11,8 +11,9 @@
                     SimpleModify(Length,-10),
                     SimpleModify(Lifetime,-3),
                     SimpleModify(Health,-10),
-                    OnHit(Effect(Damage(9)))]
-                ),
+                    OnHit(Effect(Damage(9))),
+                    OnHeadshot(Effect(Damage(10))),
+                ]),
             ),
         ]
     ),

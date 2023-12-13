@@ -271,6 +271,7 @@ pub enum ProjectileModifier {
     FriendlyFire,
     NoEnemyFire,
     OnHit(BaseCard),
+    OnHeadshot(BaseCard),
     OnExpiry(BaseCard),
     OnTrigger(u32, BaseCard),
     Trail(u32, BaseCard),
@@ -286,6 +287,7 @@ impl ProjectileModifier {
             ProjectileModifier::FriendlyFire => false,
             ProjectileModifier::NoEnemyFire => false,
             ProjectileModifier::OnHit(_) => true,
+            ProjectileModifier::OnHeadshot(_) => true,
             ProjectileModifier::OnExpiry(_) => true,
             ProjectileModifier::OnTrigger(_, _) => true,
             ProjectileModifier::Trail(_, _) => true,
@@ -488,6 +490,7 @@ impl BaseCard {
         match self {
             BaseCard::Projectile(modifiers) => {
                 let mut hit_value = vec![];
+                let mut headshot_value = vec![];
                 let mut expiry_value = vec![];
                 let mut trigger_value = vec![];
                 let mut trail_value = vec![];
@@ -530,6 +533,9 @@ impl BaseCard {
                         ProjectileModifier::WallBounce => wall_bounce = true,
                         ProjectileModifier::OnHit(card) => {
                             hit_value.extend(card.evaluate_value(false))
+                        }
+                        ProjectileModifier::OnHeadshot(card) => {
+                            headshot_value.extend(card.evaluate_value(false))
                         }
                         ProjectileModifier::OnExpiry(card) => {
                             expiry_value.extend(card.evaluate_value(is_direct));
@@ -578,6 +584,16 @@ impl BaseCard {
                         * (1.0 + health))
                         .min(1.0)
                 });
+                let headshot_range_probabilities = core::array::from_fn(|idx| {
+                    if RANGE_PROBABILITIES_SCALE * idx as f32 > speed.abs() * lifetime {
+                        return 0.0;
+                    }
+                    (0.02
+                        * (1.0 + speed.abs() / idx as f32).sqrt()
+                        * (1.0 + width * height + length)
+                        * (1.0 + health))
+                        .min(1.0)
+                });
                 let mut value = vec![];
                 if enemy_fire {
                     value.push(CardValue {
@@ -612,6 +628,14 @@ impl BaseCard {
                     range_probabilities: convolve_range_probabilities(
                         range_probabilities,
                         hit_value.range_probabilities,
+                    ),
+                }));
+                value.extend(headshot_value.into_iter().map(|headshot_value| CardValue {
+                    damage: headshot_value.damage,
+                    generic: headshot_value.generic,
+                    range_probabilities: convolve_range_probabilities(
+                        headshot_range_probabilities,
+                        headshot_value.range_probabilities,
                     ),
                 }));
                 let expiry_range_probabilities: [f32; 10] = core::array::from_fn(|idx| {
@@ -916,6 +940,11 @@ impl BaseCard {
                                 return false;
                             }
                         }
+                        ProjectileModifier::OnHeadshot(card) => {
+                            if !card.is_reasonable() {
+                                return false;
+                            }
+                        }
                         ProjectileModifier::OnExpiry(card) => {
                             if !card.is_reasonable() {
                                 return false;
@@ -1022,6 +1051,9 @@ impl BaseCard {
                     assert!(path.pop_front().unwrap() == 0);
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => {
+                            card.modify_from_path(path, modification_type)
+                        }
+                        ProjectileModifier::OnHeadshot(ref mut card) => {
                             card.modify_from_path(path, modification_type)
                         }
                         ProjectileModifier::OnExpiry(ref mut card) => {
@@ -1138,6 +1170,7 @@ impl BaseCard {
                     if path.is_empty() {
                         let card_ref = match modifiers.get_mut(idx).unwrap() {
                             ProjectileModifier::OnHit(ref mut card) => card,
+                            ProjectileModifier::OnHeadshot(ref mut card) => card,
                             ProjectileModifier::OnExpiry(ref mut card) => card,
                             ProjectileModifier::OnTrigger(_id, ref mut card) => card,
                             ProjectileModifier::Trail(_freqency, ref mut card) => card,
@@ -1152,6 +1185,9 @@ impl BaseCard {
                     } else {
                         match modifiers[idx] {
                             ProjectileModifier::OnHit(ref mut card) => card.take_from_path(path),
+                            ProjectileModifier::OnHeadshot(ref mut card) => {
+                                card.take_from_path(path)
+                            }
                             ProjectileModifier::OnExpiry(ref mut card) => card.take_from_path(path),
                             ProjectileModifier::OnTrigger(_, ref mut card) => {
                                 card.take_from_path(path)
@@ -1237,6 +1273,9 @@ impl BaseCard {
                     assert!(path.pop_front().unwrap() == 0);
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => card.insert_to_path(path, item),
+                        ProjectileModifier::OnHeadshot(ref mut card) => {
+                            card.insert_to_path(path, item)
+                        }
                         ProjectileModifier::OnExpiry(ref mut card) => {
                             card.insert_to_path(path, item)
                         }
@@ -1327,6 +1366,7 @@ impl BaseCard {
                     assert!(path.pop_front().unwrap() == 0);
                     match modifiers[idx] {
                         ProjectileModifier::OnHit(ref mut card) => card.cleanup(path),
+                        ProjectileModifier::OnHeadshot(ref mut card) => card.cleanup(path),
                         ProjectileModifier::OnExpiry(ref mut card) => card.cleanup(path),
                         ProjectileModifier::OnTrigger(_, ref mut card) => card.cleanup(path),
                         ProjectileModifier::Trail(_freqency, ref mut card) => card.cleanup(path),
@@ -1424,6 +1464,7 @@ impl ProjectileModifier {
             ProjectileModifier::FriendlyFire => format!("Prevents hitting friendly entities"),
             ProjectileModifier::NoEnemyFire => format!("Prevents hitting enemy entities"),
             ProjectileModifier::OnHit(card) => format!("On Hit {}", card.to_string()),
+            ProjectileModifier::OnHeadshot(card) => format!("On Headshot {}", card.to_string()),
             ProjectileModifier::OnExpiry(card) => format!("On Expiry {}", card.to_string()),
             ProjectileModifier::OnTrigger(id, card) => {
                 format!("On trigger {} {}", id, card.to_string())
@@ -1465,6 +1506,7 @@ impl ProjectileModifier {
             ProjectileModifier::FriendlyFire => panic!(),
             ProjectileModifier::NoEnemyFire => panic!(),
             ProjectileModifier::OnHit(_) => panic!(),
+            ProjectileModifier::OnHeadshot(_) => panic!(),
             ProjectileModifier::OnExpiry(_) => panic!(),
             ProjectileModifier::OnTrigger(_, _) => panic!(),
             ProjectileModifier::Trail(_, _) => panic!(),
@@ -1652,6 +1694,7 @@ pub struct ReferencedProjectile {
     pub pierce_players: bool,
     pub wall_bounce: bool,
     pub on_hit: Vec<ReferencedBaseCard>,
+    pub on_headshot: Vec<ReferencedBaseCard>,
     pub on_expiry: Vec<ReferencedBaseCard>,
     pub on_trigger: Vec<(u32, ReferencedBaseCard)>,
     pub trail: Vec<(f32, ReferencedBaseCard)>,
@@ -1751,6 +1794,7 @@ impl CardManager {
                 let mut friendly_fire = false;
                 let mut no_enemy_fire = false;
                 let mut on_hit = Vec::new();
+                let mut on_headshot = Vec::new();
                 let mut on_expiry = Vec::new();
                 let mut on_trigger = Vec::new();
                 let mut trail = Vec::new();
@@ -1787,6 +1831,9 @@ impl CardManager {
                                 damage += proj_damage;
                             }
                             on_hit.push(self.register_base_card(card))
+                        }
+                        ProjectileModifier::OnHeadshot(card) => {
+                            on_headshot.push(self.register_base_card(card))
                         }
                         ProjectileModifier::OnExpiry(card) => {
                             on_expiry.push(self.register_base_card(card))
@@ -1839,6 +1886,7 @@ impl CardManager {
                     pierce_players,
                     wall_bounce,
                     on_hit,
+                    on_headshot,
                     on_expiry,
                     on_trigger,
                     trail,

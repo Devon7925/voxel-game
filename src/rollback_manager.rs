@@ -1417,18 +1417,18 @@ impl WorldState {
                                 + grid_dist.z * grid_iter_z as f32 * projectile_dir;
                             let likely_hit = Entity::HITSPHERES
                                 .iter()
-                                .min_by(|(offset_a, _), (offset_b, _)| {
-                                    (player.pos + player.size * offset_a - pos)
+                                .min_by(|sphere_a, sphere_b| {
+                                    (player.pos + player.size * sphere_a.offset - pos)
                                         .magnitude()
                                         .total_cmp(
-                                            &(player.pos + player.size * offset_b - pos)
+                                            &(player.pos + player.size * sphere_b.offset - pos)
                                                 .magnitude(),
                                         )
                                 })
                                 .unwrap();
 
-                            if (player.pos + player.size * likely_hit.0 - pos).magnitude()
-                                > likely_hit.1 * player.size
+                            if (player.pos + player.size * likely_hit.offset - pos).magnitude()
+                                > likely_hit.radius * player.size
                             {
                                 continue;
                             }
@@ -1438,11 +1438,19 @@ impl WorldState {
                             } else {
                                 player.player_piercing_invincibility = 0.3;
                             }
-                            for card_ref in card_manager
+                            let mut hit_cards = card_manager
                                 .get_referenced_proj(proj.proj_card_idx as usize)
                                 .on_hit
-                                .clone()
-                            {
+                                .clone();
+                            if likely_hit.headshot {
+                                hit_cards.extend(
+                                    card_manager
+                                        .get_referenced_proj(proj.proj_card_idx as usize)
+                                        .on_headshot
+                                        .clone(),
+                                );
+                            }
+                            for card_ref in hit_cards {
                                 let proj_rot = proj.dir;
                                 let proj_rot = Quaternion::new(
                                     proj_rot[3],
@@ -1491,10 +1499,10 @@ impl WorldState {
                 if 5.0 * (player1.size + player2.size) > (player1.pos - player2.pos).magnitude() {
                     for si in 0..Entity::HITSPHERES.len() {
                         for sj in 0..Entity::HITSPHERES.len() {
-                            let pos1 = player1.pos + player1.size * Entity::HITSPHERES[si].0;
-                            let pos2 = player2.pos + player2.size * Entity::HITSPHERES[sj].0;
+                            let pos1 = player1.pos + player1.size * Entity::HITSPHERES[si].offset;
+                            let pos2 = player2.pos + player2.size * Entity::HITSPHERES[sj].offset;
                             if (pos1 - pos2).magnitude()
-                                < (Entity::HITSPHERES[si].1 + Entity::HITSPHERES[sj].1)
+                                < (Entity::HITSPHERES[si].radius + Entity::HITSPHERES[sj].radius)
                                     * (player1.size + player2.size)
                             {
                                 player_player_collision_pairs.push((i, j));
@@ -1904,14 +1912,44 @@ pub fn get_index(global_pos: Point3<u32>, chunk_reader: &BufferReadGuard<'_, [u3
     Some(chunk_idx * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE + idx_in_chunk)
 }
 
+struct Hitsphere {
+    offset: Vector3<f32>,
+    radius: f32,
+    headshot: bool,
+}
+
 impl Entity {
-    const HITSPHERES: [(Vector3<f32>, f32); 6] = [
-        (Vector3::new(0.0, 0.0, 0.0), 0.6),
-        (Vector3::new(0.0, -1.3, 0.0), 0.6),
-        (Vector3::new(0.0, -1.9, 0.0), 0.9),
-        (Vector3::new(0.0, -2.6, 0.0), 0.8),
-        (Vector3::new(0.0, -3.3, 0.0), 0.6),
-        (Vector3::new(0.0, -3.8, 0.0), 0.6),
+    const HITSPHERES: [Hitsphere; 6] = [
+        Hitsphere {
+            offset: Vector3::new(0.0, 0.0, 0.0),
+            radius: 0.6,
+            headshot: true,
+        },
+        Hitsphere {
+            offset: Vector3::new(0.0, -1.3, 0.0),
+            radius: 0.6,
+            headshot: false,
+        },
+        Hitsphere {
+            offset: Vector3::new(0.0, -1.9, 0.0),
+            radius: 0.9,
+            headshot: false,
+        },
+        Hitsphere {
+            offset: Vector3::new(0.0, -2.6, 0.0),
+            radius: 0.8,
+            headshot: false,
+        },
+        Hitsphere {
+            offset: Vector3::new(0.0, -3.3, 0.0),
+            radius: 0.6,
+            headshot: false,
+        },
+        Hitsphere {
+            offset: Vector3::new(0.0, -3.8, 0.0),
+            radius: 0.6,
+            headshot: false,
+        },
     ];
     fn simple_step(
         &mut self,
@@ -2242,7 +2280,6 @@ impl Entity {
     }
 
     fn adjust_health(&mut self, adjustment: f32) {
-        println!("adjusting health by {}", adjustment);
         if adjustment > 0.0 {
             let mut healing_left = adjustment;
             let mut health_idx = 0;

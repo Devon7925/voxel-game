@@ -13,6 +13,7 @@
                         SimpleModify(Health,-10),
                         SimpleModify(Lifetime,-3),
                         OnHit(Effect(Damage(3))),
+                        OnHeadshot(Effect(Damage(3))),
                     ]),
                 ],[
                     Spread(5),

@@ -11,6 +11,7 @@ Card Editor
     Visible cooldown values
 Add play replay button and selector
 Cards
+    On headshot
     StatusEffect
         lock out
         stop

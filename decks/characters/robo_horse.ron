@@ -10,6 +10,7 @@
                     SimpleModify(Length,-4),
                     SimpleModify(Health,-10),
                     OnHit(Effect(Damage(6))),
+                    OnHeadshot(Effect(Damage(6))),
                 ]),
     
             ),

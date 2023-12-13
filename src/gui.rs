@@ -504,6 +504,21 @@ impl DraggableCard {
                                     path.pop_back();
                                 });
                             }
+                            ProjectileModifier::OnHeadshot(base_card) => {
+                                drag_source(ui, item_id, |ui| {
+                                    ui.label("On Headshot");
+                                    path.push_back(0);
+                                    draw_base_card(
+                                        ui,
+                                        base_card,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                    );
+                                    path.pop_back();
+                                });
+                            }
                             ProjectileModifier::OnExpiry(base_card) => {
                                 drag_source(ui, item_id, |ui| {
                                     ui.label("On Expiry");
@@ -1020,14 +1035,19 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                     let mut clipboard = clippers::Clipboard::get();
                                     let import: Option<Vec<Cooldown>> = match clipboard.read() {
                                         Some(clippers::ClipperData::Text(text)) => {
-                                            ron::from_str(text.as_str()).ok()
+                                            let clipboard_parse = ron::from_str(text.as_str());
+                                            if let Err(e) = &clipboard_parse {
+                                                println!("Failed to parse clipboard: {}", e);
+                                            }
+                                            clipboard_parse.ok()
                                         }
-                                        _ => None,
+                                        _ => {
+                                            println!("Failed to import from clipboard");
+                                            None
+                                        },
                                     };
                                     if let Some(import) = import {
                                         gui_state.gui_cards = import;
-                                    } else {
-                                        println!("Failed to import from clipboard");
                                     }
                                 }
                             });
@@ -1189,6 +1209,9 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                     PaletteState::AdvancedProjectileModifiers => vec![
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::OnHit(BaseCard::None),
+                                        ),
+                                        DraggableCard::ProjectileModifier(
+                                            ProjectileModifier::OnHeadshot(BaseCard::None),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::OnExpiry(BaseCard::None),

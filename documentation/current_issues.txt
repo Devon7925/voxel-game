@@ -6,3 +6,4 @@ projectile lifetime problems
     some projectiles (ex. projectiles) only need to exist for 1 simulation frame, but should be visible to the player
 damage taken modifiers modify healing as well
 Tiny fast projectiles are hard to see
+Tiny fast projectiles can sometimes pass through players without colliding
