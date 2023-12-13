@@ -13,7 +13,7 @@ use crate::{
     card_system::{
         BaseCard, Cooldown, CooldownModifier, DraggableCard, Effect, Keybind, MultiCastModifier,
         ProjectileModifier, ProjectileModifierType, ReferencedStatusEffect, StatusEffect,
-        VoxelMaterial,
+        VoxelMaterial, SimpleCooldownModifier,
     },
     rollback_manager::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
 };
@@ -252,10 +252,11 @@ pub fn draw_cooldown(
     source_path: &mut Option<(VecDeque<u32>, DragableType)>,
     drop_path: &mut Option<(VecDeque<u32>, DropableType)>,
     modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+    total_impact: f32,
 ) {
     let can_accept_what_is_being_dragged = true;
     let id_source = "my_drag_and_drop_demo";
-    let cooldown_value = cooldown.get_and_cache_cooldown();
+    let cooldown_value = cooldown.get_and_cache_cooldown(total_impact);
     let Cooldown {
         abilities,
         modifiers,
@@ -368,7 +369,7 @@ impl DraggableCard {
             DraggableCard::CooldownModifier(modifier) => {
                 let item_id = egui::Id::new(id_source).with(path.clone());
                 match modifier {
-                    CooldownModifier::AddCharge(v) => add_hoverable_basic_modifer(
+                    CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, v) => add_hoverable_basic_modifer(
                         ui,
                         item_id,
                         "Add Charge",
@@ -377,10 +378,19 @@ impl DraggableCard {
                         modify_path,
                         path,
                     ),
-                    CooldownModifier::AddCooldown(v) => add_hoverable_basic_modifer(
+                    CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, v) => add_hoverable_basic_modifer(
                         ui,
                         item_id,
                         "Add Cooldown",
+                        *v,
+                        String::new(),
+                        modify_path,
+                        path,
+                    ),
+                    CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, v) => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Multiply Impact",
                         *v,
                         String::new(),
                         modify_path,
@@ -1233,10 +1243,13 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                     ],
                                     PaletteState::CooldownModifiers => vec![
                                         DraggableCard::CooldownModifier(
-                                            CooldownModifier::AddCharge(1),
+                                            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, 1),
                                         ),
                                         DraggableCard::CooldownModifier(
-                                            CooldownModifier::AddCooldown(1),
+                                            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, 1),
+                                        ),
+                                        DraggableCard::CooldownModifier(
+                                            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, 1),
                                         ),
                                     ],
                                     PaletteState::Effects => vec![
@@ -1341,6 +1354,12 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                 );
                             });
 
+                            let total_impact = gui_state
+                                .gui_cards
+                                .iter()
+                                .map(|card| card.get_impact_multiplier())
+                                .sum::<f32>();
+
                             for (ability_idx, mut cooldown) in
                                 gui_state.gui_cards.iter_mut().enumerate()
                             {
@@ -1352,6 +1371,7 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                         &mut source_path,
                                         &mut drop_path,
                                         &mut modify_path,
+                                        total_impact,
                                     );
                                 });
                             }

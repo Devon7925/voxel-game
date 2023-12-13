@@ -38,7 +38,7 @@
         ]
     ),
     Cooldown(
-        modifiers: [AddCharge(1)],
+        modifiers: [SimpleCooldownModifier(AddCharge, 1)],
         abilities: [
             (
                 keybind: OnPressed(Key(E)),

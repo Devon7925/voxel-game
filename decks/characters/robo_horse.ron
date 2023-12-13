@@ -1,6 +1,6 @@
 [
     Cooldown(
-        modifiers: [],
+        modifiers: [SimpleCooldownModifier(AddCharge, 49)],
         abilities: [
             (
                 keybind: Pressed(Mouse(Left)),

@@ -2,8 +2,8 @@ use core::panic;
 use std::{
     collections::{HashMap, VecDeque},
     f32::consts::PI,
-    fs::{File, self},
-    io::{BufReader, Write, Lines},
+    fs::{self, File},
+    io::{BufReader, Lines, Write},
     sync::Arc,
 };
 
@@ -24,7 +24,7 @@ use crate::{
         BaseCard, CardManager, Cooldown, ReferencedCooldown, ReferencedEffect,
         ReferencedStatusEffect, ReferencedTrigger, StateKeybind, VoxelMaterial,
     },
-    game_manager::{GameSettings, WorldGenSettings, GameState},
+    game_manager::{GameSettings, GameState, WorldGenSettings},
     gui::{GuiElement, GuiState},
     networking::{NetworkConnection, NetworkPacket},
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
@@ -307,6 +307,25 @@ impl Default for Entity {
     }
 }
 
+pub fn abilities_from_cooldowns(
+    cooldowns: &Vec<Cooldown>,
+    card_manager: &mut CardManager,
+) -> Vec<PlayerAbility> {
+    let total_impact = cooldowns
+        .iter()
+        .map(|card| card.get_impact_multiplier())
+        .sum();
+    cooldowns
+        .iter()
+        .map(|cooldown| PlayerAbility {
+            value: cooldown.get_cooldown_recovery(total_impact),
+            ability: card_manager.register_cooldown(cooldown.clone()),
+            cooldown: 0.0,
+            recovery: 0.0,
+        })
+        .collect()
+}
+
 impl PlayerSim for RollbackData {
     fn update_rollback_state(
         &mut self,
@@ -320,13 +339,19 @@ impl PlayerSim for RollbackData {
             write!(replay_file, "\nTIME {}", self.current_time).unwrap();
         }
         self.rollback_time += 1;
-        let rollback_actions: Vec<Action> = self.entity_metadata.iter().map(|x| x.get_action(0)).collect();
+        let rollback_actions: Vec<Action> = self
+            .entity_metadata
+            .iter()
+            .map(|x| x.get_action(0))
+            .collect();
         {
             if let Some(replay_file) = self.replay_file.as_mut() {
                 replay_file.write_all(b"\n").unwrap();
                 ron::ser::to_writer(replay_file, &rollback_actions).unwrap();
             }
-            for (player_idx, meta_action) in rollback_actions.iter().map(|a| &a.meta_action).enumerate() {
+            for (player_idx, meta_action) in
+                rollback_actions.iter().map(|a| &a.meta_action).enumerate()
+            {
                 if let Some(MetaAction {
                     adjust_dt,
                     deck_update,
@@ -336,15 +361,7 @@ impl PlayerSim for RollbackData {
                         self.delta_time = self.delta_time.max(*adjust_dt);
                     }
                     if let Some(new_deck) = deck_update {
-                        self.rollback_state.players[player_idx].abilities = new_deck
-                            .into_iter()
-                            .map(|cooldown| PlayerAbility {
-                                value: cooldown.get_cooldown_recovery(),
-                                ability: card_manager.register_cooldown(cooldown.clone()),
-                                cooldown: 0.0,
-                                recovery: 0.0,
-                            })
-                            .collect();
+                        self.rollback_state.players[player_idx].abilities = abilities_from_cooldowns(new_deck, card_manager)
                     }
                 }
             }
@@ -395,10 +412,22 @@ impl PlayerSim for RollbackData {
             .iter_mut()
             .for_each(|cd| cd.iter_mut().for_each(|ability| ability.clear()));
         puffin::profile_function!();
-        self.update_rollback_state(card_manager, time_step, vox_compute, game_state, game_settings);
+        self.update_rollback_state(
+            card_manager,
+            time_step,
+            vox_compute,
+            game_state,
+            game_settings,
+        );
         self.current_time += 1;
         self.entity_metadata.iter_mut().for_each(|x| x.step());
-        self.cached_current_state = self.gen_current_state(card_manager, time_step, vox_compute, game_state, game_settings);
+        self.cached_current_state = self.gen_current_state(
+            card_manager,
+            time_step,
+            vox_compute,
+            game_state,
+            game_settings,
+        );
         //send projectiles
         let projectile_count = 128.min(self.cached_current_state.projectiles.len());
         {
@@ -438,10 +467,14 @@ impl PlayerSim for RollbackData {
         projectile_compute: &ProjectileComputePipeline,
         vox_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
-        game_settings: &GameSettings
+        game_settings: &GameSettings,
     ) {
-        self.rollback_state.projectiles =
-            projectile_compute.download_projectiles(card_manager, vox_compute, game_state, game_settings);
+        self.rollback_state.projectiles = projectile_compute.download_projectiles(
+            card_manager,
+            vox_compute,
+            game_state,
+            game_settings,
+        );
     }
 
     fn get_camera(&self) -> Camera {
@@ -496,10 +529,12 @@ impl PlayerSim for RollbackData {
                     };
 
                     self.rollback_state.players.push(new_player);
-                    self.entity_metadata.push(EntityMetaData::Player(VecDeque::from(vec![
-                        Action::new();
-                        (self.current_time - self.rollback_time + 15) as usize
-                    ])));
+                    self.entity_metadata
+                        .push(EntityMetaData::Player(VecDeque::from(vec![
+                            Action::new();
+                            (self.current_time - self.rollback_time + 15)
+                                as usize
+                        ])));
 
                     {
                         let deck_packet =
@@ -621,11 +656,12 @@ impl PlayerSim for RollbackData {
                         winit::event::VirtualKeyCode::R => {
                             if input.state == ElementState::Released {
                                 // print entity positions and health
-                                for (i, player) in self.rollback_state.players.iter().enumerate()
-                                {
+                                for (i, player) in self.rollback_state.players.iter().enumerate() {
                                     println!(
                                         "player {} pos: {:?} health: {:?}",
-                                        i, player.pos, player.get_health_stats()
+                                        i,
+                                        player.pos,
+                                        player.get_health_stats()
                                     );
                                 }
                             }
@@ -724,11 +760,18 @@ impl RollbackData {
             "replay_{}.replay",
             chrono::Local::now().format("%Y-%m-%d_%H-%M-%S"),
         ));
-        let mut replay_file = settings.replay_settings.record_replay
+        let mut replay_file = settings
+            .replay_settings
+            .record_replay
             .then(|| std::fs::File::create(replay_file_path).unwrap());
 
         if let Some(replay_file) = replay_file.as_mut() {
-            write!(replay_file, "GAME SETTINGS {}\n", ron::ser::to_string(game_settings).unwrap()).unwrap();
+            write!(
+                replay_file,
+                "GAME SETTINGS {}\n",
+                ron::ser::to_string(game_settings).unwrap()
+            )
+            .unwrap();
             write!(replay_file, "PLAYER DECK ").unwrap();
             ron::ser::to_writer(replay_file, &deck).unwrap();
         }
@@ -744,21 +787,14 @@ impl RollbackData {
 
         let first_player = Entity {
             pos: game_settings.spawn_location.into(),
-            abilities: deck
-                .iter()
-                .map(|card| PlayerAbility {
-                    value: card.get_cooldown_recovery(),
-                    ability: card_manager.register_cooldown(card.clone()),
-                    cooldown: 0.0,
-                    recovery: 0.0,
-                })
-                .collect(),
+            abilities: abilities_from_cooldowns(deck, card_manager),
             ..Default::default()
         };
         rollback_state.players.push(first_player.clone());
         entity_metadata.push(EntityMetaData::Player(VecDeque::from(vec![
             Action::new();
-            (current_time - rollback_time + 15) as usize
+            (current_time - rollback_time + 15)
+                as usize
         ])));
 
         if matches!(game_settings.world_gen, WorldGenSettings::PracticeRange) {
@@ -830,7 +866,15 @@ impl RollbackData {
                 .iter()
                 .map(|e| e.get_action(i - self.rollback_time))
                 .collect();
-            state.step_sim(actions, false, card_manager, time_step, vox_compute, game_state, game_settings);
+            state.step_sim(
+                actions,
+                false,
+                card_manager,
+                time_step,
+                vox_compute,
+                game_state,
+                game_settings,
+            );
         }
         state
     }
@@ -844,16 +888,16 @@ impl RollbackData {
             return;
         }
         let time_idx = time_stamp - self.rollback_time;
-        let EntityMetaData::Player(actions) = self.entity_metadata
-            .get_mut(player_idx)
-            .unwrap_or_else(|| {
+        let EntityMetaData::Player(actions) =
+            self.entity_metadata.get_mut(player_idx).unwrap_or_else(|| {
                 panic!(
-                "cannot access index {} on sending with timestamp {}",
-                player_idx, time_stamp
-            )
-            }) else {
-                panic!("cannot send dt update from non player");
-            };
+                    "cannot access index {} on sending with timestamp {}",
+                    player_idx, time_stamp
+                )
+            })
+        else {
+            panic!("cannot send dt update from non player");
+        };
         let action = actions.get_mut(time_idx as usize).unwrap_or_else(|| {
             panic!(
                 "cannot access index {} on sending with timestamp {}",
@@ -884,16 +928,16 @@ impl RollbackData {
             return;
         }
         let time_idx = time_stamp - self.rollback_time;
-        let EntityMetaData::Player(actions) = self.entity_metadata
-            .get_mut(player_idx)
-            .unwrap_or_else(|| {
+        let EntityMetaData::Player(actions) =
+            self.entity_metadata.get_mut(player_idx).unwrap_or_else(|| {
                 panic!(
-                "cannot access index {} on sending with timestamp {}",
-                player_idx, time_stamp
-            )
-            }) else {
-                panic!("cannot send dt update from non player");
-            };
+                    "cannot access index {} on sending with timestamp {}",
+                    player_idx, time_stamp
+                )
+            })
+        else {
+            panic!("cannot send dt update from non player");
+        };
         let action = actions.get_mut(time_idx as usize).unwrap_or_else(|| {
             panic!(
                 "cannot access index {} on sending with timestamp {}",
@@ -922,16 +966,16 @@ impl RollbackData {
             return;
         }
         let time_idx = time_stamp - self.rollback_time;
-        let EntityMetaData::Player(actions) = self.entity_metadata
-            .get_mut(player_idx)
-            .unwrap_or_else(|| {
+        let EntityMetaData::Player(actions) =
+            self.entity_metadata.get_mut(player_idx).unwrap_or_else(|| {
                 panic!(
-                "cannot access index {} on sending with timestamp {}",
-                player_idx, time_stamp
-            )
-            }) else {
-                panic!("cannot send dt update from non player");
-            };
+                    "cannot access index {} on sending with timestamp {}",
+                    player_idx, time_stamp
+                )
+            })
+        else {
+            panic!("cannot send dt update from non player");
+        };
         let action = actions.get_mut(time_idx as usize).unwrap_or_else(|| {
             panic!(
                 "cannot access index {} on sending with timestamp {}",
@@ -957,7 +1001,9 @@ impl PlayerSim for ReplayData {
         self.current_time += 1;
         let rollback_actions: Vec<Action> = self.actions.pop_front().unwrap();
         {
-            for (player_idx, meta_action) in rollback_actions.iter().map(|a| &a.meta_action).enumerate() {
+            for (player_idx, meta_action) in
+                rollback_actions.iter().map(|a| &a.meta_action).enumerate()
+            {
                 if let Some(MetaAction {
                     adjust_dt,
                     deck_update,
@@ -967,15 +1013,7 @@ impl PlayerSim for ReplayData {
                         self.delta_time = self.delta_time.max(*adjust_dt);
                     }
                     if let Some(new_deck) = deck_update {
-                        self.state.players[player_idx].abilities = new_deck
-                            .into_iter()
-                            .map(|card| PlayerAbility {
-                                value: card.get_cooldown_recovery(),
-                                ability: card_manager.register_cooldown(card.clone()),
-                                cooldown: 0.0,
-                                recovery: 0.0,
-                            })
-                            .collect();
+                        self.state.players[player_idx].abilities = abilities_from_cooldowns(new_deck, card_manager)
                     }
                 }
             }
@@ -984,8 +1022,15 @@ impl PlayerSim for ReplayData {
             return;
         }
         {
-            self.state
-                .step_sim(rollback_actions, true, card_manager, time_step, vox_compute, game_state, game_settings);
+            self.state.step_sim(
+                rollback_actions,
+                true,
+                card_manager,
+                time_step,
+                vox_compute,
+                game_state,
+                game_settings,
+            );
         }
     }
 
@@ -1002,7 +1047,13 @@ impl PlayerSim for ReplayData {
         game_settings: &GameSettings,
     ) {
         puffin::profile_function!();
-        self.update_rollback_state(card_manager, time_step, vox_compute, game_state, game_settings);
+        self.update_rollback_state(
+            card_manager,
+            time_step,
+            vox_compute,
+            game_state,
+            game_settings,
+        );
         //send projectiles
         let projectile_count = 128.min(self.state.projectiles.len());
         {
@@ -1044,7 +1095,12 @@ impl PlayerSim for ReplayData {
         game_state: &GameState,
         game_settings: &GameSettings,
     ) {
-        self.state.projectiles = projectile_compute.download_projectiles(card_manager, vox_compute, game_state, game_settings);
+        self.state.projectiles = projectile_compute.download_projectiles(
+            card_manager,
+            vox_compute,
+            game_state,
+            game_settings,
+        );
     }
 
     fn get_camera(&self) -> Camera {
@@ -1162,15 +1218,7 @@ impl ReplayData {
 
                 state.players.push(Entity {
                     pos: game_settings.spawn_location.into(),
-                    abilities: deck
-                        .iter()
-                        .map(|card| PlayerAbility {
-                            value: card.get_cooldown_recovery(),
-                            ability: card_manager.register_cooldown(card.clone()),
-                            cooldown: 0.0,
-                            recovery: 0.0,
-                        })
-                        .collect(),
+                    abilities: abilities_from_cooldowns(&deck, card_manager),
                     ..Default::default()
                 });
 
@@ -1186,8 +1234,7 @@ impl ReplayData {
                 delta_time = dt_string.parse().unwrap();
             } else if let Some(_time_stamp_string) = line.strip_prefix("TIME ") {
                 let actions_string = replay_lines.next().unwrap().unwrap();
-                let line_actions: Vec<Action> =
-                    ron::de::from_str(&actions_string).unwrap();
+                let line_actions: Vec<Action> = ron::de::from_str(&actions_string).unwrap();
                 actions.push_back(line_actions);
             }
         }
@@ -1336,7 +1383,7 @@ impl WorldState {
                 );
             }
         }
-        
+
         self.projectiles.iter_mut().for_each(|proj| {
             proj.simple_step(
                 &self.players,
@@ -1537,14 +1584,12 @@ impl WorldState {
                         )
                     })
                     .collect::<Vec<_>>();
-                
+
                 player1.status_effects.retain(|effect| match effect {
                     AppliedStatusEffect {
                         effect: ReferencedStatusEffect::OnHit(_),
                         time_left: _,
-                    } => {
-                        false
-                    }
+                    } => false,
                     _ => true,
                 });
                 hit_effects
@@ -1892,23 +1937,32 @@ impl Projectile {
     }
 }
 
-pub fn get_index(global_pos: Point3<u32>, chunk_reader: &BufferReadGuard<'_, [u32]>, game_state: &GameState, game_settings: &GameSettings) -> Option<u32> {
-    if (global_pos / CHUNK_SIZE).zip(game_state.start_pos, |a, b| a >= b) != Point3::new(true, true, true) {
+pub fn get_index(
+    global_pos: Point3<u32>,
+    chunk_reader: &BufferReadGuard<'_, [u32]>,
+    game_state: &GameState,
+    game_settings: &GameSettings,
+) -> Option<u32> {
+    if (global_pos / CHUNK_SIZE).zip(game_state.start_pos, |a, b| a >= b)
+        != Point3::new(true, true, true)
+    {
         return None;
     }
-    if (global_pos / CHUNK_SIZE).zip(game_state.start_pos + game_settings.render_size, |a, b| a < b) != Point3::new(true, true, true) {
+    if (global_pos / CHUNK_SIZE).zip(game_state.start_pos + game_settings.render_size, |a, b| {
+        a < b
+    }) != Point3::new(true, true, true)
+    {
         return None;
     }
-    let chunk_pos = (global_pos / CHUNK_SIZE)
-        .zip(Point3::from_vec(game_settings.render_size), |a, b| a % b);
+    let chunk_pos =
+        (global_pos / CHUNK_SIZE).zip(Point3::from_vec(game_settings.render_size), |a, b| a % b);
     let pos_in_chunk = global_pos % CHUNK_SIZE;
     let chunk_ref = chunk_pos.x * game_settings.render_size[1] * game_settings.render_size[2]
         + chunk_pos.y * game_settings.render_size[2]
         + chunk_pos.z;
     let chunk_idx = chunk_reader[chunk_ref as usize];
-    let idx_in_chunk = pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE
-        + pos_in_chunk.y * CHUNK_SIZE
-        + pos_in_chunk.z;
+    let idx_in_chunk =
+        pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE + pos_in_chunk.y * CHUNK_SIZE + pos_in_chunk.z;
     Some(chunk_idx * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE + idx_in_chunk)
 }
 
@@ -2039,7 +2093,9 @@ impl Entity {
                     && cooldown.recovery <= 0.0
                 {
                     for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
-                        if action.activate_ability[cooldown_idx][ability_idx] && !player_stats[player_idx].lockout {
+                        if action.activate_ability[cooldown_idx][ability_idx]
+                            && !player_stats[player_idx].lockout
+                        {
                             cooldown.cooldown += cooldown.value.0;
                             cooldown.recovery = cooldown.value.1[ability_idx];
                             let (proj_effects, vox_effects, effects, triggers) = card_manager
@@ -2079,7 +2135,14 @@ impl Entity {
         }
         let prev_collision_vec = self.collision_vec.clone();
         self.collision_vec = Vector3::new(0, 0, 0);
-        self.collide_player(time_step, voxel_reader, chunk_reader, prev_collision_vec, game_state, game_settings);
+        self.collide_player(
+            time_step,
+            voxel_reader,
+            chunk_reader,
+            prev_collision_vec,
+            game_state,
+            game_settings,
+        );
 
         for health_section in self.health.iter_mut() {
             match health_section {
@@ -2190,16 +2253,25 @@ impl Entity {
                                 + x_dist * x_iter as f32 * x_vec
                                 + z_dist * z_iter as f32 * z_vec;
                             let voxel_pos = pos.map(|c| c.floor() as u32);
-                            let voxel = if let Some(index) = get_index(voxel_pos, chunk_reader, game_state, game_settings) {
+                            let voxel = if let Some(index) =
+                                get_index(voxel_pos, chunk_reader, game_state, game_settings)
+                            {
                                 voxel_reader[index as usize]
                             } else {
                                 VoxelMaterial::Unloaded.to_memory()
                             };
-                            if voxel>>24 != 0 {
+                            if voxel >> 24 != 0 {
                                 if component != 1
                                     && prev_collision_vec[1] == 1
                                     && (pos - start_pos).y < 1.0
-                                    && self.can_step_up(voxel_reader, chunk_reader, component, player_move_pos, game_state, game_settings)
+                                    && self.can_step_up(
+                                        voxel_reader,
+                                        chunk_reader,
+                                        component,
+                                        player_move_pos,
+                                        game_state,
+                                        game_settings,
+                                    )
                                 {
                                     self.pos[1] += 1.0;
                                     player_move_pos[1] += 1.0;
@@ -2214,8 +2286,8 @@ impl Entity {
                                     self.vel[(component + 2) % 3],
                                 );
                                 if perp_vel.magnitude() > 0.0 {
-                                    let friction_factor =
-                                        VoxelMaterial::FRICTION_COEFFICIENTS[(voxel >> 24) as usize];
+                                    let friction_factor = VoxelMaterial::FRICTION_COEFFICIENTS
+                                        [(voxel >> 24) as usize];
                                     self.vel[(component + 1) % 3] -=
                                         (friction_factor * 0.5 * perp_vel.normalize().x
                                             + friction_factor * perp_vel.x)
@@ -2266,12 +2338,14 @@ impl Entity {
                 let pos =
                     start_pos + x_dist * x_iter as f32 * x_vec + z_dist * z_iter as f32 * z_vec;
                 let voxel_pos = pos.map(|c| c.floor() as u32);
-                let voxel = if let Some(index) = get_index(voxel_pos, chunk_reader, game_state, game_settings) {
+                let voxel = if let Some(index) =
+                    get_index(voxel_pos, chunk_reader, game_state, game_settings)
+                {
                     voxel_reader[index as usize]
                 } else {
                     VoxelMaterial::Unloaded.to_memory()
                 };
-                if voxel>>24 != 0 {
+                if voxel >> 24 != 0 {
                     return false;
                 }
             }

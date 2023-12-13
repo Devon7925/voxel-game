@@ -10,9 +10,4 @@ Multiplayer
         Lobby list screen
         Join lobby
 
-Cards
-    Multi cooldown balancing
-    Cooldown modifiers
-        Reduce cooldown
-
 Performance checkup

@@ -37,7 +37,7 @@
         ]
     ),
     Cooldown(
-        modifiers: [AddCharge(4)],
+        modifiers: [SimpleCooldownModifier(AddCharge, 4)],
         abilities: [
             (
                 card: MultiCast([
