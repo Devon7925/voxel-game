@@ -3,6 +3,8 @@ use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 use winit::event::{MouseButton, VirtualKeyCode};
 
+use crate::game_manager::GameSettings;
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Settings {
     pub local_url: String,
@@ -12,9 +14,9 @@ pub struct Settings {
     pub movement_controls: ControlSettings,
     pub graphics_settings: GraphicsSettings,
     pub replay_settings: ReplaySettings,
-    pub delta_time: f32,
     pub do_profiling: bool,
     pub crash_log: String,
+    pub create_lobby_settings: GameSettings,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]

@@ -656,6 +656,8 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             *game = Some(Game::new(
                                                 settings,
                                                 GameSettings {
+                                                    name: "Singleplayer".to_string(),
+                                                    delta_time: 0.03,
                                                     is_remote: false,
                                                     player_count: 1,
                                                     render_size: Vector3::new(64, 8, 64),
@@ -669,27 +671,15 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             ));
                                         }
                                         if ui.button("Multiplayer").clicked() {
-                                            gui_state.menu_stack.pop();
-                                            *game = Some(Game::new(
-                                                settings,
-                                                GameSettings {
-                                                    is_remote: true,
-                                                    player_count: 2,
-                                                    render_size: Vector3::new(16, 8, 16),
-                                                    world_gen: WorldGenSettings::Normal,
-                                                    spawn_location,
-                                                    max_loaded_chunks: 2048,
-                                                    fixed_center: false,
-                                                },
-                                                &gui_state.gui_cards,
-                                                creation_interface,
-                                            ));
+                                            gui_state.menu_stack.push(GuiElement::MultiplayerMenu);
                                         }
                                         if ui.button("Practice Range").clicked() {
                                             gui_state.menu_stack.pop();
                                             *game = Some(Game::new(
                                                 settings,
                                                 GameSettings {
+                                                    name: "Practice Range".to_string(),
+                                                    delta_time: 0.03,
                                                     is_remote: false,
                                                     player_count: 1,
                                                     render_size: Vector3::new(8, 8, 8),
@@ -714,7 +704,6 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             if let Some(file) = file {
                                                 gui_state.menu_stack.pop();
                                                 *game = Some(Game::from_replay(
-                                                    settings,
                                                     file.as_path(),
                                                     creation_interface,
                                                 ));
@@ -771,6 +760,36 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                 }
                 Some(&GuiElement::CardEditor) => {
                     card_editor(ctx, gui_state);
+                }
+                
+                Some(&GuiElement::MultiplayerMenu) => {
+                    egui::Area::new("multiplayer menu")
+                        .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
+                        .show(&ctx, |ui| {
+                            let menu_size = Rect::from_center_size(
+                                ui.available_rect_before_wrap().center(),
+                                ui.available_rect_before_wrap().size(),
+                            );
+
+                            ui.allocate_ui_at_rect(menu_size, |ui| {
+                                ui.painter().rect_filled(
+                                    ui.available_rect_before_wrap(),
+                                    0.0,
+                                    Color32::BLACK,
+                                );
+                                centerer(ui, |ui| {
+                                    ui.vertical_centered(|ui| {
+                                        if ui.button("Host").clicked() {
+                                        }
+                                        if ui.button("Join").clicked() {
+                                        }
+                                        if ui.button("Back").clicked() {
+                                            gui_state.menu_stack.pop();
+                                        }
+                                    });
+                                });
+                            });
+                        });
                 }
                 None => {}
             }

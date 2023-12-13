@@ -775,9 +775,6 @@ impl RollbackData {
             write!(replay_file, "PLAYER DECK ").unwrap();
             ron::ser::to_writer(replay_file, &deck).unwrap();
         }
-        if let Some(replay_file) = replay_file.as_mut() {
-            write!(replay_file, "\nPERSONAL DT {}", settings.delta_time).unwrap();
-        }
 
         let current_time: u64 = 5;
         let rollback_time: u64 = 0;
@@ -835,7 +832,7 @@ impl RollbackData {
         RollbackData {
             current_time,
             rollback_time,
-            delta_time: settings.delta_time,
+            delta_time: game_settings.delta_time,
             rollback_state,
             cached_current_state: WorldState::new(),
             entity_metadata,
@@ -1169,7 +1166,6 @@ impl PlayerSim for ReplayData {
 impl ReplayData {
     pub fn new(
         memory_allocator: &Arc<StandardMemoryAllocator>,
-        settings: &Settings,
         game_settings: &GameSettings,
         replay_lines: &mut Lines<BufReader<File>>,
         card_manager: &mut CardManager,
@@ -1206,7 +1202,6 @@ impl ReplayData {
 
         let mut state = WorldState::new();
         let mut actions = VecDeque::new();
-        let mut delta_time = settings.delta_time;
         while let Some(line) = replay_lines.next() {
             let Ok(line) = line else {
                 continue;
@@ -1230,8 +1225,6 @@ impl ReplayData {
                     };
                     state.players.push(bot.clone());
                 }
-            } else if let Some(dt_string) = line.strip_prefix("PERSONAL DT ") {
-                delta_time = dt_string.parse().unwrap();
             } else if let Some(_time_stamp_string) = line.strip_prefix("TIME ") {
                 let actions_string = replay_lines.next().unwrap().unwrap();
                 let line_actions: Vec<Action> = ron::de::from_str(&actions_string).unwrap();
@@ -1243,7 +1236,7 @@ impl ReplayData {
 
         ReplayData {
             current_time,
-            delta_time,
+            delta_time: game_settings.delta_time,
             state,
             actions,
             player_buffer,

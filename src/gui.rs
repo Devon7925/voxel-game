@@ -23,6 +23,7 @@ pub enum GuiElement {
     EscMenu,
     CardEditor,
     MainMenu,
+    MultiplayerMenu,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]

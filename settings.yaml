@@ -16,9 +16,24 @@ graphics_settings:
   shadow_ray_dist: 40
   transparent_shadow_ray_dist: 40
   ao_ray_dist: 25
-delta_time: 0.03
 replay_settings:
     replay_folder: replays
     record_replay: false
 do_profiling: false
 crash_log: crash_log.txt
+create_lobby_settings:
+    name: "Standard Open Multiplayer"
+    delta_time: 0.03
+    is_remote: true
+    player_count: 2
+    render_size:
+      x: 32
+      y: 16
+      z: 32
+    spawn_location: 
+      x: 10000.0
+      y: 1810.0
+      z: 10000.0
+    max_loaded_chunks: 2048
+    world_gen: Normal
+    fixed_center: false

@@ -22,14 +22,16 @@ pub struct Game {
     pub game_settings: GameSettings,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum WorldGenSettings {
     Normal,
     PracticeRange,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GameSettings {
+    pub name: String,
+    pub delta_time: f32,
     pub is_remote: bool,
     pub player_count: u32,
     pub render_size: Vector3<u32>,
@@ -83,7 +85,6 @@ impl Game {
     }
 
     pub fn from_replay(
-        settings: &Settings,
         replay_file: &Path,
         creation_interface: &CreationInterface,
     ) -> Self {
@@ -115,7 +116,6 @@ impl Game {
 
         let rollback_data: Box<dyn PlayerSim> = Box::new(ReplayData::new(
             &creation_interface.memory_allocator,
-            &settings,
             &game_settings,
             &mut replay_lines,
             &mut card_manager,
