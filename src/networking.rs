@@ -24,7 +24,7 @@ pub enum NetworkPacket {
 
 impl NetworkConnection {
     pub fn new(settings: &Settings, game_settings: &GameSettings) -> Self {
-        let room_url = format!("{}{}", if game_settings.is_remote {
+        let room_url = format!("{}extreme_bevy?next={}", if game_settings.is_remote {
             settings.remote_url.clone()
         } else {
             settings.local_url.clone()

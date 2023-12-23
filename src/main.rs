@@ -1,6 +1,8 @@
 mod app;
 mod card_system;
+mod game_manager;
 mod gui;
+mod lobby_browser;
 mod multipass_system;
 mod networking;
 mod projectile_sim_manager;
@@ -10,15 +12,14 @@ mod rollback_manager;
 mod settings_manager;
 mod utils;
 mod voxel_sim_manager;
-mod game_manager;
 
 use crate::{
     app::RenderPipeline,
     card_system::Cooldown,
     gui::{GuiElement, GuiState, PaletteState},
-    settings_manager::Settings,
+    settings_manager::Settings, lobby_browser::LobbyBrowser,
 };
-use cgmath::{EuclideanSpace, Matrix4, Rad, SquareMatrix, Vector3, Point3};
+use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use multipass_system::Pass;
 use std::io::Write;
 use std::{fs, panic, time::Instant};
@@ -116,16 +117,13 @@ fn main() {
         gui_cards: player_deck.clone(),
         palette_state: PaletteState::ProjectileModifiers,
         should_exit: false,
+        lobby_browser: LobbyBrowser::new(),
     };
 
     let mut time = Instant::now();
     loop {
-        let should_continue = handle_events(
-            &mut event_loop,
-            &mut app,
-            &mut window_props,
-            &mut gui_state,
-        );
+        let should_continue =
+            handle_events(&mut event_loop, &mut app, &mut window_props, &mut gui_state);
         // Event handling.
         if !should_continue {
             break;
@@ -135,7 +133,12 @@ fn main() {
         if (Instant::now() - time).as_secs_f32() > 0.0 {
             puffin::GlobalProfiler::lock().new_frame();
             previous_frame_end.as_mut().unwrap().cleanup_finished();
-            time += std::time::Duration::from_secs_f32(app.game.as_ref().map(|game| game.rollback_data.get_delta_time()).unwrap_or(DEFAULT_DELTA_TIME));
+            time += std::time::Duration::from_secs_f32(
+                app.game
+                    .as_ref()
+                    .map(|game| game.rollback_data.get_delta_time())
+                    .unwrap_or(DEFAULT_DELTA_TIME),
+            );
             let skip_render = if app.game.is_some() {
                 (Instant::now() - time).as_secs_f32() > 0.0
             } else {
@@ -201,7 +204,12 @@ fn handle_events(
                     return;
                 }
                 if let Some(game) = app.game.as_mut() {
-                    game.rollback_data.process_event(event, &app.settings, gui_state, &window_props);
+                    game.rollback_data.process_event(
+                        event,
+                        &app.settings,
+                        gui_state,
+                        &window_props,
+                    );
                 }
                 match event {
                     WindowEvent::CloseRequested => {
@@ -273,9 +281,18 @@ fn handle_events(
                                 winit::event::VirtualKeyCode::F1 => {
                                     if input.state == ElementState::Released {
                                         if let Some(game) = app.game.as_ref() {
-                                            println!("Chunk update count: {}", game.voxel_compute.update_count());
-                                            println!("Chunk worldgen count: {}", game.voxel_compute.worldgen_count());
-                                            println!("Chunk capacity: {}", game.voxel_compute.worldgen_capacity());
+                                            println!(
+                                                "Chunk update count: {}",
+                                                game.voxel_compute.update_count()
+                                            );
+                                            println!(
+                                                "Chunk worldgen count: {}",
+                                                game.voxel_compute.worldgen_count()
+                                            );
+                                            println!(
+                                                "Chunk capacity: {}",
+                                                game.voxel_compute.worldgen_capacity()
+                                            );
                                         }
                                     }
                                 }
@@ -367,7 +384,8 @@ fn compute_then_render(
         if let Some(game) = app.game.as_mut() {
             puffin::profile_scope!("do compute");
             let time_step = game.rollback_data.get_delta_time();
-            game.voxel_compute.push_updates_from_changed(&game.game_settings);
+            game.voxel_compute
+                .push_updates_from_changed(&game.game_settings);
 
             // Compute.
             game.rollback_data.download_projectiles(
@@ -375,7 +393,7 @@ fn compute_then_render(
                 &game.projectile_compute,
                 &mut game.voxel_compute,
                 &game.game_state,
-                &game.game_settings
+                &game.game_settings,
             );
             game.rollback_data.step(
                 &mut game.card_manager,
@@ -385,29 +403,48 @@ fn compute_then_render(
                 &game.game_settings,
             );
 
-            game.game_state.players_center = game.rollback_data.get_players().iter().map(|player| player.pos).fold(Point3::new(0.0, 0.0, 0.0), |acc, pos| acc + pos.to_vec()) / game.rollback_data.get_players().len() as f32;
+            game.game_state.players_center = game
+                .rollback_data
+                .get_players()
+                .iter()
+                .map(|player| player.pos)
+                .fold(Point3::new(0.0, 0.0, 0.0), |acc, pos| acc + pos.to_vec())
+                / game.rollback_data.get_players().len() as f32;
             if !game.game_settings.fixed_center {
                 // consider moving start pos
                 let current_center = game.game_state.start_pos + game.game_settings.render_size / 2;
-                let player_average_center = game.game_state.players_center.map(|e| e as u32 / CHUNK_SIZE);
-                let distance = player_average_center.zip(current_center, |a, b| a as i32 - b as i32).to_vec().map(|e| if e.abs() < 2 { 0 } else { e });
-    
+                let player_average_center = game
+                    .game_state
+                    .players_center
+                    .map(|e| e as u32 / CHUNK_SIZE);
+                let distance = player_average_center
+                    .zip(current_center, |a, b| a as i32 - b as i32)
+                    .to_vec()
+                    .map(|e| if e.abs() < 2 { 0 } else { e });
+
                 if distance != Vector3::new(0, 0, 0) {
-                    game.voxel_compute.move_start_pos(&mut game.game_state, distance, &game.game_settings);
+                    game.voxel_compute.move_start_pos(
+                        &mut game.game_state,
+                        distance,
+                        &game.game_settings,
+                    );
                 }
             }
 
-            game
-                .projectile_compute
+            game.projectile_compute
                 .upload(game.rollback_data.get_projectiles());
             let after_proj_compute = game.projectile_compute.compute(
                 future,
                 &game.game_state,
                 &game.game_settings,
                 &game.rollback_data,
-                &game.voxel_compute
+                &game.voxel_compute,
             );
-            game.voxel_compute.compute(after_proj_compute, &mut game.game_state, &game.game_settings)
+            game.voxel_compute.compute(
+                after_proj_compute,
+                &mut game.game_state,
+                &game.game_settings,
+            )
         } else {
             future.boxed()
         }
@@ -445,10 +482,7 @@ fn compute_then_render(
                 }
                 Pass::Lighting(mut lighting) => {
                     if let Some(game) = app.game.as_mut() {
-                        lighting.raytrace(
-                            &game,
-                            &app.settings,
-                        );
+                        lighting.raytrace(&game, &app.settings);
                     }
                     lighting.gui(
                         &mut app.game,
@@ -490,13 +524,11 @@ fn compute_then_render(
         }
         Err(VulkanError::OutOfDate) => {
             *recreate_swapchain = true;
-            *previous_frame_end =
-                Some(sync::now(app.vulkano_interface.device.clone()).boxed());
+            *previous_frame_end = Some(sync::now(app.vulkano_interface.device.clone()).boxed());
         }
         Err(e) => {
             println!("failed to flush future: {e}");
-            *previous_frame_end =
-                Some(sync::now(app.vulkano_interface.device.clone()).boxed());
+            *previous_frame_end = Some(sync::now(app.vulkano_interface.device.clone()).boxed());
         }
     }
 }

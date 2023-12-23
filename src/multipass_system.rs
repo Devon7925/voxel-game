@@ -782,6 +782,49 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                         if ui.button("Host").clicked() {
                                         }
                                         if ui.button("Join").clicked() {
+                                            gui_state.lobby_browser.update(settings);
+                                            gui_state.menu_stack.push(GuiElement::LobbyBrowser);
+                                        }
+                                        if ui.button("Back").clicked() {
+                                            gui_state.menu_stack.pop();
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                }
+                Some(&GuiElement::LobbyBrowser) => {
+                    egui::Area::new("lobby browser")
+                        .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
+                        .show(&ctx, |ui| {
+                            let menu_size = Rect::from_center_size(
+                                ui.available_rect_before_wrap().center(),
+                                ui.available_rect_before_wrap().size(),
+                            );
+
+                            ui.allocate_ui_at_rect(menu_size, |ui| {
+                                ui.painter().rect_filled(
+                                    ui.available_rect_before_wrap(),
+                                    0.0,
+                                    Color32::BLACK,
+                                );
+                                centerer(ui, |ui| {
+                                    ui.vertical_centered(|ui| {
+                                        let lobby_list = gui_state.lobby_browser.get_lobbies();
+                                        for lobby in lobby_list.iter() {
+                                            ui.horizontal(|ui| {
+                                                ui.label(lobby.name.clone());
+                                                if ui.button("Join").clicked() {
+                                                    gui_state.menu_stack.clear();
+                                                    // TODO
+                                                    *game = Some(Game::new(
+                                                        settings,
+                                                        lobby.settings.clone(),
+                                                        &gui_state.gui_cards,
+                                                        creation_interface,
+                                                    ));
+                                                }
+                                            });
                                         }
                                         if ui.button("Back").clicked() {
                                             gui_state.menu_stack.pop();

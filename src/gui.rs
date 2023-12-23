@@ -12,9 +12,10 @@ use egui_winit_vulkano::egui::{
 use crate::{
     card_system::{
         BaseCard, Cooldown, CooldownModifier, DraggableCard, Effect, Keybind, MultiCastModifier,
-        ProjectileModifier, ProjectileModifierType, ReferencedStatusEffect, StatusEffect,
-        VoxelMaterial, SimpleCooldownModifier,
+        ProjectileModifier, ProjectileModifierType, ReferencedStatusEffect, SimpleCooldownModifier,
+        StatusEffect, VoxelMaterial,
     },
+    lobby_browser::LobbyBrowser,
     rollback_manager::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
 };
 
@@ -24,6 +25,7 @@ pub enum GuiElement {
     CardEditor,
     MainMenu,
     MultiplayerMenu,
+    LobbyBrowser,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
@@ -42,6 +44,7 @@ pub struct GuiState {
     pub menu_stack: Vec<GuiElement>,
     pub gui_cards: Vec<Cooldown>,
     pub palette_state: PaletteState,
+    pub lobby_browser: LobbyBrowser,
     pub should_exit: bool,
 }
 
@@ -370,7 +373,10 @@ impl DraggableCard {
             DraggableCard::CooldownModifier(modifier) => {
                 let item_id = egui::Id::new(id_source).with(path.clone());
                 match modifier {
-                    CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, v) => add_hoverable_basic_modifer(
+                    CooldownModifier::SimpleCooldownModifier(
+                        SimpleCooldownModifier::AddCharge,
+                        v,
+                    ) => add_hoverable_basic_modifer(
                         ui,
                         item_id,
                         "Add Charge",
@@ -379,7 +385,10 @@ impl DraggableCard {
                         modify_path,
                         path,
                     ),
-                    CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, v) => add_hoverable_basic_modifer(
+                    CooldownModifier::SimpleCooldownModifier(
+                        SimpleCooldownModifier::AddCooldown,
+                        v,
+                    ) => add_hoverable_basic_modifer(
                         ui,
                         item_id,
                         "Add Cooldown",
@@ -388,7 +397,10 @@ impl DraggableCard {
                         modify_path,
                         path,
                     ),
-                    CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, v) => add_hoverable_basic_modifer(
+                    CooldownModifier::SimpleCooldownModifier(
+                        SimpleCooldownModifier::MultiplyImpact,
+                        v,
+                    ) => add_hoverable_basic_modifer(
                         ui,
                         item_id,
                         "Multiply Impact",
@@ -1055,7 +1067,7 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                         _ => {
                                             println!("Failed to import from clipboard");
                                             None
-                                        },
+                                        }
                                     };
                                     if let Some(import) = import {
                                         gui_state.gui_cards = import;
@@ -1244,13 +1256,22 @@ pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
                                     ],
                                     PaletteState::CooldownModifiers => vec![
                                         DraggableCard::CooldownModifier(
-                                            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, 1),
+                                            CooldownModifier::SimpleCooldownModifier(
+                                                SimpleCooldownModifier::AddCharge,
+                                                1,
+                                            ),
                                         ),
                                         DraggableCard::CooldownModifier(
-                                            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, 1),
+                                            CooldownModifier::SimpleCooldownModifier(
+                                                SimpleCooldownModifier::AddCooldown,
+                                                1,
+                                            ),
                                         ),
                                         DraggableCard::CooldownModifier(
-                                            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, 1),
+                                            CooldownModifier::SimpleCooldownModifier(
+                                                SimpleCooldownModifier::MultiplyImpact,
+                                                1,
+                                            ),
                                         ),
                                     ],
                                     PaletteState::Effects => vec![

@@ -16,6 +16,8 @@ Cards
         Pinpoint Projectile
         Stun Effect
     Move issue tracking to github
+Rendering
+    FXAA https://en.wikipedia.org/wiki/Fast_approximate_anti-aliasing
 
 EVENTUALLY
 Settings editor

@@ -1,5 +1,5 @@
-local_url: ws://127.0.0.1:3536/extreme_bevy?next=
-remote_url: ws://primd.net:3536/extreme_bevy?next=
+local_url: 127.0.0.1:3536/
+remote_url: primd.net:3536/
 fullscreen_toggle: F11
 card_file: decks/characters/hammer_man.ron
 movement_controls:
