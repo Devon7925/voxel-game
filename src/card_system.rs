@@ -996,7 +996,7 @@ impl BaseCard {
                     }
                 }
                 Effect::Knockback(knockback) => {
-                    if knockback.abs() > 20 {
+                    if knockback.abs() > 40 {
                         return false;
                     }
                 }

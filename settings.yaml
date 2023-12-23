@@ -1,7 +1,7 @@
 local_url: 127.0.0.1:3536/
 remote_url: primd.net:3536/
 fullscreen_toggle: F11
-card_file: decks/characters/hammer_man.ron
+card_file: decks/movement.ron
 movement_controls:
   forward: !Key W
   backward: !Key S
@@ -15,7 +15,7 @@ graphics_settings:
   transparency_ray_dist: 75
   shadow_ray_dist: 40
   transparent_shadow_ray_dist: 40
-  ao_ray_dist: 25
+  ao_ray_dist: 15
 replay_settings:
     replay_folder: replays
     record_replay: false

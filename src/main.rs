@@ -419,8 +419,7 @@ fn compute_then_render(
                     .map(|e| e as u32 / CHUNK_SIZE);
                 let distance = player_average_center
                     .zip(current_center, |a, b| a as i32 - b as i32)
-                    .to_vec()
-                    .map(|e| if e.abs() < 2 { 0 } else { e });
+                    .to_vec();
 
                 if distance != Vector3::new(0, 0, 0) {
                     game.voxel_compute.move_start_pos(

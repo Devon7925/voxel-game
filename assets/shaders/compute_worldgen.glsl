@@ -37,15 +37,21 @@ void set_data(uvec3 global_pos, uint data) {
 
 uint get_worldgen(uvec3 global_pos) {
     vec3 true_pos = vec3(global_pos);
-    float density = voronoise(0.04 * true_pos, 1.0, 1.0).w - ((true_pos.y - 1800.0) / 15.0);
-    float pillar_density = voronoise(vec3(0.06, 0.0, 0.06) * true_pos, 1.0, 1.0).w - ((true_pos.y - 1800.0) / 80.0);
+    float macro_noise = voronoise(0.005 * true_pos, 1.0, 1.0).w;
+    float density = voronoise(0.04 * true_pos, 1.0, 1.0).w;
+    float terrain_density = density + macro_noise - (true_pos.y - 1800.0) / 15.0;
+
+    float cave_density = voronoise(vec3(0.06, 0.035, 0.06) * true_pos, 1.0, 1.0).w;
+    float pillar_density = cave_density - (true_pos.y - 1800.0) / 80.0;
     if(pillar_density > 0.2) {
         return MAT_STONE << 24;
-    } else if(density > 0.3) {
+    } else if(cave_density+density+0.5*macro_noise < -0.4) {
+        return MAT_AIR << 24;
+    } else if(terrain_density > 0.3) {
         return MAT_STONE << 24;
-    } else if(density > 0.1) {
+    } else if(terrain_density > 0.1) {
         return MAT_DIRT << 24;
-    } else if(density > 0.0) {
+    } else if(terrain_density > 0.0) {
         return MAT_GRASS << 24;
     } else if(true_pos[1] <= 1796.0) {
         return MAT_ICE << 24;

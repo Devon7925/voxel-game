@@ -1,0 +1,85 @@
+[
+    
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                keybind: Pressed(Mouse(Left)),
+                card: Effect(Knockback(20)),
+            ),
+        ]
+    ),
+    Cooldown(
+        modifiers: [SimpleCooldownModifier(AddCharge, 4)],
+        abilities: [
+            (
+                card: MultiCast([
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                ],[]),
+                keybind: Or(
+                    Pressed(Mouse(Right)),
+                    And(
+                        Pressed(Key(Space)),
+                        Not(IsOnGround)
+                    )
+                )
+            )
+        ]
+    ),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                card: Projectile([
+                    SimpleModify(Width,-5),
+                    SimpleModify(Height,-5),
+                    SimpleModify(Length,-1),
+                    SimpleModify(Health,-10),
+                    OnHit(Effect(Damage(50))),
+                    OnHit(Projectile([
+                        SimpleModify(Speed,-3),
+                        SimpleModify(Width,2),
+                        SimpleModify(Height,2),
+                        SimpleModify(Length,2),
+                        SimpleModify(Lifetime,-10),
+                        SimpleModify(Health,-10),
+                        FriendlyFire,
+                        PiercePlayers,
+                        OnHit(Effect(Knockback(10))),
+                    ])),
+                ]),
+                keybind: Pressed(Key(E))
+            )
+        ]
+    ),
+    Cooldown(
+        modifiers: [],
+        abilities: [
+            (
+                card: MultiCast([
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaceGravity, 1)),
+                ],[]),
+                keybind: Pressed(Key(LShift))
+            )
+        ]
+    ),
+]
