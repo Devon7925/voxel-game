@@ -35,7 +35,7 @@ use winit::event_loop::EventLoop;
 use crate::{
     app::CreationInterface,
     game_manager::{Game, GameSettings, WorldGenSettings},
-    gui::{card_editor, centerer, cooldown, healthbar, GuiElement},
+    gui::{card_editor, cooldown, healthbar, horizontal_centerer, vertical_centerer, GuiElement},
     raytracer::PointLightingSystem,
     settings_manager::Settings,
     GuiState,
@@ -648,7 +648,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     0.0,
                                     Color32::BLACK,
                                 );
-                                centerer(ui, |ui| {
+                                vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
                                         let spawn_location = Point3::new(10000.0, 1810.0, 10000.0);
                                         if ui.button("Singleplayer").clicked() {
@@ -693,13 +693,14 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             ));
                                         }
                                         if ui.button("Play Replay").clicked() {
-                                            let mut replay_folder_path = std::env::current_dir().unwrap();
-                                            replay_folder_path.push(settings.replay_settings.replay_folder.clone());
+                                            let mut replay_folder_path =
+                                                std::env::current_dir().unwrap();
+                                            replay_folder_path.push(
+                                                settings.replay_settings.replay_folder.clone(),
+                                            );
                                             let file = FileDialog::new()
                                                 .add_filter("replay", &["replay"])
-                                                .set_directory(
-                                                    replay_folder_path
-                                                )
+                                                .set_directory(replay_folder_path)
                                                 .pick_file();
                                             if let Some(file) = file {
                                                 gui_state.menu_stack.pop();
@@ -761,7 +762,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                 Some(&GuiElement::CardEditor) => {
                     card_editor(ctx, gui_state);
                 }
-                
+
                 Some(&GuiElement::MultiplayerMenu) => {
                     egui::Area::new("multiplayer menu")
                         .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
@@ -777,10 +778,9 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     0.0,
                                     Color32::BLACK,
                                 );
-                                centerer(ui, |ui| {
+                                vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
-                                        if ui.button("Host").clicked() {
-                                        }
+                                        if ui.button("Host").clicked() {}
                                         if ui.button("Join").clicked() {
                                             gui_state.lobby_browser.update(settings);
                                             gui_state.menu_stack.push(GuiElement::LobbyBrowser);
@@ -808,24 +808,30 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     0.0,
                                     Color32::BLACK,
                                 );
-                                centerer(ui, |ui| {
+                                vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
                                         let lobby_list = gui_state.lobby_browser.get_lobbies();
-                                        for lobby in lobby_list.iter() {
-                                            ui.horizontal(|ui| {
-                                                ui.label(lobby.name.clone());
-                                                if ui.button("Join").clicked() {
-                                                    gui_state.menu_stack.clear();
-                                                    // TODO
-                                                    *game = Some(Game::new(
-                                                        settings,
-                                                        lobby.settings.clone(),
-                                                        &gui_state.gui_cards,
-                                                        creation_interface,
-                                                    ));
-                                                }
-                                            });
-                                        }
+                                        horizontal_centerer(ui, |ui| {
+                                            egui::Grid::new("lobby_grid")
+                                                .num_columns(2)
+                                                .spacing([40.0, 4.0])
+                                                .show(ui, |ui| {
+                                                    for lobby in lobby_list.iter() {
+                                                        ui.label(lobby.name.clone());
+                                                        if ui.button("Join").clicked() {
+                                                            gui_state.menu_stack.clear();
+                                                            // TODO
+                                                            *game = Some(Game::new(
+                                                                settings,
+                                                                lobby.settings.clone(),
+                                                                &gui_state.gui_cards,
+                                                                creation_interface,
+                                                            ));
+                                                        }
+                                                        ui.end_row();
+                                                    }
+                                                });
+                                        });
                                         if ui.button("Back").clicked() {
                                             gui_state.menu_stack.pop();
                                         }

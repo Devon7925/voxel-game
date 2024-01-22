@@ -50,9 +50,9 @@ pub struct GuiState {
 
 // Helper function to center arbitrary widgets. It works by measuring the width of the widgets after rendering, and
 // then using that offset on the next frame.
-pub fn centerer(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
+pub fn vertical_centerer(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
     ui.vertical(|ui| {
-        let id = ui.id().with("_centerer");
+        let id = ui.id().with("_v_centerer");
         let last_height: Option<f32> = ui.memory_mut(|mem| mem.data.get_temp(id));
         if let Some(last_height) = last_height {
             ui.add_space((ui.available_height() - last_height) / 2.0);
@@ -69,6 +69,30 @@ pub fn centerer(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
         match last_height {
             None => ui.ctx().request_repaint(),
             Some(last_height) if last_height != height => ui.ctx().request_repaint(),
+            Some(_) => {}
+        }
+    });
+}
+
+pub fn horizontal_centerer(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
+    ui.horizontal(|ui| {
+        let id = ui.id().with("_h_centerer");
+        let last_width: Option<f32> = ui.memory_mut(|mem| mem.data.get_temp(id));
+        if let Some(last_width) = last_width {
+            ui.add_space((ui.available_width() - last_width) / 2.0);
+        }
+        let res = ui
+            .scope(|ui| {
+                add_contents(ui);
+            })
+            .response;
+        let width = res.rect.width();
+        ui.memory_mut(|mem| mem.data.insert_temp(id, width));
+
+        // Repaint if height changed
+        match last_width {
+            None => ui.ctx().request_repaint(),
+            Some(last_width) if last_width != width => ui.ctx().request_repaint(),
             Some(_) => {}
         }
     });
