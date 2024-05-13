@@ -4,13 +4,7 @@ use cgmath::{EuclideanSpace, Point3, Vector3};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::CreationInterface,
-    card_system::{CardManager, Cooldown},
-    projectile_sim_manager::ProjectileComputePipeline,
-    rollback_manager::{PlayerSim, ReplayData, RollbackData},
-    settings_manager::Settings,
-    voxel_sim_manager::VoxelComputePipeline,
-    CHUNK_SIZE,
+    app::CreationInterface, card_system::{CardManager, Cooldown}, networking::RoomId, projectile_sim_manager::ProjectileComputePipeline, rollback_manager::{PlayerSim, ReplayData, RollbackData}, settings_manager::Settings, voxel_sim_manager::VoxelComputePipeline, CHUNK_SIZE
 };
 
 pub struct Game {
@@ -51,6 +45,7 @@ impl Game {
         game_settings: GameSettings,
         deck: &Vec<Cooldown>,
         creation_interface: &CreationInterface,
+        lobby_id: Option<RoomId>,
     ) -> Self {
         let game_state = GameState {
             start_pos: game_settings.spawn_location.zip(
@@ -67,6 +62,7 @@ impl Game {
             &game_settings,
             deck,
             &mut card_manager,
+            lobby_id,
         ));
 
         let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);

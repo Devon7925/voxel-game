@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
-use crate::{game_manager::GameSettings, settings_manager::Settings};
+use crate::{game_manager::GameSettings, networking::RoomId, settings_manager::Settings};
 use std::sync::{Arc, Mutex};
 
 pub struct LobbyBrowser {
@@ -12,7 +12,7 @@ pub struct LobbyBrowser {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Lobby {
     pub name: String,
-    pub lobby_id: u64,
+    pub lobby_id: RoomId,
     pub settings: GameSettings,
 }
 

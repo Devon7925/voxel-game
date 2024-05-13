@@ -33,12 +33,7 @@ use vulkano::{
 use winit::event_loop::EventLoop;
 
 use crate::{
-    app::CreationInterface,
-    game_manager::{Game, GameSettings, WorldGenSettings},
-    gui::{card_editor, cooldown, healthbar, horizontal_centerer, vertical_centerer, GuiElement},
-    raytracer::PointLightingSystem,
-    settings_manager::Settings,
-    GuiState,
+    app::CreationInterface, game_manager::{Game, GameSettings, WorldGenSettings}, gui::{card_editor, cooldown, healthbar, horizontal_centerer, vertical_centerer, GuiElement}, networking::RoomId, raytracer::PointLightingSystem, settings_manager::Settings, GuiState
 };
 
 #[derive(BufferContents, Vertex)]
@@ -668,6 +663,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 },
                                                 &gui_state.gui_cards,
                                                 creation_interface,
+                                                None,
                                             ));
                                         }
                                         if ui.button("Multiplayer").clicked() {
@@ -690,6 +686,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 },
                                                 &gui_state.gui_cards,
                                                 creation_interface,
+                                                None,
                                             ));
                                         }
                                         if ui.button("Play Replay").clicked() {
@@ -780,7 +777,36 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 );
                                 vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
-                                        if ui.button("Host").clicked() {}
+                                        if ui.button("Host").clicked() {
+                                            let client = reqwest::blocking::Client::new();
+                                            let new_lobby_response = client.post(format!("http://{}create_lobby", settings.remote_url.clone()))
+                                                .json(&settings.create_lobby_settings)
+                                                .send();
+                                            let new_lobby_response = match new_lobby_response {
+                                                Ok(new_lobby_response) => new_lobby_response,
+                                                Err(e) => {
+                                                    println!("error creating lobby: {:?}", e);
+                                                    return;
+                                                }
+                                            };
+                                            let new_lobby_id = new_lobby_response.json::<String>();
+                                            let new_lobby_id = match new_lobby_id {
+                                                Ok(new_lobby_id) => new_lobby_id,
+                                                Err(e) => {
+                                                    println!("error creating lobby: {:?}", e);
+                                                    return;
+                                                }
+                                            };
+                                            println!("new lobby id: {}", new_lobby_id);
+                                            *game = Some(Game::new(
+                                                settings,
+                                                settings.create_lobby_settings.clone(),
+                                                &gui_state.gui_cards,
+                                                creation_interface,
+                                                Some(RoomId(new_lobby_id)),
+                                            ));
+                                            gui_state.menu_stack.push(GuiElement::LobbyQueue);
+                                        }
                                         if ui.button("Join").clicked() {
                                             gui_state.lobby_browser.update(settings);
                                             gui_state.menu_stack.push(GuiElement::LobbyBrowser);
@@ -820,13 +846,14 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                         ui.label(lobby.name.clone());
                                                         if ui.button("Join").clicked() {
                                                             gui_state.menu_stack.clear();
-                                                            // TODO
                                                             *game = Some(Game::new(
                                                                 settings,
                                                                 lobby.settings.clone(),
                                                                 &gui_state.gui_cards,
                                                                 creation_interface,
+                                                                Some(lobby.lobby_id.clone()),
                                                             ));
+                                                            gui_state.menu_stack.push(GuiElement::LobbyQueue);
                                                         }
                                                         ui.end_row();
                                                     }
@@ -834,6 +861,33 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                         });
                                         if ui.button("Back").clicked() {
                                             gui_state.menu_stack.pop();
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                }
+                Some(&GuiElement::LobbyQueue) => {
+                    egui::Area::new("lobby queue")
+                        .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
+                        .show(&ctx, |ui| {
+                            let menu_size = Rect::from_center_size(
+                                ui.available_rect_before_wrap().center(),
+                                ui.available_rect_before_wrap().size(),
+                            );
+
+                            ui.allocate_ui_at_rect(menu_size, |ui| {
+                                ui.painter().rect_filled(
+                                    ui.available_rect_before_wrap(),
+                                    0.0,
+                                    Color32::BLACK,
+                                );
+                                vertical_centerer(ui, |ui| {
+                                    ui.vertical_centered(|ui| {
+                                        ui.label("Waiting for players to join...");
+                                        if ui.button("Back").clicked() {
+                                            gui_state.menu_stack.pop();
+                                            *game = None;
                                         }
                                     });
                                 });

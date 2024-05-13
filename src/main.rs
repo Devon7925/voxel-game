@@ -17,7 +17,8 @@ use crate::{
     app::RenderPipeline,
     card_system::Cooldown,
     gui::{GuiElement, GuiState, PaletteState},
-    settings_manager::Settings, lobby_browser::LobbyBrowser,
+    lobby_browser::LobbyBrowser,
+    settings_manager::Settings,
 };
 use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use multipass_system::Pass;
@@ -120,7 +121,7 @@ fn main() {
         lobby_browser: LobbyBrowser::new(),
     };
 
-    let mut time = Instant::now();
+    let mut goal_time = Instant::now();
     loop {
         let should_continue =
             handle_events(&mut event_loop, &mut app, &mut window_props, &mut gui_state);
@@ -130,36 +131,42 @@ fn main() {
         }
 
         // Compute voxels & render 60fps.
-        if (Instant::now() - time).as_secs_f32() > 0.0 {
+        if (Instant::now() - goal_time).as_secs_f32() > 0.0 {
             puffin::GlobalProfiler::lock().new_frame();
             previous_frame_end.as_mut().unwrap().cleanup_finished();
-            time += std::time::Duration::from_secs_f32(
+            goal_time += std::time::Duration::from_secs_f32(
                 app.game
                     .as_ref()
                     .map(|game| game.rollback_data.get_delta_time())
                     .unwrap_or(DEFAULT_DELTA_TIME),
             );
             let skip_render = if app.game.is_some() {
-                (Instant::now() - time).as_secs_f32() > 0.0
+                (Instant::now() - goal_time).as_secs_f32() > 0.0
             } else {
-                time = Instant::now();
+                goal_time = Instant::now();
                 false
             };
             if let Some(game) = app.game.as_mut() {
-                if !skip_render {
-                    game.rollback_data.update(&game.game_settings);
+                game.rollback_data.network_update(&game.game_settings, &mut game.card_manager);
+                if gui_state.menu_stack.last() == Some(&GuiElement::LobbyQueue) && game.rollback_data.player_count() >= game.game_settings.player_count as usize {
+                    gui_state.menu_stack.clear();
                 }
                 if game.rollback_data.is_sim_behind() {
-                    time += std::time::Duration::from_secs_f32(game.rollback_data.get_delta_time());
+                    goal_time -=
+                        std::time::Duration::from_secs_f32(game.rollback_data.get_delta_time());
                 }
             }
             if skip_render {
                 println!(
                     "skipping render: behind by {}s",
-                    (Instant::now() - time).as_secs_f32()
+                    (Instant::now() - goal_time).as_secs_f32()
                 );
             }
-            let do_compute = app.game.is_some();
+            let do_compute = if let Some(game) = app.game.as_ref() {
+                game.rollback_data.player_count() >= game.game_settings.player_count as usize
+            } else {
+                false
+            };
             compute_then_render(
                 &mut app,
                 &mut recreate_swapchain,
@@ -292,6 +299,16 @@ fn handle_events(
                                             println!(
                                                 "Chunk capacity: {}",
                                                 game.voxel_compute.worldgen_capacity()
+                                            );
+                                        }
+                                    }
+                                }
+                                winit::event::VirtualKeyCode::F2 => {
+                                    if input.state == ElementState::Released {
+                                        if let Some(game) = app.game.as_ref() {
+                                            println!(
+                                                "Player decks: {:?}",
+                                                game.rollback_data.get_players().iter().map(|p| p.abilities.clone()).collect::<Vec<_>>()
                                             );
                                         }
                                     }

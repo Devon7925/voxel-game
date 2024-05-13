@@ -26,7 +26,7 @@ use crate::{
     },
     game_manager::{GameSettings, GameState, WorldGenSettings},
     gui::{GuiElement, GuiState},
-    networking::{NetworkConnection, NetworkPacket},
+    networking::{NetworkConnection, NetworkPacket, RoomId},
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     settings_manager::{Control, Settings},
     voxel_sim_manager::VoxelComputePipeline,
@@ -86,7 +86,7 @@ pub trait PlayerSim {
     fn projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]>;
     fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]>;
 
-    fn update(&mut self, settings: &GameSettings);
+    fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager);
 
     fn process_event(
         &mut self,
@@ -175,6 +175,7 @@ pub struct RollbackData {
     player_deck: Vec<Cooldown>,
     player_idx_map: HashMap<PeerId, usize>,
     most_future_time_recorded: u64,
+    connected_player_count: usize,
 }
 
 pub struct ReplayData {
@@ -361,7 +362,8 @@ impl PlayerSim for RollbackData {
                         self.delta_time = self.delta_time.max(*adjust_dt);
                     }
                     if let Some(new_deck) = deck_update {
-                        self.rollback_state.players[player_idx].abilities = abilities_from_cooldowns(new_deck, card_manager)
+                        self.rollback_state.players[player_idx].abilities =
+                            abilities_from_cooldowns(new_deck, card_manager)
                     }
                 }
             }
@@ -507,45 +509,21 @@ impl PlayerSim for RollbackData {
         self.rollback_state.players.len()
     }
 
-    fn update(&mut self, settings: &GameSettings) {
+    fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager) {
         let Some(network_connection) = self.network_connection.as_mut() else {
             return;
         };
         let packet_data = NetworkPacket::Action(self.current_time, self.player_action.clone());
         network_connection.queue_packet(packet_data);
         let (connection_changes, recieved_packets) =
-            network_connection.network_update(self.rollback_state.players.len());
+            network_connection.network_update(self.connected_player_count);
         for (peer, state) in connection_changes {
             match state {
                 PeerState::Connected => {
                     println!("Peer joined: {:?}", peer);
-
-                    self.player_idx_map
-                        .insert(peer, self.rollback_state.players.len());
-
-                    let new_player = Entity {
-                        pos: settings.spawn_location.into(),
-                        ..Default::default()
-                    };
-
-                    self.rollback_state.players.push(new_player);
-                    self.entity_metadata
-                        .push(EntityMetaData::Player(VecDeque::from(vec![
-                            Action::new();
-                            (self.current_time - self.rollback_time + 15)
-                                as usize
-                        ])));
-
-                    {
-                        let deck_packet =
-                            NetworkPacket::DeckUpdate(self.current_time, self.player_deck.clone());
-                        network_connection.send_packet(peer, deck_packet);
-                    }
-                    {
-                        let dt_packet =
-                            NetworkPacket::DeltatimeUpdate(self.current_time, self.delta_time);
-                        network_connection.send_packet(peer, dt_packet);
-                    }
+                    network_connection
+                        .send_packet(peer, NetworkPacket::Join(self.player_deck.clone()));
+                    self.connected_player_count += 1;
                 }
                 PeerState::Disconnected => {
                     println!("Peer left: {:?}", peer);
@@ -557,16 +535,31 @@ impl PlayerSim for RollbackData {
         network_connection.send_packet_queue(peers);
 
         for (peer, packet) in recieved_packets {
-            let player_idx = self.player_idx_map.get(&peer).unwrap().clone();
+            let player_idx = self.player_idx_map.get(&peer).map(|id| id.clone());
             match packet {
                 NetworkPacket::Action(time, action) => {
-                    self.send_action(action, player_idx, time);
+                    self.send_action(action, player_idx.unwrap().clone(), time);
                 }
                 NetworkPacket::DeckUpdate(time, cards) => {
-                    self.send_deck_update(cards, player_idx, time);
+                    self.send_deck_update(cards, player_idx.unwrap().clone(), time);
                 }
-                NetworkPacket::DeltatimeUpdate(time, delta_time) => {
-                    self.send_dt_update(delta_time, player_idx, time);
+                NetworkPacket::Join(cards) => {
+                    self.player_idx_map
+                        .insert(peer, self.rollback_state.players.len());
+
+                    let new_player = Entity {
+                        pos: settings.spawn_location.into(),
+                        abilities: abilities_from_cooldowns(&cards, card_manager),
+                        ..Default::default()
+                    };
+
+                    self.rollback_state.players.push(new_player);
+                    self.entity_metadata
+                        .push(EntityMetaData::Player(VecDeque::from(vec![
+                            Action::new();
+                            (self.current_time - self.rollback_time + 15)
+                                as usize
+                        ])));
                 }
             }
         }
@@ -724,6 +717,7 @@ impl RollbackData {
         game_settings: &GameSettings,
         deck: &Vec<Cooldown>,
         card_manager: &mut CardManager,
+        lobby_id: Option<RoomId>,
     ) -> Self {
         let projectile_buffer = Buffer::new_sized(
             memory_allocator.clone(),
@@ -804,8 +798,8 @@ impl RollbackData {
             entity_metadata.push(EntityMetaData::TrainingBot);
         }
 
-        let network_connection = (game_settings.player_count > 1)
-            .then(|| NetworkConnection::new(settings, &game_settings));
+        let network_connection =
+            lobby_id.map(|lobby_id| NetworkConnection::new(settings, &game_settings, lobby_id));
 
         let controls: Vec<Vec<StateKeybind>> = first_player
             .abilities
@@ -845,6 +839,7 @@ impl RollbackData {
             player_deck: deck.clone(),
             player_idx_map: HashMap::new(),
             most_future_time_recorded: 0,
+            connected_player_count: 1,
         }
     }
 
@@ -1010,7 +1005,8 @@ impl PlayerSim for ReplayData {
                         self.delta_time = self.delta_time.max(*adjust_dt);
                     }
                     if let Some(new_deck) = deck_update {
-                        self.state.players[player_idx].abilities = abilities_from_cooldowns(new_deck, card_manager)
+                        self.state.players[player_idx].abilities =
+                            abilities_from_cooldowns(new_deck, card_manager)
                     }
                 }
             }
@@ -1130,7 +1126,7 @@ impl PlayerSim for ReplayData {
         self.state.players.len()
     }
 
-    fn update(&mut self, _settings: &GameSettings) {}
+    fn network_update(&mut self, _settings: &GameSettings, card_manager: &mut CardManager) {}
 
     fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
         self.player_buffer.clone()

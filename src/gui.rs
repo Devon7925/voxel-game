@@ -26,6 +26,7 @@ pub enum GuiElement {
     MainMenu,
     MultiplayerMenu,
     LobbyBrowser,
+    LobbyQueue,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]

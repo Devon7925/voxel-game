@@ -6,7 +6,13 @@ use std::str;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-use crate::{card_system::Cooldown, rollback_manager::PlayerAction, settings_manager::Settings, game_manager::GameSettings};
+use crate::{
+    card_system::Cooldown, game_manager::GameSettings, rollback_manager::PlayerAction,
+    settings_manager::Settings,
+};
+
+#[derive(Debug, Deserialize, Serialize, Default, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct RoomId(pub String);
 
 #[derive(Debug)]
 pub struct NetworkConnection {
@@ -17,18 +23,22 @@ pub struct NetworkConnection {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum NetworkPacket {
+    Join(Vec<Cooldown>),
     Action(u64, PlayerAction),
     DeckUpdate(u64, Vec<Cooldown>),
-    DeltatimeUpdate(u64, f32),
 }
 
 impl NetworkConnection {
-    pub fn new(settings: &Settings, game_settings: &GameSettings) -> Self {
-        let room_url = format!("{}extreme_bevy?next={}", if game_settings.is_remote {
-            settings.remote_url.clone()
-        } else {
-            settings.local_url.clone()
-        }, game_settings.player_count);
+    pub fn new(settings: &Settings, game_settings: &GameSettings, lobby_id: RoomId) -> Self {
+        let room_url = format!(
+            "ws://{}join_lobby/{}",
+            if game_settings.is_remote {
+                settings.remote_url.clone()
+            } else {
+                settings.local_url.clone()
+            },
+            lobby_id.0
+        );
         println!("connecting to matchbox server: {:?}", room_url);
         let (socket, loop_fut) = WebRtcSocket::new_reliable(room_url);
 
@@ -64,7 +74,7 @@ impl NetworkConnection {
 
     pub fn network_update(
         &mut self,
-        player_count: usize,
+        connected_player_count: usize,
     ) -> (Vec<(PeerId, PeerState)>, Vec<(PeerId, NetworkPacket)>) {
         let mut player_connection_changes = Vec::new();
         let mut recieved_packets = Vec::new();
@@ -73,7 +83,7 @@ impl NetworkConnection {
             player_connection_changes.push((peer, state));
         }
 
-        if player_count > 1 {
+        if connected_player_count > 1 {
             // Accept any messages incoming
             for (peer, packet) in self.socket.receive() {
                 let message = str::from_utf8(packet.as_ref()).unwrap();

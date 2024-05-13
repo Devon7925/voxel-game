@@ -1,13 +1,6 @@
 Multiplayer
     Ensure proper game exiting
-    Add lobby system
-        Create Lobby
-        Lobby settings (from settings file)
-            name
-            tick rate
-            player count
-            world size
-        Lobby list screen
-        Join lobby
+
+Look into monorepo for improved network code sharing
 
 Performance checkup
