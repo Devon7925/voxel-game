@@ -1776,7 +1776,7 @@ impl CardManager {
             match modifier {
                 CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, c) => add_charge += c,
                 CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, c) => add_cooldown += c,
-                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, c) => {},
+                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, _c) => {},
             }
         }
         ReferencedCooldown {

@@ -44,8 +44,7 @@ use vulkano::{
 };
 
 use crate::{
-    multipass_system::LightingVertex,
-    settings_manager::GraphicsSettings, game_manager::Game,
+    game_manager::Game, multipass_system::LightingVertex, settings_manager::GraphicsSettings,
 };
 
 pub struct PointLightingSystem {
@@ -174,14 +173,11 @@ impl PointLightingSystem {
         }
     }
 
-    fn create_desc_set(
-        &self,
-        game: &Game,
-    ) -> Arc<PersistentDescriptorSet> {
+    fn create_desc_set(&self, game: &Game) -> Arc<PersistentDescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(1).unwrap();
         let sim_uniform_buffer_subbuffer = {
             let uniform_data = fs::SimData {
-                render_size:  Into::<[u32;3]>::into(game.game_settings.render_size).into(),
+                render_size: Into::<[u32; 3]>::into(game.game_settings.render_size).into(),
                 projectile_count: (game.rollback_data.get_render_projectiles().len() as u32).into(),
                 start_pos: game.game_state.start_pos.into(),
             };
@@ -199,8 +195,8 @@ impl PointLightingSystem {
                 WriteDescriptorSet::buffer(0, game.voxel_compute.chunks().clone()),
                 WriteDescriptorSet::buffer(1, game.voxel_compute.voxels().clone()),
                 WriteDescriptorSet::buffer(2, sim_uniform_buffer_subbuffer),
-                WriteDescriptorSet::buffer(3, game.rollback_data.player_buffer()),
-                WriteDescriptorSet::buffer(4, game.rollback_data.projectile_buffer()),
+                WriteDescriptorSet::buffer(3, game.rollback_data.visable_player_buffer()),
+                WriteDescriptorSet::buffer(4, game.rollback_data.visable_projectile_buffer()),
             ],
             [],
         )

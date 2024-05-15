@@ -33,6 +33,8 @@ use crate::{
     WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
 };
 
+const LOAD_LOCKOUT_TIME: u64 = 50;
+
 #[derive(Clone, Debug)]
 pub struct WorldState {
     pub players: Vec<Entity>,
@@ -83,8 +85,8 @@ pub trait PlayerSim {
     fn get_players(&self) -> &Vec<Entity>;
     fn player_count(&self) -> usize;
 
-    fn projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]>;
-    fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]>;
+    fn visable_projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]>;
+    fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]>;
 
     fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager);
 
@@ -112,14 +114,6 @@ impl Action {
             primary_action: None,
             meta_action: None,
         }
-    }
-
-    fn set_primary_action(&mut self, action: PlayerAction) {
-        self.primary_action = Some(action);
-    }
-
-    fn set_meta_action(&mut self, action: MetaAction) {
-        self.meta_action = Some(action);
     }
 }
 
@@ -166,8 +160,8 @@ pub struct RollbackData {
     pub rollback_state: WorldState,
     pub cached_current_state: WorldState,
     pub entity_metadata: Vec<EntityMetaData>,
-    pub projectile_buffer: Subbuffer<[Projectile; 1024]>,
-    pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
+    pub rendered_projectile_buffer: Subbuffer<[Projectile; 1024]>,
+    pub rendered_player_buffer: Subbuffer<[UploadPlayer; 128]>,
     replay_file: Option<File>,
     network_connection: Option<NetworkConnection>,
     controls: Vec<Vec<StateKeybind>>,
@@ -201,7 +195,6 @@ pub struct PlayerAction {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MetaAction {
-    pub adjust_dt: Option<f32>,
     pub deck_update: Option<Vec<Cooldown>>,
 }
 
@@ -281,7 +274,6 @@ impl Default for PlayerAction {
 impl Default for MetaAction {
     fn default() -> Self {
         MetaAction {
-            adjust_dt: None,
             deck_update: None,
         }
     }
@@ -354,13 +346,9 @@ impl PlayerSim for RollbackData {
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
                 if let Some(MetaAction {
-                    adjust_dt,
                     deck_update,
                 }) = meta_action
                 {
-                    if let Some(adjust_dt) = adjust_dt {
-                        self.delta_time = self.delta_time.max(*adjust_dt);
-                    }
                     if let Some(new_deck) = deck_update {
                         self.rollback_state.players[player_idx].abilities =
                             abilities_from_cooldowns(new_deck, card_manager)
@@ -368,7 +356,7 @@ impl PlayerSim for RollbackData {
                 }
             }
         }
-        if self.rollback_time < 50 {
+        if self.rollback_time < LOAD_LOCKOUT_TIME {
             return;
         }
         {
@@ -396,6 +384,7 @@ impl PlayerSim for RollbackData {
         game_state: &GameState,
         game_settings: &GameSettings,
     ) {
+        puffin::profile_function!();
         let on_ground = self
             .get_spectate_player()
             .map(|player| player.collision_vec.y > 0)
@@ -413,7 +402,6 @@ impl PlayerSim for RollbackData {
         self.controls
             .iter_mut()
             .for_each(|cd| cd.iter_mut().for_each(|ability| ability.clear()));
-        puffin::profile_function!();
         self.update_rollback_state(
             card_manager,
             time_step,
@@ -433,16 +421,16 @@ impl PlayerSim for RollbackData {
         //send projectiles
         let projectile_count = 128.min(self.cached_current_state.projectiles.len());
         {
-            let mut projectiles_buffer = self.projectile_buffer.write().unwrap();
+            let mut rendered_projectiles_buffer = self.rendered_projectile_buffer.write().unwrap();
             for i in 0..projectile_count {
                 let projectile = self.cached_current_state.projectiles.get(i).unwrap();
-                projectiles_buffer[i] = projectile.clone();
+                rendered_projectiles_buffer[i] = projectile.clone();
             }
         }
         //send players
         let player_count = 128.min(self.cached_current_state.players.len());
         {
-            let mut player_buffer = self.player_buffer.write().unwrap();
+            let mut player_buffer = self.rendered_player_buffer.write().unwrap();
             for i in 0..player_count {
                 let player = self.cached_current_state.players.get(i).unwrap();
                 player_buffer[i] = UploadPlayer {
@@ -565,12 +553,12 @@ impl PlayerSim for RollbackData {
         }
     }
 
-    fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
-        self.player_buffer.clone()
+    fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
+        self.rendered_player_buffer.clone()
     }
 
-    fn projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]> {
-        self.projectile_buffer.clone()
+    fn visable_projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]> {
+        self.rendered_projectile_buffer.clone()
     }
 
     fn get_spectate_player(&self) -> Option<Entity> {
@@ -719,7 +707,7 @@ impl RollbackData {
         card_manager: &mut CardManager,
         lobby_id: Option<RoomId>,
     ) -> Self {
-        let projectile_buffer = Buffer::new_sized(
+        let rendered_projectile_buffer = Buffer::new_sized(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
@@ -830,8 +818,8 @@ impl RollbackData {
             rollback_state,
             cached_current_state: WorldState::new(),
             entity_metadata,
-            player_buffer,
-            projectile_buffer,
+            rendered_player_buffer: player_buffer,
+            rendered_projectile_buffer,
             replay_file,
             network_connection,
             controls,
@@ -869,41 +857,6 @@ impl RollbackData {
             );
         }
         state
-    }
-
-    pub fn send_dt_update(&mut self, delta_time: f32, player_idx: usize, time_stamp: u64) {
-        if time_stamp < self.rollback_time {
-            println!(
-                "cannot send dt update with timestamp {} when rollback time is {}",
-                time_stamp, self.rollback_time
-            );
-            return;
-        }
-        let time_idx = time_stamp - self.rollback_time;
-        let EntityMetaData::Player(actions) =
-            self.entity_metadata.get_mut(player_idx).unwrap_or_else(|| {
-                panic!(
-                    "cannot access index {} on sending with timestamp {}",
-                    player_idx, time_stamp
-                )
-            })
-        else {
-            panic!("cannot send dt update from non player");
-        };
-        let action = actions.get_mut(time_idx as usize).unwrap_or_else(|| {
-            panic!(
-                "cannot access index {} on sending with timestamp {}",
-                time_idx, time_stamp
-            )
-        });
-        if action.meta_action.is_none() {
-            action.meta_action = Some(MetaAction {
-                adjust_dt: Some(delta_time),
-                ..Default::default()
-            });
-        } else {
-            action.meta_action.as_mut().unwrap().adjust_dt = Some(delta_time);
-        }
     }
 
     pub fn send_deck_update(
@@ -997,13 +950,9 @@ impl PlayerSim for ReplayData {
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
                 if let Some(MetaAction {
-                    adjust_dt,
                     deck_update,
                 }) = meta_action
                 {
-                    if let Some(adjust_dt) = adjust_dt {
-                        self.delta_time = self.delta_time.max(*adjust_dt);
-                    }
                     if let Some(new_deck) = deck_update {
                         self.state.players[player_idx].abilities =
                             abilities_from_cooldowns(new_deck, card_manager)
@@ -1011,7 +960,7 @@ impl PlayerSim for ReplayData {
                 }
             }
         }
-        if self.current_time < 50 {
+        if self.current_time < LOAD_LOCKOUT_TIME {
             return;
         }
         {
@@ -1128,11 +1077,11 @@ impl PlayerSim for ReplayData {
 
     fn network_update(&mut self, _settings: &GameSettings, card_manager: &mut CardManager) {}
 
-    fn player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
+    fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
         self.player_buffer.clone()
     }
 
-    fn projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]> {
+    fn visable_projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]> {
         self.projectile_buffer.clone()
     }
 
