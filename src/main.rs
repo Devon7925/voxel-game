@@ -396,8 +396,7 @@ fn compute_then_render(
     } else {
         Matrix4::identity()
     };
-    let aspect_ratio = dimensions.width as f32 / dimensions.height as f32;
-    let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), aspect_ratio, 0.1, 100.0);
+    let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), 1.0, 0.1, 100.0);
     // Start the frame.
     let future = if do_compute {
         if let Some(game) = app.game.as_mut() {

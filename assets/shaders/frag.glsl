@@ -457,22 +457,20 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
         }
         if (shade_check.dist == 0.0 || shade_check.voxel_data >> 24 == MAT_OOB) {
             float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
-            vec3 reflected = reflect(-ray, mat_props.normal);
-            float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
+            vec3 halfway = normalize(-light_dir - ray);
+            float specular = pow(max(dot(halfway, mat_props.normal), 0.0), 32.0);
             color += shade_transparency * (1 - mat_props.transparency) * multiplier * (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
         }
         RaycastResultLayer ao_check = simple_raycast(primary_ray.layers[i].pos + 0.015*primary_ray.layers[i].normal, mat_props.normal, push_constants.ao_ray_dist, false);
         if (ao_check.dist == 0 || ao_check.voxel_data >> 24 == MAT_OOB) {
-            vec3 reflected = reflect(-ray, mat_props.normal);
-            float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
-            color += (1 - mat_props.transparency) * multiplier * 0.2 * (0.65 + mat_props.shine * specular)*mat_props.color;
+            float diffuse = max(dot(mat_props.normal, primary_ray.layers[i].normal), 0.0);
+            color += (1 - mat_props.transparency) * multiplier * 0.13 * diffuse * mat_props.color;
         }
 
         RaycastResultLayer ao_check2 = simple_raycast(primary_ray.layers[i].pos + 0.015*primary_ray.layers[i].normal, normalize(primary_ray.layers[i].normal + mat_props.normal), push_constants.ao_ray_dist, false);
         if (ao_check2.dist == 0 || ao_check2.voxel_data >> 24 == MAT_OOB) {
-            vec3 reflected = reflect(-ray, mat_props.normal);
-            float specular = pow(max(dot(reflected, light_dir), 0.0), 32.0);
-            color += (1 - mat_props.transparency) * multiplier * 0.2 * (0.65 + mat_props.shine * specular)*mat_props.color;
+            float diffuse = max(dot(mat_props.normal, normalize(primary_ray.layers[i].normal + mat_props.normal)), 0.0);
+            color += (1 - mat_props.transparency) * multiplier * 0.13 * diffuse * mat_props.color;
         }
         
         multiplier *= mat_props.transparency;

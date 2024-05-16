@@ -274,9 +274,7 @@ impl Default for PlayerAction {
 
 impl Default for MetaAction {
     fn default() -> Self {
-        MetaAction {
-            deck_update: None,
-        }
+        MetaAction { deck_update: None }
     }
 }
 
@@ -346,10 +344,7 @@ impl PlayerSim for RollbackData {
             for (player_idx, meta_action) in
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
-                if let Some(MetaAction {
-                    deck_update,
-                }) = meta_action
-                {
+                if let Some(MetaAction { deck_update }) = meta_action {
                     if let Some(new_deck) = deck_update {
                         self.rollback_state.players[player_idx].abilities =
                             abilities_from_cooldowns(new_deck, card_manager)
@@ -697,7 +692,7 @@ impl PlayerSim for RollbackData {
     fn is_sim_behind(&self) -> bool {
         self.most_future_time_recorded > self.current_time
     }
-    
+
     fn get_rollback_time(&self) -> u64 {
         self.rollback_time
     }
@@ -954,10 +949,7 @@ impl PlayerSim for ReplayData {
             for (player_idx, meta_action) in
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
-                if let Some(MetaAction {
-                    deck_update,
-                }) = meta_action
-                {
+                if let Some(MetaAction { deck_update }) = meta_action {
                     if let Some(new_deck) = deck_update {
                         self.state.players[player_idx].abilities =
                             abilities_from_cooldowns(new_deck, card_manager)
@@ -1111,7 +1103,7 @@ impl PlayerSim for ReplayData {
     fn is_sim_behind(&self) -> bool {
         false
     }
-    
+
     fn get_rollback_time(&self) -> u64 {
         self.current_time
     }
@@ -1601,8 +1593,7 @@ impl WorldState {
     }
 
     fn get_player_effect_stats(&mut self) -> Vec<PlayerEffectStats> {
-        self
-            .players
+        self.players
             .iter()
             .map(|player| {
                 let mut speed = 1.0;
@@ -1610,7 +1601,7 @@ impl WorldState {
                 let mut gravity = 1.0;
                 let mut invincible = false;
                 let mut lockout = false;
-    
+
                 for status_effect in player.status_effects.iter() {
                     match status_effect.effect {
                         ReferencedStatusEffect::DamageOverTime => {
@@ -1664,7 +1655,7 @@ impl WorldState {
             })
             .collect()
     }
-    
+
     fn get_collision_pairs(&self, card_manager: &CardManager) -> Vec<(usize, usize)> {
         let mut collision_pairs = Vec::new();
         for i in 0..self.projectiles.len() {
