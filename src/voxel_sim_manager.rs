@@ -14,8 +14,12 @@ use crate::{
     utils::{QueueSet, VoxelUpdateQueue},
     CHUNK_SIZE, SUB_CHUNK_COUNT, WORLDGEN_CHUNK_COUNT,
 };
-use std::{iter, sync::Arc, collections::{HashSet, HashMap}};
-use cgmath::{Point3, Vector3, EuclideanSpace};
+use cgmath::{EuclideanSpace, Point3, Vector3};
+use std::{
+    collections::HashMap,
+    iter,
+    sync::Arc,
+};
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
@@ -243,7 +247,11 @@ impl VoxelComputePipeline {
         }
     }
 
-    pub fn queue_update_from_world_pos(&mut self, queued: &Point3<f32>, game_settings: &GameSettings) {
+    pub fn queue_update_from_world_pos(
+        &mut self,
+        queued: &Point3<f32>,
+        game_settings: &GameSettings,
+    ) {
         let chunk_location = [
             queued[0].floor() as u32 * SUB_CHUNK_COUNT / CHUNK_SIZE,
             queued[1].floor() as u32 * SUB_CHUNK_COUNT / CHUNK_SIZE,
@@ -274,7 +282,9 @@ impl VoxelComputePipeline {
         offset: Vector3<i32>,
         game_settings: &GameSettings,
     ) {
-        game_state.start_pos = game_state.start_pos.zip(Point3::from_vec(offset), |a, b| a.checked_add_signed(b).unwrap());
+        game_state.start_pos = game_state.start_pos.zip(Point3::from_vec(offset), |a, b| {
+            a.checked_add_signed(b).unwrap()
+        });
 
         let [load_range_x, load_range_y, load_range_z] = [0, 1, 2].map(|i| {
             if offset[i] > 0 {
@@ -284,7 +294,7 @@ impl VoxelComputePipeline {
                 0..=-offset[i] - 1
             }
         });
-        
+
         {
             let chunk_reader = self.chunk_buffer.read().unwrap();
             for x_offset in load_range_x.clone() {
@@ -406,7 +416,7 @@ impl VoxelComputePipeline {
     pub fn push_updates_from_changed(&mut self, game_settings: &GameSettings) {
         puffin::profile_function!();
         // last component of 1 means the chunk was changed and therefore means it and surrounding chunks need to be updated
-        let mut updates_todo = HashSet::new();
+        let mut updates_todo = QueueSet::new();
         {
             puffin::profile_scope!("count updates");
             let reader = self.chunk_updates.read().unwrap();
@@ -416,7 +426,7 @@ impl VoxelComputePipeline {
                     for x_offset in -1..=1 {
                         for y_offset in -1..=1 {
                             for z_offset in -1..=1 {
-                                updates_todo.insert([
+                                updates_todo.push([
                                     read_update[0].wrapping_add_signed(x_offset),
                                     read_update[1].wrapping_add_signed(y_offset),
                                     read_update[2].wrapping_add_signed(z_offset),
@@ -429,24 +439,23 @@ impl VoxelComputePipeline {
         }
         let mut chunk_loaded_cache: HashMap<usize, bool> = HashMap::new();
         let chunk_reader = self.chunk_buffer.read().unwrap();
-        for update in updates_todo {
-            {
-                let chunk = update.map(|e| e / SUB_CHUNK_COUNT);
-                let chunk_idx = self.get_idx_of_chunk(chunk, game_settings);
-                let is_chunk_loaded = if let Some(cached_loaded) = chunk_loaded_cache.get(&chunk_idx) {
+        for update in updates_todo.into_iter() {
+            let chunk = update.map(|e| e / SUB_CHUNK_COUNT);
+            let chunk_idx = self.get_idx_of_chunk(chunk, game_settings);
+            let is_chunk_loaded =
+                if let Some(cached_loaded) = chunk_loaded_cache.get(&chunk_idx) {
                     *cached_loaded
                 } else {
                     let is_chunk_loaded = chunk_reader[chunk_idx] != 0;
                     chunk_loaded_cache.insert(chunk_idx, is_chunk_loaded);
                     is_chunk_loaded
                 };
-                if !is_chunk_loaded {
-                    self.worldgen_update_queue
-                        .push([chunk[0], chunk[1], chunk[2]]);
-                } else {
-                    self.chunk_update_queue.push_all(update);
-                }
-            };
+            if !is_chunk_loaded {
+                self.worldgen_update_queue
+                    .push([chunk[0], chunk[1], chunk[2]]);
+            } else {
+                self.chunk_update_queue.push_all(update);
+            }
         }
     }
 
@@ -600,7 +609,7 @@ impl VoxelComputePipeline {
 
         let uniform_buffer_subbuffer = {
             let uniform_data = compute_worldgen_cs::SimData {
-                render_size: Into::<[u32;3]>::into(game_settings.render_size).into(),
+                render_size: Into::<[u32; 3]>::into(game_settings.render_size).into(),
                 start_pos: game_state.start_pos.into(),
             };
 
@@ -669,8 +678,8 @@ impl VoxelComputePipeline {
 
         let uniform_buffer_subbuffer = {
             let uniform_data = compute_dists_cs::SimData {
-                render_size:  Into::<[u32;3]>::into(game_settings.render_size).into(),
-                start_pos:  Into::<[u32;3]>::into(game_state.start_pos).into(),
+                render_size: Into::<[u32; 3]>::into(game_settings.render_size).into(),
+                start_pos: Into::<[u32; 3]>::into(game_state.start_pos).into(),
                 update_offset: self.chunk_update_queue.queue_set_idx().into(),
             };
 

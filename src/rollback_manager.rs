@@ -100,6 +100,7 @@ pub trait PlayerSim {
     fn end_frame(&mut self);
 
     fn is_sim_behind(&self) -> bool;
+    fn get_rollback_time(&self) -> u64;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -696,6 +697,10 @@ impl PlayerSim for RollbackData {
     fn is_sim_behind(&self) -> bool {
         self.most_future_time_recorded > self.current_time
     }
+    
+    fn get_rollback_time(&self) -> u64 {
+        self.rollback_time
+    }
 }
 
 impl RollbackData {
@@ -1106,6 +1111,10 @@ impl PlayerSim for ReplayData {
     fn is_sim_behind(&self) -> bool {
         false
     }
+    
+    fn get_rollback_time(&self) -> u64 {
+        self.current_time
+    }
 }
 
 impl ReplayData {
@@ -1215,85 +1224,27 @@ impl WorldState {
         let mut new_effects: Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)> = Vec::new();
         let mut step_triggers: Vec<(ReferencedTrigger, u32)> = Vec::new();
 
-        let player_stats: Vec<PlayerEffectStats> = self
-            .players
-            .iter_mut()
-            .map(|player| {
-                let mut speed = 1.0;
-                let mut damage_taken = 1.0;
-                let mut gravity = 1.0;
-                let mut invincible = false;
-                let mut lockout = false;
+        let player_stats: Vec<PlayerEffectStats> = self.get_player_effect_stats();
 
-                for status_effect in player.status_effects.iter_mut() {
-                    match status_effect.effect {
-                        ReferencedStatusEffect::DamageOverTime => {
-                            // wait for damage taken to be calculated
-                        }
-                        ReferencedStatusEffect::HealOverTime => {
-                            // wait for damage taken to be calculated
-                        }
-                        ReferencedStatusEffect::Speed => {
-                            speed *= 1.25;
-                        }
-                        ReferencedStatusEffect::Slow => {
-                            speed *= 0.75;
-                        }
-                        ReferencedStatusEffect::IncreaceDamageTaken => {
-                            damage_taken *= 1.25;
-                        }
-                        ReferencedStatusEffect::DecreaceDamageTaken => {
-                            damage_taken *= 0.75;
-                        }
-                        ReferencedStatusEffect::IncreaceGravity => {
-                            gravity += 0.5;
-                        }
-                        ReferencedStatusEffect::DecreaceGravity => {
-                            gravity -= 0.5;
-                        }
-                        ReferencedStatusEffect::Overheal => {
-                            // managed seperately
-                        }
-                        ReferencedStatusEffect::Invincibility => {
-                            invincible = true;
-                        }
-                        ReferencedStatusEffect::Trapped => {
-                            speed *= 0.0;
-                        }
-                        ReferencedStatusEffect::Lockout => {
-                            lockout = true;
-                        }
-                        ReferencedStatusEffect::OnHit(_) => {
-                            // managed seperately
-                        }
+        for (player, player_stats) in self.players.iter_mut().zip(player_stats.iter()) {
+            let mut health_adjustment = 0.0;
+            for status_effect in player.status_effects.iter_mut() {
+                match status_effect.effect {
+                    ReferencedStatusEffect::DamageOverTime => {
+                        health_adjustment += -10.0 * player_stats.damage_taken * time_step;
                     }
-                }
-                let mut health_adjustment = 0.0;
-                for status_effect in player.status_effects.iter_mut() {
-                    match status_effect.effect {
-                        ReferencedStatusEffect::DamageOverTime => {
-                            health_adjustment += -10.0 * damage_taken * time_step;
-                        }
-                        ReferencedStatusEffect::HealOverTime => {
-                            health_adjustment += 10.0 * damage_taken * time_step;
-                        }
-                        _ => {}
+                    ReferencedStatusEffect::HealOverTime => {
+                        health_adjustment += 10.0 * player_stats.damage_taken * time_step;
                     }
-                    status_effect.time_left -= time_step;
+                    _ => {}
                 }
-                if health_adjustment != 0.0 {
-                    player.adjust_health(health_adjustment);
-                }
-                player.status_effects.retain(|x| x.time_left > 0.0);
-                PlayerEffectStats {
-                    speed,
-                    damage_taken,
-                    gravity,
-                    invincible,
-                    lockout,
-                }
-            })
-            .collect();
+                status_effect.time_left -= time_step;
+            }
+            if health_adjustment != 0.0 {
+                player.adjust_health(health_adjustment);
+            }
+            player.status_effects.retain(|x| x.time_left > 0.0);
+        }
 
         {
             let voxel_reader = voxels.read().unwrap();
@@ -1649,6 +1600,71 @@ impl WorldState {
         }
     }
 
+    fn get_player_effect_stats(&mut self) -> Vec<PlayerEffectStats> {
+        self
+            .players
+            .iter()
+            .map(|player| {
+                let mut speed = 1.0;
+                let mut damage_taken = 1.0;
+                let mut gravity = 1.0;
+                let mut invincible = false;
+                let mut lockout = false;
+    
+                for status_effect in player.status_effects.iter() {
+                    match status_effect.effect {
+                        ReferencedStatusEffect::DamageOverTime => {
+                            // wait for damage taken to be calculated
+                        }
+                        ReferencedStatusEffect::HealOverTime => {
+                            // wait for damage taken to be calculated
+                        }
+                        ReferencedStatusEffect::Speed => {
+                            speed *= 1.25;
+                        }
+                        ReferencedStatusEffect::Slow => {
+                            speed *= 0.75;
+                        }
+                        ReferencedStatusEffect::IncreaceDamageTaken => {
+                            damage_taken *= 1.25;
+                        }
+                        ReferencedStatusEffect::DecreaceDamageTaken => {
+                            damage_taken *= 0.75;
+                        }
+                        ReferencedStatusEffect::IncreaceGravity => {
+                            gravity += 0.5;
+                        }
+                        ReferencedStatusEffect::DecreaceGravity => {
+                            gravity -= 0.5;
+                        }
+                        ReferencedStatusEffect::Overheal => {
+                            // managed seperately
+                        }
+                        ReferencedStatusEffect::Invincibility => {
+                            invincible = true;
+                        }
+                        ReferencedStatusEffect::Trapped => {
+                            speed *= 0.0;
+                        }
+                        ReferencedStatusEffect::Lockout => {
+                            lockout = true;
+                        }
+                        ReferencedStatusEffect::OnHit(_) => {
+                            // managed seperately
+                        }
+                    }
+                }
+                PlayerEffectStats {
+                    speed,
+                    damage_taken,
+                    gravity,
+                    invincible,
+                    lockout,
+                }
+            })
+            .collect()
+    }
+    
     fn get_collision_pairs(&self, card_manager: &CardManager) -> Vec<(usize, usize)> {
         let mut collision_pairs = Vec::new();
         for i in 0..self.projectiles.len() {

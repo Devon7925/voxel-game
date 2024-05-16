@@ -2,7 +2,6 @@ Multiplayer
     Ensure proper game exiting
 
 Look into monorepo for improved network code sharing
-Fix desync
 Fix player rendering issue
 Add replay loading screen
 

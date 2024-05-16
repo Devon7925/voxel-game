@@ -124,7 +124,7 @@ fn main() {
     let mut goal_time = Instant::now();
     loop {
         let should_continue =
-            handle_events(&mut event_loop, &mut app, &mut window_props, &mut gui_state);
+            handle_events(&mut event_loop, &mut app, &mut window_props, &mut gui_state, &mut recreate_swapchain);
         // Event handling.
         if !should_continue {
             break;
@@ -196,6 +196,7 @@ fn handle_events(
     app: &mut RenderPipeline,
     window_props: &mut WindowProperties,
     gui_state: &mut GuiState,
+    recreate_swapchain: &mut bool,
 ) -> bool {
     let mut is_running = true;
 
@@ -226,6 +227,7 @@ fn handle_events(
                     WindowEvent::Resized(new_size) => {
                         window_props.width = new_size.width;
                         window_props.height = new_size.height;
+                        *recreate_swapchain = true;
                     }
                     // Handle mouse position events.
                     WindowEvent::CursorMoved { .. } => {

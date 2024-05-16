@@ -47,6 +47,10 @@ impl<T: Clone + Eq + PartialEq + Hash> QueueSet<T> {
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
+
+    pub fn into_iter(self) -> std::collections::vec_deque::IntoIter<T> {
+        self.queue.into_iter()
+    }
 }
 
 pub struct VoxelUpdateQueue {
