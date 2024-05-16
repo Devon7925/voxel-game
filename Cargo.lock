@@ -4122,10 +4122,19 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tokio",
+ "voxel-shared",
  "vulkano",
  "vulkano-shaders",
  "vulkano-util",
  "winit",
+]
+
+[[package]]
+name = "voxel-shared"
+version = "0.1.0"
+dependencies = [
+ "cgmath",
+ "serde",
 ]
 
 [[package]]

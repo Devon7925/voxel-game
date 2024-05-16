@@ -24,14 +24,15 @@ use crate::{
         BaseCard, CardManager, Cooldown, ReferencedCooldown, ReferencedEffect,
         ReferencedStatusEffect, ReferencedTrigger, StateKeybind, VoxelMaterial,
     },
-    game_manager::{GameSettings, GameState, WorldGenSettings},
+    game_manager::GameState,
     gui::{GuiElement, GuiState},
-    networking::{NetworkConnection, NetworkPacket, RoomId},
+    networking::{NetworkConnection, NetworkPacket},
     projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     settings_manager::{Control, Settings},
     voxel_sim_manager::VoxelComputePipeline,
     WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
 };
+use voxel_shared::{GameSettings, WorldGenSettings, RoomId};
 
 const LOAD_LOCKOUT_TIME: u64 = 50;
 

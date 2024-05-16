@@ -3,7 +3,7 @@ use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 use winit::event::{MouseButton, VirtualKeyCode};
 
-use crate::game_manager::GameSettings;
+use voxel_shared::GameSettings;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Settings {

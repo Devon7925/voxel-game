@@ -33,8 +33,9 @@ use vulkano::{
 use winit::event_loop::EventLoop;
 
 use crate::{
-    app::CreationInterface, game_manager::{Game, GameSettings, WorldGenSettings}, gui::{card_editor, cooldown, healthbar, horizontal_centerer, vertical_centerer, GuiElement}, networking::RoomId, raytracer::PointLightingSystem, settings_manager::Settings, GuiState
+    app::CreationInterface, game_manager::Game, gui::{card_editor, cooldown, healthbar, horizontal_centerer, vertical_centerer, GuiElement}, raytracer::PointLightingSystem, settings_manager::Settings, GuiState
 };
+use voxel_shared::{GameSettings, WorldGenSettings, RoomId};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]

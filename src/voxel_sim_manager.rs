@@ -10,7 +10,7 @@
 use crate::{
     app::CreationInterface,
     card_system::VoxelMaterial,
-    game_manager::{GameSettings, GameState},
+    game_manager::GameState,
     utils::{QueueSet, VoxelUpdateQueue},
     CHUNK_SIZE, SUB_CHUNK_COUNT, WORLDGEN_CHUNK_COUNT,
 };
@@ -41,6 +41,7 @@ use vulkano::{
     },
     sync::GpuFuture,
 };
+use voxel_shared::GameSettings;
 
 /// Pipeline holding double buffered grid & color image. Grids are used to calculate the state, and
 /// color image is used to show the output. Because on each step we determine state in parallel, we

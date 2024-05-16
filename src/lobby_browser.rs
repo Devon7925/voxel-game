@@ -1,19 +1,12 @@
-use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
-use crate::{game_manager::GameSettings, networking::RoomId, settings_manager::Settings};
+use crate::settings_manager::Settings;
 use std::sync::{Arc, Mutex};
+use voxel_shared::Lobby;
 
 pub struct LobbyBrowser {
     lobby_list: Arc<Mutex<Vec<Lobby>>>,
     runtime: Runtime,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Lobby {
-    pub name: String,
-    pub lobby_id: RoomId,
-    pub settings: GameSettings,
 }
 
 async fn fetch_data(url: String, result: Arc<Mutex<Vec<Lobby>>>) {

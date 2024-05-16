@@ -1,11 +1,11 @@
 use std::{io::{BufReader, BufRead}, path::Path};
 
-use cgmath::{EuclideanSpace, Point3, Vector3};
-use serde::{Deserialize, Serialize};
+use cgmath::{EuclideanSpace, Point3};
 
 use crate::{
-    app::CreationInterface, card_system::{CardManager, Cooldown}, networking::RoomId, projectile_sim_manager::ProjectileComputePipeline, rollback_manager::{PlayerSim, ReplayData, RollbackData}, settings_manager::Settings, voxel_sim_manager::VoxelComputePipeline, CHUNK_SIZE
+    app::CreationInterface, card_system::{CardManager, Cooldown}, projectile_sim_manager::ProjectileComputePipeline, rollback_manager::{PlayerSim, ReplayData, RollbackData}, settings_manager::Settings, voxel_sim_manager::VoxelComputePipeline, CHUNK_SIZE
 };
+use voxel_shared::{GameSettings, RoomId};
 
 pub struct Game {
     pub voxel_compute: VoxelComputePipeline,
@@ -14,25 +14,6 @@ pub struct Game {
     pub card_manager: CardManager,
     pub game_state: GameState,
     pub game_settings: GameSettings,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum WorldGenSettings {
-    Normal,
-    PracticeRange,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct GameSettings {
-    pub name: String,
-    pub delta_time: f32,
-    pub is_remote: bool,
-    pub player_count: u32,
-    pub render_size: Vector3<u32>,
-    pub spawn_location: Point3<f32>,
-    pub max_loaded_chunks: u32,
-    pub world_gen: WorldGenSettings,
-    pub fixed_center: bool,
 }
 pub struct GameState {
     pub start_pos: Point3<u32>,

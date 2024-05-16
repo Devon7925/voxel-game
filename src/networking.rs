@@ -6,13 +6,8 @@ use std::str;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-use crate::{
-    card_system::Cooldown, game_manager::GameSettings, rollback_manager::PlayerAction,
-    settings_manager::Settings,
-};
-
-#[derive(Debug, Deserialize, Serialize, Default, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct RoomId(pub String);
+use crate::{card_system::Cooldown, rollback_manager::PlayerAction, settings_manager::Settings};
+use voxel_shared::{GameSettings, RoomId};
 
 #[derive(Debug)]
 pub struct NetworkConnection {

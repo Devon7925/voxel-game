@@ -9,7 +9,7 @@
 
 use crate::{
     app::CreationInterface, card_system::CardManager, rollback_manager::{get_index, PlayerSim},
-    voxel_sim_manager::VoxelComputePipeline, game_manager::{GameState, GameSettings},
+    voxel_sim_manager::VoxelComputePipeline, game_manager::GameState,
 };
 use bytemuck::{Pod, Zeroable};
 use cgmath::{Point3, Quaternion};
@@ -36,6 +36,7 @@ use vulkano::{
     },
     sync::GpuFuture,
 };
+use voxel_shared::GameSettings;
 
 /// Pipeline holding double buffered grid & color image. Grids are used to calculate the state, and
 /// color image is used to show the output. Because on each step we determine state in parallel, we
