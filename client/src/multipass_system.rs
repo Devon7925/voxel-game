@@ -749,6 +749,9 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                         gui_state.menu_stack.push(GuiElement::CardEditor);
                                     }
                                     if ui.button("Leave Game").clicked() {
+                                        if let Some(game) = game {
+                                            game.rollback_data.leave_game();
+                                        }
                                         gui_state.menu_stack.clear();
                                         gui_state.menu_stack.push(GuiElement::MainMenu);
                                         *game = None;

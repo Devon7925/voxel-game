@@ -32,7 +32,7 @@ use crate::{
     voxel_sim_manager::VoxelComputePipeline,
     WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
 };
-use voxel_shared::{GameSettings, WorldGenSettings, RoomId};
+use voxel_shared::{GameSettings, RoomId, WorldGenSettings};
 
 const LOAD_LOCKOUT_TIME: u64 = 50;
 
@@ -98,6 +98,7 @@ pub trait PlayerSim {
         gui_state: &mut GuiState,
         window_props: &WindowProperties,
     );
+    fn leave_game(&mut self);
     fn end_frame(&mut self);
 
     fn is_sim_behind(&self) -> bool;
@@ -198,6 +199,7 @@ pub struct PlayerAction {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MetaAction {
     pub deck_update: Option<Vec<Cooldown>>,
+    pub leave: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -275,7 +277,7 @@ impl Default for PlayerAction {
 
 impl Default for MetaAction {
     fn default() -> Self {
-        MetaAction { deck_update: None }
+        MetaAction { deck_update: None, leave: None }
     }
 }
 
@@ -337,6 +339,7 @@ impl PlayerSim for RollbackData {
             .iter()
             .map(|x| x.get_action(0))
             .collect();
+        let mut leaving_players = Vec::new();
         {
             if let Some(replay_file) = self.replay_file.as_mut() {
                 replay_file.write_all(b"\n").unwrap();
@@ -345,10 +348,13 @@ impl PlayerSim for RollbackData {
             for (player_idx, meta_action) in
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
-                if let Some(MetaAction { deck_update }) = meta_action {
+                if let Some(MetaAction { deck_update, leave, .. }) = meta_action {
                     if let Some(new_deck) = deck_update {
                         self.rollback_state.players[player_idx].abilities =
                             abilities_from_cooldowns(new_deck, card_manager)
+                    }
+                    if let Some(true) = leave {
+                        leaving_players.push(player_idx);
                     }
                 }
             }
@@ -356,16 +362,29 @@ impl PlayerSim for RollbackData {
         if self.rollback_time < LOAD_LOCKOUT_TIME {
             return;
         }
-        {
-            self.rollback_state.step_sim(
-                rollback_actions,
-                true,
-                card_manager,
-                time_step,
-                vox_compute,
-                game_state,
-                game_settings,
-            );
+        self.rollback_state.step_sim(
+            rollback_actions,
+            true,
+            card_manager,
+            time_step,
+            vox_compute,
+            game_state,
+            game_settings,
+        );
+        if leaving_players.len() > 0 {
+            for player_idx in leaving_players.iter() {
+                self.rollback_state.players.remove(*player_idx);
+                self.entity_metadata.remove(*player_idx);
+            }
+            let mut new_player_idx_map = HashMap::new();
+            for (peer, player_idx) in self.player_idx_map.iter() {
+                let new_player_idx = player_idx - leaving_players.iter().filter(|x| *x < player_idx).count();
+                if new_player_idx < self.rollback_state.players.len() {
+                    new_player_idx_map.insert(*peer, new_player_idx);
+                }
+            }
+            self.player_idx_map = new_player_idx_map;
+            self.connected_player_count -= leaving_players.len();
         }
     }
 
@@ -382,6 +401,7 @@ impl PlayerSim for RollbackData {
         game_settings: &GameSettings,
     ) {
         puffin::profile_function!();
+        self.current_time += 1;
         let on_ground = self
             .get_spectate_player()
             .map(|player| player.collision_vec.y > 0)
@@ -395,7 +415,14 @@ impl PlayerSim for RollbackData {
             .iter()
             .map(|cd| cd.iter().map(|ability| ability.get_state()).collect())
             .collect();
-        self.send_action(self.player_action.clone(), 0, self.current_time);
+        self.send_action(
+            Action {
+                primary_action: Some(self.player_action.clone()),
+                meta_action: None,
+            },
+            0,
+            self.current_time,
+        );
         self.controls
             .iter_mut()
             .for_each(|cd| cd.iter_mut().for_each(|ability| ability.clear()));
@@ -406,7 +433,6 @@ impl PlayerSim for RollbackData {
             game_state,
             game_settings,
         );
-        self.current_time += 1;
         self.entity_metadata.iter_mut().for_each(|x| x.step());
         self.cached_current_state = self.gen_current_state(
             card_manager,
@@ -523,10 +549,27 @@ impl PlayerSim for RollbackData {
             let player_idx = self.player_idx_map.get(&peer).map(|id| id.clone());
             match packet {
                 NetworkPacket::Action(time, action) => {
-                    self.send_action(action, player_idx.unwrap().clone(), time);
+                    self.send_action(
+                        Action {
+                            primary_action: Some(action),
+                            meta_action: None,
+                        },
+                        player_idx.unwrap().clone(),
+                        time,
+                    );
                 }
                 NetworkPacket::DeckUpdate(time, cards) => {
-                    self.send_deck_update(cards, player_idx.unwrap().clone(), time);
+                    self.send_action(
+                        Action {
+                            primary_action: None,
+                            meta_action: Some(MetaAction {
+                                deck_update: Some(cards),
+                                ..Default::default()
+                            }),
+                        },
+                        player_idx.unwrap().clone(),
+                        time,
+                    );
                 }
                 NetworkPacket::Join(cards) => {
                     self.player_idx_map
@@ -545,6 +588,19 @@ impl PlayerSim for RollbackData {
                             (self.current_time - self.rollback_time + 15)
                                 as usize
                         ])));
+                }
+                NetworkPacket::Leave(time) => {
+                    self.send_action(
+                        Action {
+                            primary_action: None,
+                            meta_action: Some(MetaAction {
+                                leave: Some(true),
+                                ..Default::default()
+                            }),
+                        },
+                        player_idx.unwrap().clone(),
+                        time,
+                    );
                 }
             }
         }
@@ -657,8 +713,14 @@ impl PlayerSim for RollbackData {
                                         GuiElement::CardEditor => {
                                             self.player_deck.clear();
                                             self.player_deck.extend(gui_state.gui_cards.clone());
-                                            self.send_deck_update(
-                                                self.player_deck.clone(),
+                                            self.send_action(
+                                                Action {
+                                                    primary_action: None,
+                                                    meta_action: Some(MetaAction {
+                                                        deck_update: Some(self.player_deck.clone()),
+                                                        ..Default::default()
+                                                    }),
+                                                },
                                                 0,
                                                 self.current_time,
                                             );
@@ -688,6 +750,12 @@ impl PlayerSim for RollbackData {
 
     fn end_frame(&mut self) {
         self.player_action.aim = [0.0, 0.0];
+    }
+    
+    fn leave_game(&mut self) {
+        if let Some(network_connection) = self.network_connection.as_mut() {
+            network_connection.queue_packet(NetworkPacket::Leave(self.current_time));
+        }
     }
 
     fn is_sim_behind(&self) -> bool {
@@ -860,47 +928,7 @@ impl RollbackData {
         state
     }
 
-    pub fn send_deck_update(
-        &mut self,
-        new_deck: Vec<Cooldown>,
-        player_idx: usize,
-        time_stamp: u64,
-    ) {
-        if time_stamp < self.rollback_time {
-            println!(
-                "cannot send dt update with timestamp {} when rollback time is {}",
-                time_stamp, self.rollback_time
-            );
-            return;
-        }
-        let time_idx = time_stamp - self.rollback_time;
-        let EntityMetaData::Player(actions) =
-            self.entity_metadata.get_mut(player_idx).unwrap_or_else(|| {
-                panic!(
-                    "cannot access index {} on sending with timestamp {}",
-                    player_idx, time_stamp
-                )
-            })
-        else {
-            panic!("cannot send dt update from non player");
-        };
-        let action = actions.get_mut(time_idx as usize).unwrap_or_else(|| {
-            panic!(
-                "cannot access index {} on sending with timestamp {}",
-                time_idx, time_stamp
-            )
-        });
-        if action.meta_action.is_none() {
-            action.meta_action = Some(MetaAction {
-                deck_update: Some(new_deck),
-                ..Default::default()
-            });
-        } else {
-            action.meta_action.as_mut().unwrap().deck_update = Some(new_deck);
-        }
-    }
-
-    pub fn send_action(&mut self, entity_action: PlayerAction, player_idx: usize, time_stamp: u64) {
+    pub fn send_action(&mut self, action_update: Action, player_idx: usize, time_stamp: u64) {
         if time_stamp > self.most_future_time_recorded {
             self.most_future_time_recorded = time_stamp;
         }
@@ -928,7 +956,17 @@ impl RollbackData {
                 time_idx, time_stamp
             )
         });
-        action.primary_action = Some(entity_action);
+        if let Some(new_primary_action) = action_update.primary_action {
+            action.primary_action = Some(new_primary_action);
+        }
+        if let Some(new_meta_action) = action_update.meta_action {
+            if action.meta_action.is_none() {
+                action.meta_action = Some(MetaAction::default());
+            }
+            if let Some(deck_update) = new_meta_action.deck_update {
+                action.meta_action.as_mut().unwrap().deck_update = Some(deck_update);
+            }
+        }
     }
 }
 
@@ -946,14 +984,18 @@ impl PlayerSim for ReplayData {
         }
         self.current_time += 1;
         let rollback_actions: Vec<Action> = self.actions.pop_front().unwrap();
+        let mut leaving_players = Vec::new();
         {
             for (player_idx, meta_action) in
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
-                if let Some(MetaAction { deck_update }) = meta_action {
+                if let Some(MetaAction { deck_update, leave, .. }) = meta_action {
                     if let Some(new_deck) = deck_update {
                         self.state.players[player_idx].abilities =
                             abilities_from_cooldowns(new_deck, card_manager)
+                    }
+                    if let Some(true) = leave {
+                        leaving_players.push(player_idx);
                     }
                 }
             }
@@ -961,16 +1003,20 @@ impl PlayerSim for ReplayData {
         if self.current_time < LOAD_LOCKOUT_TIME {
             return;
         }
-        {
-            self.state.step_sim(
-                rollback_actions,
-                true,
-                card_manager,
-                time_step,
-                vox_compute,
-                game_state,
-                game_settings,
-            );
+        self.state.step_sim(
+            rollback_actions,
+            true,
+            card_manager,
+            time_step,
+            vox_compute,
+            game_state,
+            game_settings,
+        );
+        if leaving_players.len() > 0 {
+            for player_idx in leaving_players.iter() {
+                self.state.players.remove(*player_idx);
+                self.actions.remove(*player_idx);
+            }
         }
     }
 
@@ -1100,6 +1146,7 @@ impl PlayerSim for ReplayData {
     }
 
     fn end_frame(&mut self) {}
+    fn leave_game(&mut self) {}
 
     fn is_sim_behind(&self) -> bool {
         false

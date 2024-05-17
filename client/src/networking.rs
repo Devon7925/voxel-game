@@ -21,6 +21,7 @@ pub enum NetworkPacket {
     Join(Vec<Cooldown>),
     Action(u64, PlayerAction),
     DeckUpdate(u64, Vec<Cooldown>),
+    Leave(u64),
 }
 
 impl NetworkConnection {
