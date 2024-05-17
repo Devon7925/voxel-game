@@ -666,6 +666,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 creation_interface,
                                                 None,
                                             ));
+                                            gui_state.game_just_started = true;
                                         }
                                         if ui.button("Multiplayer").clicked() {
                                             gui_state.menu_stack.push(GuiElement::MultiplayerMenu);
@@ -689,6 +690,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 creation_interface,
                                                 None,
                                             ));
+                                            gui_state.game_just_started = true;
                                         }
                                         if ui.button("Play Replay").clicked() {
                                             let mut replay_folder_path =
@@ -706,6 +708,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                     file.as_path(),
                                                     creation_interface,
                                                 ));
+                                                gui_state.game_just_started = true;
                                             }
                                         }
                                         if ui.button("Card Editor").clicked() {
@@ -807,6 +810,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 Some(RoomId(new_lobby_id)),
                                             ));
                                             gui_state.menu_stack.push(GuiElement::LobbyQueue);
+                                            gui_state.game_just_started = true;
                                         }
                                         if ui.button("Join").clicked() {
                                             gui_state.lobby_browser.update(settings);
@@ -855,6 +859,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                                 Some(lobby.lobby_id.clone()),
                                                             ));
                                                             gui_state.menu_stack.push(GuiElement::LobbyQueue);
+                                                            gui_state.game_just_started = true;
                                                         }
                                                         ui.end_row();
                                                     }

@@ -118,6 +118,7 @@ fn main() {
         gui_cards: player_deck.clone(),
         palette_state: PaletteState::ProjectileModifiers,
         should_exit: false,
+        game_just_started: false,
         lobby_browser: LobbyBrowser::new(),
     };
 
@@ -140,12 +141,13 @@ fn main() {
                     .map(|game| game.rollback_data.get_delta_time())
                     .unwrap_or(DEFAULT_DELTA_TIME),
             );
-            let skip_render = if app.game.is_some() {
+            let skip_render = if app.game.is_some() && !gui_state.game_just_started {
                 (Instant::now() - goal_time).as_secs_f32() > 0.0
             } else {
                 goal_time = Instant::now();
                 false
             };
+            gui_state.game_just_started = false;
             if let Some(game) = app.game.as_mut() {
                 game.rollback_data.network_update(&game.game_settings, &mut game.card_manager);
                 if gui_state.menu_stack.last() == Some(&GuiElement::LobbyQueue) && game.rollback_data.player_count() >= game.game_settings.player_count as usize {

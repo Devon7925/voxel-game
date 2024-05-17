@@ -1,6 +1,4 @@
 Multiplayer
     Ensure proper game exiting
 
-Add replay loading screen
-
 Performance checkup

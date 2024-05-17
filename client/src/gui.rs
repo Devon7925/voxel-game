@@ -47,6 +47,7 @@ pub struct GuiState {
     pub palette_state: PaletteState,
     pub lobby_browser: LobbyBrowser,
     pub should_exit: bool,
+    pub game_just_started: bool,
 }
 
 // Helper function to center arbitrary widgets. It works by measuring the width of the widgets after rendering, and
