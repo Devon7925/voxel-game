@@ -1,7 +1,7 @@
-/target
-replay.txt
-crash_log.txt
-voxel-game
-voxel-game.zip
-imgui.ini
-replays/*.replay
+client/target
+client/crash_log.txt
+client/voxel-game
+client/voxel-game.zip
+client/replays/*.replay
+target
+server/target
