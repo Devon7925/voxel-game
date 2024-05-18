@@ -16,6 +16,8 @@ pub struct GameSettings {
     pub render_size: Vector3<u32>,
     pub spawn_location: Point3<f32>,
     pub max_loaded_chunks: u32,
+    pub max_worldgen_rate: u32,
+    pub max_update_rate: u32,
     pub world_gen: WorldGenSettings,
     pub fixed_center: bool,
 }

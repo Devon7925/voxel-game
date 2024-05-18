@@ -646,22 +646,11 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 );
                                 vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
-                                        let spawn_location = Point3::new(10000.0, 1810.0, 10000.0);
                                         if ui.button("Singleplayer").clicked() {
                                             gui_state.menu_stack.pop();
                                             *game = Some(Game::new(
                                                 settings,
-                                                GameSettings {
-                                                    name: "Singleplayer".to_string(),
-                                                    delta_time: 0.03,
-                                                    is_remote: false,
-                                                    player_count: 1,
-                                                    render_size: Vector3::new(64, 8, 64),
-                                                    world_gen: WorldGenSettings::Normal,
-                                                    spawn_location,
-                                                    max_loaded_chunks: 9000,
-                                                    fixed_center: false,
-                                                },
+                                                settings.singleplayer_settings.clone(),
                                                 &gui_state.gui_cards,
                                                 creation_interface,
                                                 None,
@@ -675,17 +664,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             gui_state.menu_stack.pop();
                                             *game = Some(Game::new(
                                                 settings,
-                                                GameSettings {
-                                                    name: "Practice Range".to_string(),
-                                                    delta_time: 0.03,
-                                                    is_remote: false,
-                                                    player_count: 1,
-                                                    render_size: Vector3::new(8, 8, 8),
-                                                    world_gen: WorldGenSettings::PracticeRange,
-                                                    spawn_location,
-                                                    max_loaded_chunks: 512,
-                                                    fixed_center: true,
-                                                },
+                                                settings.practice_range_settings.clone(),
                                                 &gui_state.gui_cards,
                                                 creation_interface,
                                                 None,

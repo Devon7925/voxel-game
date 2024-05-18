@@ -8,11 +8,7 @@
 // according to those terms.
 
 use crate::{
-    app::CreationInterface,
-    card_system::VoxelMaterial,
-    game_manager::GameState,
-    utils::{QueueSet, VoxelUpdateQueue},
-    CHUNK_SIZE, SUB_CHUNK_COUNT, WORLDGEN_CHUNK_COUNT,
+    app::CreationInterface, card_system::VoxelMaterial, game_manager::GameState, utils::{QueueSet, VoxelUpdateQueue}, CHUNK_SIZE, MAX_CHUNK_UPDATE_RATE, MAX_WORLDGEN_RATE, SUB_CHUNK_COUNT, WORLDGEN_CHUNK_COUNT
 };
 use cgmath::{EuclideanSpace, Point3, Vector3};
 use std::{
@@ -57,9 +53,9 @@ pub struct VoxelComputePipeline {
     voxel_buffer: Subbuffer<[u32]>,
     available_chunks: Vec<u32>,
     chunk_update_queue: VoxelUpdateQueue,
-    chunk_updates: Subbuffer<[[u32; 4]; 256]>,
+    chunk_updates: Subbuffer<[[u32; 4]; MAX_CHUNK_UPDATE_RATE]>,
     worldgen_update_queue: QueueSet<[u32; 3]>,
-    worldgen_updates: Subbuffer<[[u32; 4]; 256]>,
+    worldgen_updates: Subbuffer<[[u32; 4]; MAX_WORLDGEN_RATE]>,
     uniform_buffer: SubbufferAllocator,
     last_update_count: usize,
 }
@@ -220,9 +216,9 @@ impl VoxelComputePipeline {
             chunk_buffer,
             voxel_buffer,
             available_chunks,
-            chunk_update_queue: VoxelUpdateQueue::with_capacity(256),
+            chunk_update_queue: VoxelUpdateQueue::with_capacity(game_settings.max_update_rate as usize),
             chunk_updates,
-            worldgen_update_queue: QueueSet::with_capacity(256),
+            worldgen_update_queue: QueueSet::with_capacity(game_settings.max_worldgen_rate as usize),
             worldgen_updates,
             uniform_buffer,
             last_update_count: 0,
@@ -601,7 +597,7 @@ impl VoxelComputePipeline {
                             }
                         }
                     }
-                    if worldgen_update_count >= 256 {
+                    if worldgen_update_count as u32 >= game_settings.max_worldgen_rate {
                         break;
                     }
                 }
@@ -669,7 +665,7 @@ impl VoxelComputePipeline {
                 {
                     chunk_updates_buffer[chunk_update_count] = [loc[0], loc[1], loc[2], 0];
                     chunk_update_count += 1;
-                    if chunk_update_count >= 256 {
+                    if chunk_update_count as u32 >= game_settings.max_update_rate {
                         break;
                     }
                 }

@@ -21,6 +21,42 @@ replay_settings:
     record_replay: false
 do_profiling: false
 crash_log: crash_log.txt
+singleplayer_settings:
+    name: "Singleplayer"
+    delta_time: 0.03
+    is_remote: false
+    player_count: 1
+    render_size:
+      x: 64
+      y: 16
+      z: 64
+    spawn_location: 
+      x: 10000.0
+      y: 1810.0
+      z: 10000.0
+    max_loaded_chunks: 8196
+    max_worldgen_rate: 512
+    max_update_rate: 512
+    world_gen: Normal
+    fixed_center: false
+practice_range_settings:
+    name: "Practice Range"
+    delta_time: 0.03
+    is_remote: false
+    player_count: 1
+    render_size:
+      x: 8
+      y: 8
+      z: 8
+    spawn_location: 
+      x: 10000.0
+      y: 1810.0
+      z: 10000.0
+    max_loaded_chunks: 512
+    max_worldgen_rate: 512
+    max_update_rate: 512
+    world_gen: PracticeRange
+    fixed_center: true
 create_lobby_settings:
     name: "Standard Open Multiplayer"
     delta_time: 0.03
@@ -35,5 +71,7 @@ create_lobby_settings:
       y: 1810.0
       z: 10000.0
     max_loaded_chunks: 2048
+    max_worldgen_rate: 256
+    max_update_rate: 256
     world_gen: Normal
     fixed_center: false

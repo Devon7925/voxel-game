@@ -16,6 +16,8 @@ pub struct Settings {
     pub replay_settings: ReplaySettings,
     pub do_profiling: bool,
     pub crash_log: String,
+    pub singleplayer_settings: GameSettings,
+    pub practice_range_settings: GameSettings,
     pub create_lobby_settings: GameSettings,
 }
 
