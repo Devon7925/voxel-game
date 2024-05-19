@@ -71,7 +71,7 @@ create_lobby_settings:
       y: 1810.0
       z: 10000.0
     max_loaded_chunks: 2048
-    max_worldgen_rate: 256
-    max_update_rate: 256
+    max_worldgen_rate: 128
+    max_update_rate: 128
     world_gen: Normal
     fixed_center: false

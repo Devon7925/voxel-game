@@ -34,8 +34,6 @@ use crate::{
 };
 use voxel_shared::{GameSettings, RoomId, WorldGenSettings};
 
-const LOAD_LOCKOUT_TIME: u64 = 50;
-
 #[derive(Clone, Debug)]
 pub struct WorldState {
     pub players: Vec<Entity>,
@@ -48,22 +46,20 @@ pub struct Camera {
 }
 
 pub trait PlayerSim {
-    fn update_rollback_state(
+    fn get_current_state(&self) -> &WorldState;
+
+    fn can_step_rollback(&self) -> bool;
+    fn step_rollback(
         &mut self,
         card_manager: &mut CardManager,
-        time_step: f32,
-        vox_compute: &mut VoxelComputePipeline,
+        voxel_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
     );
-
-    fn get_current_state(&self) -> &WorldState;
-
-    fn step(
+    fn step_visuals(
         &mut self,
         card_manager: &mut CardManager,
-        time_step: f32,
-        vox_compute: &mut VoxelComputePipeline,
+        voxel_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
     );
@@ -81,7 +77,7 @@ pub trait PlayerSim {
     fn get_spectate_player(&self) -> Option<Entity>;
 
     fn get_delta_time(&self) -> f32;
-    fn get_projectiles(&self) -> &Vec<Projectile>;
+    fn get_rollback_projectiles(&self) -> &Vec<Projectile>;
     fn get_render_projectiles(&self) -> &Vec<Projectile>;
     fn get_players(&self) -> &Vec<Entity>;
     fn player_count(&self) -> usize;
@@ -112,7 +108,7 @@ pub struct Action {
 }
 
 impl Action {
-    fn new() -> Self {
+    fn empty() -> Self {
         Action {
             primary_action: None,
             meta_action: None,
@@ -132,7 +128,7 @@ impl EntityMetaData {
             EntityMetaData::Player(actions) => {
                 let latest = actions.pop_front();
                 assert!(latest.is_some());
-                actions.push_back(Action::new());
+                actions.push_back(Action::empty());
             }
             EntityMetaData::TrainingBot => {}
         }
@@ -150,7 +146,10 @@ impl EntityMetaData {
                     )
                 })
                 .clone(),
-            EntityMetaData::TrainingBot => Action::new(),
+            EntityMetaData::TrainingBot => Action {
+                primary_action: Some(PlayerAction::default()),
+                meta_action: None,
+            },
         }
     }
 }
@@ -277,7 +276,10 @@ impl Default for PlayerAction {
 
 impl Default for MetaAction {
     fn default() -> Self {
-        MetaAction { deck_update: None, leave: None }
+        MetaAction {
+            deck_update: None,
+            leave: None,
+        }
     }
 }
 
@@ -322,23 +324,32 @@ pub fn abilities_from_cooldowns(
 }
 
 impl PlayerSim for RollbackData {
-    fn update_rollback_state(
-        &mut self,
-        card_manager: &mut CardManager,
-        time_step: f32,
-        vox_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
-        game_settings: &GameSettings,
-    ) {
-        if let Some(replay_file) = self.replay_file.as_mut() {
-            write!(replay_file, "\nTIME {}", self.current_time).unwrap();
-        }
-        self.rollback_time += 1;
+    fn can_step_rollback(&self) -> bool {
+        
         let rollback_actions: Vec<Action> = self
             .entity_metadata
             .iter()
             .map(|x| x.get_action(0))
             .collect();
+        rollback_actions.iter().all(|a| a.primary_action.is_some())
+    }
+    fn step_rollback(
+        &mut self,
+        card_manager: &mut CardManager,
+        vox_compute: &mut VoxelComputePipeline,
+        game_state: &GameState,
+        game_settings: &GameSettings,
+    ) {
+        let rollback_actions: Vec<Action> = self
+            .entity_metadata
+            .iter()
+            .map(|x| x.get_action(0))
+            .collect();
+
+        if let Some(replay_file) = self.replay_file.as_mut() {
+            write!(replay_file, "\nTIME {}", self.rollback_time).unwrap();
+        }
+        self.rollback_time += 1;
         let mut leaving_players = Vec::new();
         {
             if let Some(replay_file) = self.replay_file.as_mut() {
@@ -348,25 +359,27 @@ impl PlayerSim for RollbackData {
             for (player_idx, meta_action) in
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
-                if let Some(MetaAction { deck_update, leave, .. }) = meta_action {
+                if let Some(MetaAction {
+                    deck_update, leave, ..
+                }) = meta_action
+                {
                     if let Some(new_deck) = deck_update {
                         self.rollback_state.players[player_idx].abilities =
                             abilities_from_cooldowns(new_deck, card_manager)
                     }
                     if let Some(true) = leave {
+                        println!("player {} left", player_idx);
                         leaving_players.push(player_idx);
                     }
                 }
             }
         }
-        if self.rollback_time < LOAD_LOCKOUT_TIME {
-            return;
-        }
+        self.entity_metadata.iter_mut().for_each(|x| x.step());
         self.rollback_state.step_sim(
             rollback_actions,
             true,
             card_manager,
-            time_step,
+            self.get_delta_time(),
             vox_compute,
             game_state,
             game_settings,
@@ -378,7 +391,8 @@ impl PlayerSim for RollbackData {
             }
             let mut new_player_idx_map = HashMap::new();
             for (peer, player_idx) in self.player_idx_map.iter() {
-                let new_player_idx = player_idx - leaving_players.iter().filter(|x| *x < player_idx).count();
+                let new_player_idx =
+                    player_idx - leaving_players.iter().filter(|x| *x < player_idx).count();
                 if new_player_idx < self.rollback_state.players.len() {
                     new_player_idx_map.insert(*peer, new_player_idx);
                 }
@@ -392,16 +406,13 @@ impl PlayerSim for RollbackData {
         &self.cached_current_state
     }
 
-    fn step(
+    fn step_visuals(
         &mut self,
         card_manager: &mut CardManager,
-        time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
     ) {
-        puffin::profile_function!();
-        self.current_time += 1;
         let on_ground = self
             .get_spectate_player()
             .map(|player| player.collision_vec.y > 0)
@@ -423,20 +434,17 @@ impl PlayerSim for RollbackData {
             0,
             self.current_time,
         );
+        if let Some(network_connection) = self.network_connection.as_mut() {
+            let packet_data = NetworkPacket::Action(self.current_time, self.player_action.clone());
+            network_connection.queue_packet(packet_data);
+        };
+        self.current_time += 1;
         self.controls
             .iter_mut()
             .for_each(|cd| cd.iter_mut().for_each(|ability| ability.clear()));
-        self.update_rollback_state(
-            card_manager,
-            time_step,
-            vox_compute,
-            game_state,
-            game_settings,
-        );
-        self.entity_metadata.iter_mut().for_each(|x| x.step());
         self.cached_current_state = self.gen_current_state(
             card_manager,
-            time_step,
+            self.get_delta_time(),
             vox_compute,
             game_state,
             game_settings,
@@ -472,6 +480,7 @@ impl PlayerSim for RollbackData {
                 };
             }
         }
+        
     }
 
     fn download_projectiles(
@@ -504,7 +513,7 @@ impl PlayerSim for RollbackData {
         self.delta_time
     }
 
-    fn get_projectiles(&self) -> &Vec<Projectile> {
+    fn get_rollback_projectiles(&self) -> &Vec<Projectile> {
         &self.rollback_state.projectiles
     }
 
@@ -524,8 +533,6 @@ impl PlayerSim for RollbackData {
         let Some(network_connection) = self.network_connection.as_mut() else {
             return;
         };
-        let packet_data = NetworkPacket::Action(self.current_time, self.player_action.clone());
-        network_connection.queue_packet(packet_data);
         let (connection_changes, recieved_packets) =
             network_connection.network_update(self.connected_player_count);
         for (peer, state) in connection_changes {
@@ -584,10 +591,15 @@ impl PlayerSim for RollbackData {
                     self.rollback_state.players.push(new_player);
                     self.entity_metadata
                         .push(EntityMetaData::Player(VecDeque::from(vec![
-                            Action::new();
+                            Action::empty();
                             (self.current_time - self.rollback_time + 15)
                                 as usize
                         ])));
+
+                    if let Some(replay_file) = self.replay_file.as_mut() {
+                        write!(replay_file, "PLAYER DECK ").unwrap();
+                        ron::ser::to_writer(replay_file, &cards).unwrap();
+                    }
                 }
                 NetworkPacket::Leave(time) => {
                     self.send_action(
@@ -751,10 +763,12 @@ impl PlayerSim for RollbackData {
     fn end_frame(&mut self) {
         self.player_action.aim = [0.0, 0.0];
     }
-    
+
     fn leave_game(&mut self) {
         if let Some(network_connection) = self.network_connection.as_mut() {
             network_connection.queue_packet(NetworkPacket::Leave(self.current_time));
+            let peers = self.player_idx_map.keys().collect();
+            network_connection.send_packet_queue(peers);
         }
     }
 
@@ -827,7 +841,7 @@ impl RollbackData {
             ron::ser::to_writer(replay_file, &deck).unwrap();
         }
 
-        let current_time: u64 = 5;
+        let current_time: u64 = 0;
         let rollback_time: u64 = 0;
 
         let mut rollback_state = WorldState::new();
@@ -840,7 +854,7 @@ impl RollbackData {
         };
         rollback_state.players.push(first_player.clone());
         entity_metadata.push(EntityMetaData::Player(VecDeque::from(vec![
-            Action::new();
+            Action::empty();
             (current_time - rollback_time + 15)
                 as usize
         ])));
@@ -934,8 +948,8 @@ impl RollbackData {
         }
         if time_stamp < self.rollback_time {
             println!(
-                "cannot send action with timestamp {} when rollback time is {}",
-                time_stamp, self.rollback_time
+                "cannot send action {:?} for player {} with timestamp {} when rollback time is {}",
+                action_update, player_idx, time_stamp, self.rollback_time
             );
             return;
         }
@@ -971,11 +985,14 @@ impl RollbackData {
 }
 
 impl PlayerSim for ReplayData {
-    fn update_rollback_state(
+    fn can_step_rollback(&self) -> bool {
+        !self.actions.is_empty()
+    }
+
+    fn step_rollback(
         &mut self,
         card_manager: &mut CardManager,
-        time_step: f32,
-        vox_compute: &mut VoxelComputePipeline,
+        voxel_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
     ) {
@@ -989,7 +1006,10 @@ impl PlayerSim for ReplayData {
             for (player_idx, meta_action) in
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
-                if let Some(MetaAction { deck_update, leave, .. }) = meta_action {
+                if let Some(MetaAction {
+                    deck_update, leave, ..
+                }) = meta_action
+                {
                     if let Some(new_deck) = deck_update {
                         self.state.players[player_idx].abilities =
                             abilities_from_cooldowns(new_deck, card_manager)
@@ -1000,15 +1020,12 @@ impl PlayerSim for ReplayData {
                 }
             }
         }
-        if self.current_time < LOAD_LOCKOUT_TIME {
-            return;
-        }
         self.state.step_sim(
             rollback_actions,
             true,
             card_manager,
-            time_step,
-            vox_compute,
+            self.get_delta_time(),
+            voxel_compute,
             game_state,
             game_settings,
         );
@@ -1024,22 +1041,14 @@ impl PlayerSim for ReplayData {
         &self.state
     }
 
-    fn step(
+    fn step_visuals(
         &mut self,
-        card_manager: &mut CardManager,
-        time_step: f32,
-        vox_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
-        game_settings: &GameSettings,
+        _card_manager: &mut CardManager,
+        _voxel_compute: &mut VoxelComputePipeline,
+        _game_state: &GameState,
+        _game_settings: &GameSettings,
     ) {
         puffin::profile_function!();
-        self.update_rollback_state(
-            card_manager,
-            time_step,
-            vox_compute,
-            game_state,
-            game_settings,
-        );
         //send projectiles
         let projectile_count = 128.min(self.state.projectiles.len());
         {
@@ -1103,7 +1112,7 @@ impl PlayerSim for ReplayData {
         self.delta_time
     }
 
-    fn get_projectiles(&self) -> &Vec<Projectile> {
+    fn get_rollback_projectiles(&self) -> &Vec<Projectile> {
         &self.state.projectiles
     }
 

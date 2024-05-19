@@ -1,11 +1,13 @@
 use crate::error::{ClientRequestError, ServerError};
-use voxel_shared::*;
 use axum::{
     extract::{
         connect_info::ConnectInfo,
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, State,
-    }, http::StatusCode, response::IntoResponse, Error, Json
+    },
+    http::StatusCode,
+    response::IntoResponse,
+    Error, Json,
 };
 use futures::{lock::Mutex, stream::SplitSink, StreamExt};
 use matchbox_protocol::{JsonPeerEvent, JsonPeerRequest, PeerId, PeerRequest};
@@ -18,7 +20,7 @@ use std::{
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{error, info, warn};
-
+use voxel_shared::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct RequestedRoom {
@@ -43,15 +45,16 @@ impl ServerState {
     /// Add a peer, returning the peers already in room
     fn add_peer(&mut self, peer: Peer) -> Result<Vec<PeerId>, ()> {
         let peer_id = peer.uuid;
-        let room = peer.room.clone();
+        let room_key = peer.room.clone();
         self.clients.insert(peer.uuid, peer);
-        let Some(room) = self.lobbies.get_mut(&room) else {
+        let Some(room) = self.lobbies.get_mut(&room_key) else {
             return Err(());
         };
 
         let ret = room.0.iter().cloned().collect();
         if room.0.len() == room.1.settings.player_count as usize - 1 {
             room.0.clear(); // the room is complete, we can forget about it now
+            self.lobbies.remove(&room_key);
         } else {
             room.0.insert(peer_id);
         }
@@ -107,7 +110,10 @@ pub(crate) async fn lobby_lister(
     State(state): State<Arc<Mutex<ServerState>>>,
 ) -> impl IntoResponse {
     let lobbies = state.lock().await.lobbies.clone();
-    let lobbies = lobbies.values().map(|(_peers, lobby)| lobby).collect::<Vec<_>>();
+    let lobbies = lobbies
+        .values()
+        .map(|(_peers, lobby)| lobby)
+        .collect::<Vec<_>>();
 
     // this will be converted into a JSON response
     // with a status code of `201 Created`
@@ -125,7 +131,11 @@ pub(crate) async fn lobby_creator(
         settings: payload,
     };
 
-    state.lock().await.lobbies.insert(room_id.clone(), (HashSet::new(), new_lobby));
+    state
+        .lock()
+        .await
+        .lobbies
+        .insert(room_id.clone(), (HashSet::new(), new_lobby));
 
     // this will be converted into a JSON response
     // with a status code of `201 Created`
@@ -153,11 +163,7 @@ fn spawn_sender_task(
 }
 
 /// One of these handlers is spawned for every web socket.
-async fn handle_ws(
-    websocket: WebSocket,
-    state: Arc<Mutex<ServerState>>,
-    requested_room: RoomId,
-) {
+async fn handle_ws(websocket: WebSocket, state: Arc<Mutex<ServerState>>, requested_room: RoomId) {
     let (ws_sender, mut ws_receiver) = websocket.split();
     let sender = spawn_sender_task(ws_sender);
 

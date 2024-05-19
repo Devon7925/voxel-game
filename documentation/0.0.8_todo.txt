@@ -13,5 +13,5 @@ Rendering
 Card Editor
     Multicast modifier hovers
     Cooldown modifier hovers
-
+    
 Update libraries

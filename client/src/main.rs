@@ -127,8 +127,13 @@ fn main() {
 
     let mut goal_time = Instant::now();
     loop {
-        let should_continue =
-            handle_events(&mut event_loop, &mut app, &mut window_props, &mut gui_state, &mut recreate_swapchain);
+        let should_continue = handle_events(
+            &mut event_loop,
+            &mut app,
+            &mut window_props,
+            &mut gui_state,
+            &mut recreate_swapchain,
+        );
         // Event handling.
         if !should_continue {
             break;
@@ -152,8 +157,11 @@ fn main() {
             };
             gui_state.game_just_started = false;
             if let Some(game) = app.game.as_mut() {
-                game.rollback_data.network_update(&game.game_settings, &mut game.card_manager);
-                if gui_state.menu_stack.last() == Some(&GuiElement::LobbyQueue) && game.rollback_data.player_count() >= game.game_settings.player_count as usize {
+                game.rollback_data
+                    .network_update(&game.game_settings, &mut game.card_manager);
+                if gui_state.menu_stack.last() == Some(&GuiElement::LobbyQueue)
+                    && game.rollback_data.player_count() >= game.game_settings.player_count as usize
+                {
                     gui_state.menu_stack.clear();
                 }
                 if game.rollback_data.is_sim_behind() {
@@ -167,17 +175,11 @@ fn main() {
                     (Instant::now() - goal_time).as_secs_f32()
                 );
             }
-            let do_compute = if let Some(game) = app.game.as_ref() {
-                game.rollback_data.player_count() >= game.game_settings.player_count as usize
-            } else {
-                false
-            };
             compute_then_render(
                 &mut app,
                 &mut recreate_swapchain,
                 &mut previous_frame_end,
                 &mut gui_state,
-                do_compute,
                 skip_render,
             );
             let window = app
@@ -315,7 +317,11 @@ fn handle_events(
                                         if let Some(game) = app.game.as_ref() {
                                             println!(
                                                 "Player decks: {:?}",
-                                                game.rollback_data.get_players().iter().map(|p| p.abilities.clone()).collect::<Vec<_>>()
+                                                game.rollback_data
+                                                    .get_players()
+                                                    .iter()
+                                                    .map(|p| p.abilities.clone())
+                                                    .collect::<Vec<_>>()
                                             );
                                         }
                                     }
@@ -340,7 +346,6 @@ fn compute_then_render(
     recreate_swapchain: &mut bool,
     previous_frame_end: &mut Option<Box<dyn GpuFuture>>,
     gui_state: &mut GuiState,
-    do_compute: bool,
     skip_render: bool,
 ) {
     puffin::profile_function!();
@@ -403,70 +408,74 @@ fn compute_then_render(
     };
     let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), 1.0, 0.1, 100.0);
     // Start the frame.
-    let future = if do_compute {
-        if let Some(game) = app.game.as_mut() {
-            puffin::profile_scope!("do compute");
-            let time_step = game.rollback_data.get_delta_time();
-            game.voxel_compute
-                .push_updates_from_changed(&game.game_settings);
+    let future = if let Some(game) = app.game.as_mut() {
+        if game.rollback_data.player_count() >= game.game_settings.player_count as usize {
+            if game.rollback_data.can_step_rollback() {
+                puffin::profile_scope!("do compute");
+                game.voxel_compute
+                    .push_updates_from_changed(&game.game_settings);
 
-            // Compute.
-            game.rollback_data.download_projectiles(
-                &game.card_manager,
-                &game.projectile_compute,
-                &mut game.voxel_compute,
-                &game.game_state,
-                &game.game_settings,
-            );
-            game.rollback_data.step(
-                &mut game.card_manager,
-                time_step,
-                &mut game.voxel_compute,
-                &game.game_state,
-                &game.game_settings,
-            );
+                // Compute.
+                game.rollback_data.download_projectiles(
+                    &game.card_manager,
+                    &game.projectile_compute,
+                    &mut game.voxel_compute,
+                    &game.game_state,
+                    &game.game_settings,
+                );
+                game.rollback_data.step_rollback(
+                    &mut game.card_manager,
+                    &mut game.voxel_compute,
+                    &game.game_state,
+                    &game.game_settings,
+                );
+                game.rollback_data.step_visuals(&mut game.card_manager, &mut game.voxel_compute, &game.game_state, &game.game_settings);
 
-            game.game_state.players_center = game
-                .rollback_data
-                .get_players()
-                .iter()
-                .map(|player| player.pos)
-                .fold(Point3::new(0.0, 0.0, 0.0), |acc, pos| acc + pos.to_vec())
-                / game.rollback_data.get_players().len() as f32;
-            if !game.game_settings.fixed_center {
-                // consider moving start pos
-                let current_center = game.game_state.start_pos + game.game_settings.render_size / 2;
-                let player_average_center = game
-                    .game_state
-                    .players_center
-                    .map(|e| e as u32 / CHUNK_SIZE);
-                let distance = player_average_center
-                    .zip(current_center, |a, b| a as i32 - b as i32)
-                    .to_vec();
+                game.game_state.players_center = game
+                    .rollback_data
+                    .get_players()
+                    .iter()
+                    .map(|player| player.pos)
+                    .fold(Point3::new(0.0, 0.0, 0.0), |acc, pos| acc + pos.to_vec())
+                    / game.rollback_data.get_players().len() as f32;
+                if !game.game_settings.fixed_center {
+                    // consider moving start pos
+                    let current_center = game.game_state.start_pos + game.game_settings.render_size / 2;
+                    let player_average_center = game
+                        .game_state
+                        .players_center
+                        .map(|e| e as u32 / CHUNK_SIZE);
+                    let distance = player_average_center
+                        .zip(current_center, |a, b| a as i32 - b as i32)
+                        .to_vec();
 
-                if distance != Vector3::new(0, 0, 0) {
-                    game.voxel_compute.move_start_pos(
-                        &mut game.game_state,
-                        distance,
-                        &game.game_settings,
-                    );
+                    if distance != Vector3::new(0, 0, 0) {
+                        game.voxel_compute.move_start_pos(
+                            &mut game.game_state,
+                            distance,
+                            &game.game_settings,
+                        );
+                    }
                 }
-            }
 
-            game.projectile_compute
-                .upload(game.rollback_data.get_projectiles());
-            let after_proj_compute = game.projectile_compute.compute(
-                future,
-                &game.game_state,
-                &game.game_settings,
-                &game.rollback_data,
-                &game.voxel_compute,
-            );
-            game.voxel_compute.compute(
-                after_proj_compute,
-                &mut game.game_state,
-                &game.game_settings,
-            )
+                game.projectile_compute
+                    .upload(game.rollback_data.get_rollback_projectiles());
+                let after_proj_compute = game.projectile_compute.compute(
+                    future,
+                    &game.game_state,
+                    &game.game_settings,
+                    &game.rollback_data,
+                    &game.voxel_compute,
+                );
+                game.voxel_compute.compute(
+                    after_proj_compute,
+                    &mut game.game_state,
+                    &game.game_settings,
+                )
+            } else {
+                game.rollback_data.step_visuals(&mut game.card_manager, &mut game.voxel_compute, &game.game_state, &game.game_settings);
+                future.boxed()
+            }
         } else {
             future.boxed()
         }
