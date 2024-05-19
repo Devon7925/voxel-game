@@ -14,4 +14,8 @@ Card Editor
     Multicast modifier hovers
     Cooldown modifier hovers
     
+Multiplayer
+    warn when creating a lobby fails
+    warn when listing lobbies fails
+
 Update libraries

@@ -125,7 +125,7 @@ fn main() {
         lobby_browser: LobbyBrowser::new(),
     };
 
-    let mut goal_time = Instant::now();
+    let mut next_frame_time = Instant::now();
     loop {
         let should_continue = handle_events(
             &mut event_loop,
@@ -140,39 +140,42 @@ fn main() {
         }
 
         // Compute voxels & render 60fps.
-        if (Instant::now() - goal_time).as_secs_f32() > 0.0 {
+        if (Instant::now() - next_frame_time).as_secs_f32() > 0.0 {
             puffin::GlobalProfiler::lock().new_frame();
             previous_frame_end.as_mut().unwrap().cleanup_finished();
-            goal_time += std::time::Duration::from_secs_f32(
+            next_frame_time += std::time::Duration::from_secs_f32(
                 app.game
                     .as_ref()
                     .map(|game| game.rollback_data.get_delta_time())
                     .unwrap_or(DEFAULT_DELTA_TIME),
             );
             let skip_render = if app.game.is_some() && !gui_state.game_just_started {
-                (Instant::now() - goal_time).as_secs_f32() > 0.0
+                (Instant::now() - next_frame_time).as_secs_f32() > 0.0
             } else {
-                goal_time = Instant::now();
+                next_frame_time = Instant::now();
                 false
             };
             gui_state.game_just_started = false;
             if let Some(game) = app.game.as_mut() {
                 game.rollback_data
                     .network_update(&game.game_settings, &mut game.card_manager);
-                if gui_state.menu_stack.last() == Some(&GuiElement::LobbyQueue)
+                if !game.has_started
                     && game.rollback_data.player_count() >= game.game_settings.player_count as usize
                 {
-                    gui_state.menu_stack.clear();
+                    game.has_started = true;
+                    if gui_state.menu_stack.last() == Some(&GuiElement::LobbyQueue) {
+                        gui_state.menu_stack.clear();
+                    }
                 }
-                if game.rollback_data.is_sim_behind() {
-                    goal_time -=
+                if game.rollback_data.is_render_behind_other_players() {
+                    next_frame_time -=
                         std::time::Duration::from_secs_f32(game.rollback_data.get_delta_time());
                 }
             }
             if skip_render {
                 println!(
                     "skipping render: behind by {}s",
-                    (Instant::now() - goal_time).as_secs_f32()
+                    (Instant::now() - next_frame_time).as_secs_f32()
                 );
             }
             compute_then_render(
@@ -409,7 +412,7 @@ fn compute_then_render(
     let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), 1.0, 0.1, 100.0);
     // Start the frame.
     let future = if let Some(game) = app.game.as_mut() {
-        if game.rollback_data.player_count() >= game.game_settings.player_count as usize {
+        if game.has_started {
             if game.rollback_data.can_step_rollback() {
                 puffin::profile_scope!("do compute");
                 game.voxel_compute
@@ -429,7 +432,12 @@ fn compute_then_render(
                     &game.game_state,
                     &game.game_settings,
                 );
-                game.rollback_data.step_visuals(&mut game.card_manager, &mut game.voxel_compute, &game.game_state, &game.game_settings);
+                game.rollback_data.step_visuals(
+                    &mut game.card_manager,
+                    &mut game.voxel_compute,
+                    &game.game_state,
+                    &game.game_settings,
+                );
 
                 game.game_state.players_center = game
                     .rollback_data
@@ -440,7 +448,8 @@ fn compute_then_render(
                     / game.rollback_data.get_players().len() as f32;
                 if !game.game_settings.fixed_center {
                     // consider moving start pos
-                    let current_center = game.game_state.start_pos + game.game_settings.render_size / 2;
+                    let current_center =
+                        game.game_state.start_pos + game.game_settings.render_size / 2;
                     let player_average_center = game
                         .game_state
                         .players_center
@@ -473,7 +482,12 @@ fn compute_then_render(
                     &game.game_settings,
                 )
             } else {
-                game.rollback_data.step_visuals(&mut game.card_manager, &mut game.voxel_compute, &game.game_state, &game.game_settings);
+                game.rollback_data.step_visuals(
+                    &mut game.card_manager,
+                    &mut game.voxel_compute,
+                    &game.game_state,
+                    &game.game_settings,
+                );
                 future.boxed()
             }
         } else {

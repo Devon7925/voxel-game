@@ -1,9 +1,18 @@
-use std::{io::{BufReader, BufRead}, path::Path};
+use std::{
+    io::{BufRead, BufReader},
+    path::Path,
+};
 
 use cgmath::{EuclideanSpace, Point3};
 
 use crate::{
-    app::CreationInterface, card_system::{CardManager, Cooldown}, projectile_sim_manager::ProjectileComputePipeline, rollback_manager::{PlayerSim, ReplayData, RollbackData}, settings_manager::Settings, voxel_sim_manager::VoxelComputePipeline, CHUNK_SIZE
+    app::CreationInterface,
+    card_system::{CardManager, Cooldown},
+    projectile_sim_manager::ProjectileComputePipeline,
+    rollback_manager::{PlayerSim, ReplayData, RollbackData},
+    settings_manager::Settings,
+    voxel_sim_manager::VoxelComputePipeline,
+    CHUNK_SIZE,
 };
 use voxel_shared::{GameSettings, RoomId};
 
@@ -14,6 +23,7 @@ pub struct Game {
     pub card_manager: CardManager,
     pub game_state: GameState,
     pub game_settings: GameSettings,
+    pub has_started: bool,
 }
 pub struct GameState {
     pub start_pos: Point3<u32>,
@@ -58,16 +68,12 @@ impl Game {
             card_manager,
             game_state,
             game_settings,
+            has_started: false,
         }
     }
 
-    pub fn from_replay(
-        replay_file: &Path,
-        creation_interface: &CreationInterface,
-    ) -> Self {
-        
-        let replay_file =
-            std::fs::File::open(replay_file).unwrap();
+    pub fn from_replay(replay_file: &Path, creation_interface: &CreationInterface) -> Self {
+        let replay_file = std::fs::File::open(replay_file).unwrap();
         let reader = BufReader::new(replay_file);
         let mut replay_lines = reader.lines();
         let game_settings: GameSettings = 'game_settings: {
@@ -81,7 +87,7 @@ impl Game {
             }
             panic!("No game settings found in replay file");
         };
-        
+
         let game_state = GameState {
             start_pos: game_settings.spawn_location.zip(
                 Point3::from_vec(game_settings.render_size),
@@ -110,6 +116,7 @@ impl Game {
             card_manager,
             game_state,
             game_settings,
+            has_started: false,
         }
     }
 }

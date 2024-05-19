@@ -97,7 +97,7 @@ pub trait PlayerSim {
     fn leave_game(&mut self);
     fn end_frame(&mut self);
 
-    fn is_sim_behind(&self) -> bool;
+    fn is_render_behind_other_players(&self) -> bool;
     fn get_rollback_time(&self) -> u64;
 }
 
@@ -325,13 +325,18 @@ pub fn abilities_from_cooldowns(
 
 impl PlayerSim for RollbackData {
     fn can_step_rollback(&self) -> bool {
-        
         let rollback_actions: Vec<Action> = self
             .entity_metadata
             .iter()
             .map(|x| x.get_action(0))
             .collect();
-        rollback_actions.iter().all(|a| a.primary_action.is_some())
+        rollback_actions.iter().all(|a| {
+            a.primary_action.is_some()
+                || a.meta_action
+                    .clone()
+                    .map(|m| m.leave.unwrap_or(false))
+                    .unwrap_or(false)
+        })
     }
     fn step_rollback(
         &mut self,
@@ -480,7 +485,6 @@ impl PlayerSim for RollbackData {
                 };
             }
         }
-        
     }
 
     fn download_projectiles(
@@ -769,10 +773,11 @@ impl PlayerSim for RollbackData {
             network_connection.queue_packet(NetworkPacket::Leave(self.current_time));
             let peers = self.player_idx_map.keys().collect();
             network_connection.send_packet_queue(peers);
+            println!("leaving game");
         }
     }
 
-    fn is_sim_behind(&self) -> bool {
+    fn is_render_behind_other_players(&self) -> bool {
         self.most_future_time_recorded > self.current_time
     }
 
@@ -980,6 +985,9 @@ impl RollbackData {
             if let Some(deck_update) = new_meta_action.deck_update {
                 action.meta_action.as_mut().unwrap().deck_update = Some(deck_update);
             }
+            if let Some(leave) = new_meta_action.leave {
+                action.meta_action.as_mut().unwrap().leave = Some(leave);
+            }
         }
     }
 }
@@ -1157,7 +1165,7 @@ impl PlayerSim for ReplayData {
     fn end_frame(&mut self) {}
     fn leave_game(&mut self) {}
 
-    fn is_sim_behind(&self) -> bool {
+    fn is_render_behind_other_players(&self) -> bool {
         false
     }
 
