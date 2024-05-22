@@ -39,12 +39,11 @@ const uint MAT_GLASS = 7;
 const uint MAT_PLAYER = 8;
 const uint[] material_damage_threshhold = {0, 10, 0, 5, 5, 1, 5, 10};
 
-uvec2 get_indicies(uvec3 global_pos, uvec3 render_size) {
+uvec4 get_indicies(uvec3 global_pos, uvec3 render_size) {
     uvec3 chunk_pos = (global_pos >> CHUNK_MAGNITUDE) % render_size;
     uvec3 pos_in_chunk = global_pos & POS_IN_CHUNK_MASK;
-    uint chunk_idx = chunk_pos.x * render_size.y * render_size.z + chunk_pos.y * render_size.z + chunk_pos.z;
     uint idx_in_chunk = pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE + pos_in_chunk.y * CHUNK_SIZE + pos_in_chunk.z;
-    return uvec2(chunk_idx, idx_in_chunk);
+    return uvec4(chunk_pos, idx_in_chunk);
 }
 
 vec3 quat_transform(vec4 q, vec3 v) {

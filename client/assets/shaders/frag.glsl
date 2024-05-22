@@ -8,8 +8,10 @@ layout(input_attachment_index = 1, set = 0, binding = 1) uniform subpassInput u_
 // The `depth_input` parameter of the `draw` method.
 layout(input_attachment_index = 2, set = 0, binding = 2) uniform subpassInput u_depth;
 
-layout(set = 1, binding = 0) buffer ChunkBuffer { uint chunks[]; };
-layout(set = 1, binding = 1) buffer VoxelBuffer { uint voxels[]; };
+layout(set = 1, binding = 0, r32ui) uniform uimage3D chunks;
+layout(set = 1, binding = 1) buffer VoxelBuffer {
+    uint voxels[];
+};
 
 layout(set = 1, binding = 2) uniform SimData {
     uint projectile_count;
@@ -17,8 +19,12 @@ layout(set = 1, binding = 2) uniform SimData {
     uvec3 start_pos;
 } sim_data;
 
-layout(set = 1, binding = 3) buffer Players { Player players[]; };
-layout(set = 1, binding = 4) buffer Projectiles { Projectile projectiles[]; };
+layout(set = 1, binding = 3) buffer Players {
+    Player players[];
+};
+layout(set = 1, binding = 4) buffer Projectiles {
+    Projectile projectiles[];
+};
 
 layout(push_constant) uniform PushConstants {
     // The `screen_to_world` parameter of the `draw` method.
@@ -37,20 +43,20 @@ layout(location = 0) out vec4 f_color;
 const vec3 light_dir = normalize(vec3(0.5, -1, 0.25));
 
 uint get_data_unchecked(uvec3 global_pos) {
-    uvec2 indicies = get_indicies(global_pos, sim_data.render_size);
-    return voxels[chunks[indicies.x] * CHUNK_VOLUME + indicies.y];
+    uvec4 indicies = get_indicies(global_pos, sim_data.render_size);
+    return voxels[imageLoad(chunks, ivec3(indicies.xyz)).x * CHUNK_VOLUME + indicies.w];
 }
 
 uint get_data(uvec3 global_pos) {
     uvec3 start_offset = CHUNK_SIZE * sim_data.start_pos;
     if (any(lessThan(global_pos, start_offset))) return MAT_OOB << 24;
     uvec3 rel_pos = global_pos - start_offset;
-    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE*sim_data.render_size))) return MAT_OOB << 24;
+    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE * sim_data.render_size))) return MAT_OOB << 24;
     return get_data_unchecked(global_pos);
 }
 
 uint get_dist(uint voxel_data, uint offset) {
-    if (voxel_data>>24 != MAT_AIR) return 0;
+    if (voxel_data >> 24 != MAT_AIR) return 0;
     return (voxel_data >> (offset * 3)) & 0x7;
 }
 
@@ -72,7 +78,6 @@ struct RaycastResult {
     uint layer_count;
 };
 
-
 const bool is_transparent[] = {
     true,
     false,
@@ -87,9 +92,9 @@ const bool is_transparent[] = {
 
 RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles) {
     uint offset = 0;
-    if(ray.x < 0) offset += 1;
-    if(ray.y < 0) offset += 2;
-    if(ray.z < 0) offset += 4;
+    if (ray.x < 0) offset += 1;
+    if (ray.y < 0) offset += 2;
+    if (ray.z < 0) offset += 4;
 
     vec3 ray_pos = pos;
     vec3 normal = vec3(0);
@@ -139,16 +144,16 @@ RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool 
         if (length(min_normal) > 0) {
             end_depth = max_dist;
             did_hit = true;
-            end_ray_pos = pos + max_dist*ray;
+            end_ray_pos = pos + max_dist * ray;
             end_normal = min_normal;
             end_voxel_data = MAT_PROJECTILE << 24;
         }
     }
 
-    for(uint i = 0; i < max_iterations; i++) {
+    for (uint i = 0; i < max_iterations; i++) {
         vec3 floor_pos = floor(ray_pos);
         voxel_data = get_data(uvec3(floor_pos));
-        if(voxel_data>>24 != MAT_AIR) {
+        if (voxel_data >> 24 != MAT_AIR) {
             did_hit = true;
             end_ray_pos = ray_pos;
             end_depth = depth;
@@ -172,27 +177,27 @@ RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool 
             if (ray.x > 0 && ray_pos.x < v_max.x) {
                 ray_pos.x = v_max.x;
             } else if (ray.x < 0 && ray_pos.x >= v_min.x) {
-                ray_pos.x = v_min.x-0.001;
+                ray_pos.x = v_min.x - 0.001;
             }
         } else if (delta.y < delta.z) {
             normal = vec3(0, -sign(ray.y), 0);
             if (ray.y > 0 && ray_pos.y < v_max.y) {
                 ray_pos.y = v_max.y;
             } else if (ray.y < 0 && ray_pos.y >= v_min.y) {
-                ray_pos.y = v_min.y-0.001;
+                ray_pos.y = v_min.y - 0.001;
             }
         } else {
             normal = vec3(0, 0, -sign(ray.z));
             if (ray.z > 0 && ray_pos.z < v_max.z) {
                 ray_pos.z = v_max.z;
             } else if (ray.z < 0 && ray_pos.z >= v_min.z) {
-                ray_pos.z = v_min.z-0.001;
+                ray_pos.z = v_min.z - 0.001;
             }
         }
     }
 
     if (!did_hit) {
-        return RaycastResultLayer(pos, vec3(0.0), MAT_OOB<<24, 0.0);
+        return RaycastResultLayer(pos, vec3(0.0), MAT_OOB << 24, 0.0);
     }
 
     return RaycastResultLayer(end_ray_pos, end_normal, end_voxel_data, end_depth);
@@ -202,38 +207,38 @@ const uint LAYER_COUNT = 5;
 RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles, float raster_depth) {
     RaycastResultLayer[5] layers;
     uint offset = 0;
-    if(ray.x < 0) offset += 1;
-    if(ray.y < 0) offset += 2;
-    if(ray.z < 0) offset += 4;
+    if (ray.x < 0) offset += 1;
+    if (ray.y < 0) offset += 2;
+    if (ray.z < 0) offset += 4;
 
     vec3 ray_pos = pos;
     vec3 normal = vec3(0);
     float depth = 0;
     uint voxel_data = MAT_OOB << 24;
     uint layer_idx = 0;
-    for(uint i = 0; i < max_iterations; i++) {
+    for (uint i = 0; i < max_iterations; i++) {
         vec3 floor_pos = floor(ray_pos);
         voxel_data = get_data(uvec3(floor_pos));
         uint dist = 0;
         uint voxel_material = voxel_data >> 24;
-        if(voxel_material == MAT_AIR) {
+        if (voxel_material == MAT_AIR) {
             dist = get_dist(voxel_data, offset);
-        } else if(is_transparent[voxel_material]) {
+        } else if (is_transparent[voxel_material]) {
             layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
             layer_idx++;
-            if(layer_idx >= LAYER_COUNT) break;
+            if (layer_idx >= LAYER_COUNT) break;
         } else {
             layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
             layer_idx++;
             break;
         }
         vec3 v_min = floor_pos - vec3(dist);
-        vec3 v_max = floor_pos + vec3(dist+1);
+        vec3 v_max = floor_pos + vec3(dist + 1);
         vec3 delta = ray_box_dist(ray_pos, ray, v_min, v_max);
         float dist_diff = min(delta.x, min(delta.y, delta.z));
         if (depth + dist_diff > raster_depth && raster_depth > 0) {
             depth = raster_depth;
-            ray_pos = pos + depth*ray;
+            ray_pos = pos + depth * ray;
             break;
         }
         depth += dist_diff;
@@ -241,22 +246,22 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         if (delta.x < delta.y && delta.x < delta.z) {
             normal = vec3(-sign(ray.x), 0, 0);
             if (ray.x < 0 && ray_pos.x >= v_min.x) {
-                ray_pos.x = v_min.x-0.001;
+                ray_pos.x = v_min.x - 0.001;
             }
         } else if (delta.y < delta.z) {
             normal = vec3(0, -sign(ray.y), 0);
             if (ray.y < 0 && ray_pos.y >= v_min.y) {
-                ray_pos.y = v_min.y-0.001;
+                ray_pos.y = v_min.y - 0.001;
             }
         } else {
             normal = vec3(0, 0, -sign(ray.z));
             if (ray.z < 0 && ray_pos.z >= v_min.z) {
-                ray_pos.z = v_min.z-0.001;
+                ray_pos.z = v_min.z - 0.001;
             }
         }
     }
 
-    if(raster_depth > 0.0 && layer_idx < LAYER_COUNT) {
+    if (raster_depth > 0.0 && layer_idx < LAYER_COUNT) {
         vec3 in_normal = normalize(subpassLoad(u_normals).rgb);
         vec4 in_diffuse = subpassLoad(u_diffuse);
         uint raster_material = MAT_PLAYER;
@@ -295,14 +300,14 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             }
             normal = quat_transform(projectiles[i].dir, normal);
 
-            RaycastResultLayer proj_layer = RaycastResultLayer(pos + dist*ray, normal, MAT_PROJECTILE << 24, dist);
+            RaycastResultLayer proj_layer = RaycastResultLayer(pos + dist * ray, normal, MAT_PROJECTILE << 24, dist);
             // insert layer
-            if(layer_idx < LAYER_COUNT) {
+            if (layer_idx < LAYER_COUNT) {
                 layer_idx++;
             }
-            for (uint j = layer_idx-1; j > 0; j--) {
-                if (proj_layer.dist < layers[j-1].dist) {
-                    layers[j] = layers[j-1];
+            for (uint j = layer_idx - 1; j > 0; j--) {
+                if (proj_layer.dist < layers[j - 1].dist) {
+                    layers[j] = layers[j - 1];
                     if (j == 1) {
                         layers[0] = proj_layer;
                     }
@@ -343,59 +348,59 @@ struct MaterialRenderProps {
 const MaterialRenderProps material_render_props[] = {
     // AIR
     MaterialRenderProps(MaterialNoiseLayer[3](
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-    ), 0.0, 1.0, vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.0, 1.0, vec3(0.0)),
     // STONE
     MaterialRenderProps(MaterialNoiseLayer[3](
-        MaterialNoiseLayer(2.0, 0.35, 0.1, 0.0, vec3(0.5), vec3(0.0)),
-        MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
-        MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-    ), 0.35, 0.0, vec3(0.2)),
+            MaterialNoiseLayer(2.0, 0.35, 0.1, 0.0, vec3(0.5), vec3(0.0)),
+            MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
+            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
+        ), 0.35, 0.0, vec3(0.2)),
     // OOB
     MaterialRenderProps(MaterialNoiseLayer[3](
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-    ), 0.0, 1.0, vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.0, 1.0, vec3(0.0)),
     // DIRT
     MaterialRenderProps(MaterialNoiseLayer[3](
-        MaterialNoiseLayer(7.0, 0.2, 0.0, 0.0, vec3(0.3, 0.05, -0.2), vec3(0.0)),
-        MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
-        MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-    ), 0.25, 0.0, vec3(0.2)),
+            MaterialNoiseLayer(7.0, 0.2, 0.0, 0.0, vec3(0.3, 0.05, -0.2), vec3(0.0)),
+            MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
+            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
+        ), 0.25, 0.0, vec3(0.2)),
     // GRASS
     MaterialRenderProps(MaterialNoiseLayer[3](
-        MaterialNoiseLayer(20.0, 0.5, 0.2, 0.0, vec3(0.15, 0.5, 0.15), vec3(0.0)),
-        MaterialNoiseLayer(50.0, 0.1, 0.1, 0.0, vec3(0.1), vec3(-0.1)),
-        MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-    ), 0.1, 0.0, vec3(0.1, 0.3, 0.1)),
+            MaterialNoiseLayer(20.0, 0.5, 0.2, 0.0, vec3(0.15, 0.5, 0.15), vec3(0.0)),
+            MaterialNoiseLayer(50.0, 0.1, 0.1, 0.0, vec3(0.1), vec3(-0.1)),
+            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
+        ), 0.1, 0.0, vec3(0.1, 0.3, 0.1)),
     // PROJECTILE
     MaterialRenderProps(MaterialNoiseLayer[3](
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-    ), 0.0, 0.5, vec3(1.0, 0.3, 0.3)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.0, 0.5, vec3(1.0, 0.3, 0.3)),
     // ICE
     MaterialRenderProps(MaterialNoiseLayer[3](
-        MaterialNoiseLayer(2.0, 0.35, 0.1, 0.1, vec3(0.1, 0.1, 0.35), vec3(0.0)),
-        MaterialNoiseLayer(20.0, 0.2, 0.2, 0.05, vec3(0.1), vec3(-0.1)),
-        MaterialNoiseLayer(0.5, 0.05, 0.0, 0.05, vec3(0.1), vec3(-0.1))
-    ), 0.35, 0.3, vec3(0.65)),
+            MaterialNoiseLayer(2.0, 0.35, 0.1, 0.1, vec3(0.1, 0.1, 0.35), vec3(0.0)),
+            MaterialNoiseLayer(20.0, 0.2, 0.2, 0.05, vec3(0.1), vec3(-0.1)),
+            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.05, vec3(0.1), vec3(-0.1))
+        ), 0.35, 0.3, vec3(0.65)),
     // GLASS
     MaterialRenderProps(MaterialNoiseLayer[3](
-        MaterialNoiseLayer(1.0, 0.35, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-    ), 0.35, 0.7, vec3(0.7)),
+            MaterialNoiseLayer(1.0, 0.35, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.35, 0.7, vec3(0.7)),
     // PLAYER
     MaterialRenderProps(MaterialNoiseLayer[3](
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-        MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-    ), 0.2, 0.0, vec3(0.8)),
-};
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.2, 0.0, vec3(0.8)),
+    };
 
 MaterialProperties material_props(uint voxel_data, vec3 pos, vec3 in_normal) {
     uint material = voxel_data >> 24;
@@ -416,7 +421,7 @@ MaterialProperties material_props(uint voxel_data, vec3 pos, vec3 in_normal) {
     float transparency = mat_render_props.transparency;
     for (int layer_idx = 0; layer_idx < 3; layer_idx++) {
         MaterialNoiseLayer layer = mat_render_props.layers[layer_idx];
-        vec4 noise = voronoise(layer.scale*pos, 1.0, 1.0);
+        vec4 noise = voronoise(layer.scale * pos, 1.0, 1.0);
         normal += layer.normal_impact * noise.xyz;
         color += mix(layer.light_color, layer.dark_color, noise.w);
         shine += layer.shine_impact * noise.w;
@@ -436,17 +441,17 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
     float multiplier = 1.0;
     int i = 0;
 
-    while(multiplier > 0.05 && i < primary_ray.layer_count) {
+    while (multiplier > 0.05 && i < primary_ray.layer_count) {
         if (primary_ray.layers[i].voxel_data >> 24 == MAT_OOB) {
             float sky_brightness = max(dot(ray, -light_dir), 0.0);
-            sky_brightness += pow(sky_brightness, 10.0); 
+            sky_brightness += pow(sky_brightness, 10.0);
             color += multiplier * (sky_brightness * vec3(0.429, 0.608, 0.622) + vec3(0.1, 0.1, 0.4));
             break;
         }
         MaterialProperties mat_props = material_props(primary_ray.layers[i].voxel_data, primary_ray.layers[i].pos, primary_ray.layers[i].normal);
         color += (1 - mat_props.transparency) * multiplier * 0.05 * mat_props.color;
 
-        RaycastResultLayer shade_check = simple_raycast(primary_ray.layers[i].pos + 0.015*primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist, true);
+        RaycastResultLayer shade_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist, true);
         float shade_transparency = material_render_props[shade_check.voxel_data >> 24].transparency;
         if (shade_transparency > 0.0) {
             vec3 v_min = floor(shade_check.pos);
@@ -459,20 +464,20 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
             vec3 halfway = normalize(-light_dir - ray);
             float specular = pow(max(dot(halfway, mat_props.normal), 0.0), 32.0);
-            color += shade_transparency * (1 - mat_props.transparency) * multiplier * (0.65*diffuse + mat_props.shine * specular)*mat_props.color;
+            color += shade_transparency * (1 - mat_props.transparency) * multiplier * (0.65 * diffuse + mat_props.shine * specular) * mat_props.color;
         }
-        RaycastResultLayer ao_check = simple_raycast(primary_ray.layers[i].pos + 0.015*primary_ray.layers[i].normal, mat_props.normal, push_constants.ao_ray_dist, false);
+        RaycastResultLayer ao_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, mat_props.normal, push_constants.ao_ray_dist, false);
         if (ao_check.dist == 0 || ao_check.voxel_data >> 24 == MAT_OOB) {
             float diffuse = max(dot(mat_props.normal, primary_ray.layers[i].normal), 0.0);
             color += (1 - mat_props.transparency) * multiplier * 0.13 * diffuse * mat_props.color;
         }
 
-        RaycastResultLayer ao_check2 = simple_raycast(primary_ray.layers[i].pos + 0.015*primary_ray.layers[i].normal, normalize(primary_ray.layers[i].normal + mat_props.normal), push_constants.ao_ray_dist, false);
+        RaycastResultLayer ao_check2 = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, normalize(primary_ray.layers[i].normal + mat_props.normal), push_constants.ao_ray_dist, false);
         if (ao_check2.dist == 0 || ao_check2.voxel_data >> 24 == MAT_OOB) {
             float diffuse = max(dot(mat_props.normal, normalize(primary_ray.layers[i].normal + mat_props.normal)), 0.0);
             color += (1 - mat_props.transparency) * multiplier * 0.13 * diffuse * mat_props.color;
         }
-        
+
         multiplier *= mat_props.transparency;
         i++;
     }
@@ -499,7 +504,7 @@ void main() {
     vec3 pos = cam_data.pos.xyz;
 
     RaycastResult primary_ray = raycast(pos, ray, push_constants.primary_ray_dist, true, max_depth);
-    
+
     if (primary_ray.layer_count == 0) {
         f_color = vec4(1.0, 0.0, 0.0, 1.0);
         return;

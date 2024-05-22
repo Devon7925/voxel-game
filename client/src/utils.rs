@@ -4,6 +4,55 @@ use std::{
     hash::Hash,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Direction {
+    PosX,
+    NegX,
+    PosY,
+    NegY,
+    PosZ,
+    NegZ,
+}
+
+impl Direction {
+    pub fn from_component_direction(component: usize, positive: bool) -> Direction {
+        match (component, positive) {
+            (0, true) => Direction::PosX,
+            (0, false) => Direction::NegX,
+            (1, true) => Direction::PosY,
+            (1, false) => Direction::NegY,
+            (2, true) => Direction::PosZ,
+            (2, false) => Direction::NegZ,
+            _ => panic!("Invalid component direction"),
+        }
+    }
+    pub fn to_offset(&self) -> [i32; 3] {
+        match self {
+            Direction::PosX => [1, 0, 0],
+            Direction::NegX => [-1, 0, 0],
+            Direction::PosY => [0, 1, 0],
+            Direction::NegY => [0, -1, 0],
+            Direction::PosZ => [0, 0, 1],
+            Direction::NegZ => [0, 0, -1],
+        }
+    }
+
+    pub fn component_index(&self) -> usize {
+        match self {
+            Direction::PosX | Direction::NegX => 0,
+            Direction::PosY | Direction::NegY => 1,
+            Direction::PosZ | Direction::NegZ => 2,
+        }
+    }
+
+    pub fn is_positive(&self) -> bool {
+        match self {
+            Direction::PosX | Direction::PosY | Direction::PosZ => true,
+            Direction::NegX | Direction::NegY | Direction::NegZ => false,
+        }
+    }
+}
+
 pub struct QueueSet<T: Clone + Eq + PartialEq + Hash> {
     queue: VecDeque<T>,
     set: HashSet<T>,

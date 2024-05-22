@@ -3,7 +3,6 @@ Chunk Updates
     Allow for all air chunks to be unloaded
     Improve chunk loading/unloading logic
         Always load chunks in a radius around the player
-    Try 3D texture for chunk storage
 
 Rendering
     Improve ice rendering with depth based transparency

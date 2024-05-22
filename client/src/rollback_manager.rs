@@ -1275,7 +1275,6 @@ impl WorldState {
         game_settings: &GameSettings,
     ) {
         let voxels = vox_compute.voxels();
-        let chunks = vox_compute.chunks();
         let mut new_projectiles = Vec::new();
         let mut voxels_to_write: Vec<(Point3<u32>, u32)> = Vec::new();
         let mut new_effects: Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)> = Vec::new();
@@ -1305,7 +1304,6 @@ impl WorldState {
 
         {
             let voxel_reader = voxels.read().unwrap();
-            let chunk_reader = chunks.read().unwrap();
             for (player_idx, (player, entity_action)) in self
                 .players
                 .iter_mut()
@@ -1319,7 +1317,7 @@ impl WorldState {
                     player_idx,
                     card_manager,
                     &voxel_reader,
-                    &chunk_reader,
+                    &vox_compute.cpu_chunks(),
                     &mut new_projectiles,
                     &mut voxels_to_write,
                     &mut new_effects,
@@ -1604,10 +1602,9 @@ impl WorldState {
         // update voxels
         if is_real_update && voxels_to_write.len() > 0 {
             let mut writer = voxels.write().unwrap();
-            let chunk_reader = chunks.read().unwrap();
             for (pos, material) in voxels_to_write {
                 vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z], game_settings);
-                let Some(index) = get_index(pos, &chunk_reader, game_state, game_settings) else {
+                let Some(index) = get_index(pos, &vox_compute.cpu_chunks(), game_state, game_settings) else {
                     panic!("voxel out of bounds");
                 };
                 writer[index as usize] = material;
@@ -1947,30 +1944,32 @@ impl Projectile {
     }
 }
 
+pub fn is_inbounds(
+    global_pos: Point3<u32>,
+    game_state: &GameState,
+    game_settings: &GameSettings,
+) -> bool {
+    (global_pos / CHUNK_SIZE).zip(game_state.start_pos, |a, b| a >= b)
+        == Point3::new(true, true, true)
+    &&
+    (global_pos / CHUNK_SIZE).zip(game_state.start_pos + game_settings.render_size, |a, b| {
+        a < b
+    }) == Point3::new(true, true, true)
+}
+
 pub fn get_index(
     global_pos: Point3<u32>,
-    chunk_reader: &BufferReadGuard<'_, [u32]>,
+    cpu_chunks: &Vec<Vec<Vec<u32>>>,
     game_state: &GameState,
     game_settings: &GameSettings,
 ) -> Option<u32> {
-    if (global_pos / CHUNK_SIZE).zip(game_state.start_pos, |a, b| a >= b)
-        != Point3::new(true, true, true)
-    {
-        return None;
-    }
-    if (global_pos / CHUNK_SIZE).zip(game_state.start_pos + game_settings.render_size, |a, b| {
-        a < b
-    }) != Point3::new(true, true, true)
-    {
+    if !is_inbounds(global_pos, game_state, game_settings) {
         return None;
     }
     let chunk_pos =
         (global_pos / CHUNK_SIZE).zip(Point3::from_vec(game_settings.render_size), |a, b| a % b);
     let pos_in_chunk = global_pos % CHUNK_SIZE;
-    let chunk_ref = chunk_pos.x * game_settings.render_size[1] * game_settings.render_size[2]
-        + chunk_pos.y * game_settings.render_size[2]
-        + chunk_pos.z;
-    let chunk_idx = chunk_reader[chunk_ref as usize];
+    let chunk_idx = cpu_chunks[chunk_pos.x as usize][chunk_pos.y as usize][chunk_pos.z as usize];
     let idx_in_chunk =
         pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE + pos_in_chunk.y * CHUNK_SIZE + pos_in_chunk.z;
     Some(chunk_idx * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE + idx_in_chunk)
@@ -2023,7 +2022,7 @@ impl Entity {
         player_idx: usize,
         card_manager: &CardManager,
         voxel_reader: &BufferReadGuard<'_, [u32]>,
-        chunk_reader: &BufferReadGuard<'_, [u32]>,
+        cpu_chunks: &Vec<Vec<Vec<u32>>>,
         new_projectiles: &mut Vec<Projectile>,
         voxels_to_write: &mut Vec<(Point3<u32>, u32)>,
         new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
@@ -2148,7 +2147,7 @@ impl Entity {
         self.collide_player(
             time_step,
             voxel_reader,
-            chunk_reader,
+            cpu_chunks,
             prev_collision_vec,
             game_state,
             game_settings,
@@ -2172,7 +2171,7 @@ impl Entity {
         &mut self,
         time_step: f32,
         voxel_reader: &BufferReadGuard<'_, [u32]>,
-        chunk_reader: &BufferReadGuard<'_, [u32]>,
+        cpu_chunks: &Vec<Vec<Vec<u32>>>,
         prev_collision_vec: Vector3<i32>,
         game_state: &GameState,
         game_settings: &GameSettings,
@@ -2264,7 +2263,7 @@ impl Entity {
                                 + z_dist * z_iter as f32 * z_vec;
                             let voxel_pos = pos.map(|c| c.floor() as u32);
                             let voxel = if let Some(index) =
-                                get_index(voxel_pos, chunk_reader, game_state, game_settings)
+                                get_index(voxel_pos, cpu_chunks, game_state, game_settings)
                             {
                                 voxel_reader[index as usize]
                             } else {
@@ -2276,7 +2275,7 @@ impl Entity {
                                     && (pos - start_pos).y < 1.0
                                     && self.can_step_up(
                                         voxel_reader,
-                                        chunk_reader,
+                                        cpu_chunks,
                                         component,
                                         player_move_pos,
                                         game_state,
@@ -2322,7 +2321,7 @@ impl Entity {
     fn can_step_up(
         &self,
         voxel_reader: &BufferReadGuard<'_, [u32]>,
-        chunk_reader: &BufferReadGuard<'_, [u32]>,
+        cpu_chunks: &Vec<Vec<Vec<u32>>>,
         component: usize,
         player_move_pos: Point3<f32>,
         game_state: &GameState,
@@ -2349,7 +2348,7 @@ impl Entity {
                     start_pos + x_dist * x_iter as f32 * x_vec + z_dist * z_iter as f32 * z_vec;
                 let voxel_pos = pos.map(|c| c.floor() as u32);
                 let voxel = if let Some(index) =
-                    get_index(voxel_pos, chunk_reader, game_state, game_settings)
+                    get_index(voxel_pos, cpu_chunks, game_state, game_settings)
                 {
                     voxel_reader[index as usize]
                 } else {

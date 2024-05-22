@@ -18,7 +18,7 @@ use crate::{
     card_system::Cooldown,
     gui::{GuiElement, GuiState, PaletteState},
     lobby_browser::LobbyBrowser,
-    settings_manager::Settings,
+    settings_manager::Settings, utils::Direction,
 };
 use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use multipass_system::Pass;
@@ -459,9 +459,21 @@ fn compute_then_render(
                         .to_vec();
 
                     if distance != Vector3::new(0, 0, 0) {
+                        // compute largest distance component
+                        let mut largest_dist = 0;
+                        let mut largest_component = 0;
+                        for i in 0..3 {
+                            if distance[i].abs() > largest_dist {
+                                largest_dist = distance[i].abs();
+                                largest_component = i;
+                            }
+                        }
+
+                        let direction = Direction::from_component_direction(largest_component, distance[largest_component] > 0);
+                            
                         game.voxel_compute.move_start_pos(
                             &mut game.game_state,
-                            distance,
+                            direction,
                             &game.game_settings,
                         );
                     }

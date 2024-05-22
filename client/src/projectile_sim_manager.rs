@@ -8,8 +8,7 @@
 // according to those terms.
 
 use crate::{
-    app::CreationInterface, card_system::CardManager, rollback_manager::{get_index, PlayerSim},
-    voxel_sim_manager::VoxelComputePipeline, game_manager::GameState,
+    app::CreationInterface, card_system::CardManager, game_manager::GameState, rollback_manager::{get_index, PlayerSim}, voxel_sim_manager::VoxelComputePipeline
 };
 use bytemuck::{Pod, Zeroable};
 use cgmath::{Point3, Quaternion};
@@ -207,7 +206,7 @@ impl ProjectileComputePipeline {
             &self.descriptor_set_allocator,
             desc_layout.clone(),
             [
-                WriteDescriptorSet::buffer(0, voxel_compute.chunks()),
+                WriteDescriptorSet::image_view(0, voxel_compute.chunks()),
                 WriteDescriptorSet::buffer(1, voxel_compute.voxels()),
                 WriteDescriptorSet::buffer(2, self.projectile_buffer.clone()),
                 WriteDescriptorSet::buffer(3, uniform_buffer_subbuffer),
@@ -271,12 +270,10 @@ impl ProjectileComputePipeline {
 
         if new_voxels.len() > 0 {
             let voxels = vox_compute.voxels();
-            let chunks = vox_compute.chunks();
             let mut writer = voxels.write().unwrap();
-            let chunk_reader = chunks.read().unwrap();
             for (pos, material) in new_voxels {
                 vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z], game_settings);
-                let Some(index) = get_index(pos, &chunk_reader, game_state, game_settings) else {
+                let Some(index) = get_index(pos, &vox_compute.cpu_chunks(), game_state, game_settings) else {
                     panic!("Voxel pos out of bounds");
                 };
                 writer[index as usize] = material.to_memory();

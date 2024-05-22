@@ -3,10 +3,14 @@
 
 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer ChunkBuffer { uint chunks[]; };
-layout(set = 0, binding = 1) buffer VoxelBuffer { uint voxels[]; };
+layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks;
+layout(set = 0, binding = 1) buffer VoxelBuffer {
+    uint voxels[];
+};
 
-layout(set = 0, binding = 2) buffer Projectiles { Projectile projectiles[]; };
+layout(set = 0, binding = 2) buffer Projectiles {
+    Projectile projectiles[];
+};
 
 layout(set = 0, binding = 3) uniform SimData {
     uvec3 render_size;
@@ -16,8 +20,8 @@ layout(set = 0, binding = 3) uniform SimData {
 } sim_data;
 
 uint get_index(uvec3 global_pos) {
-    uvec2 indicies = get_indicies(global_pos, sim_data.render_size);
-    return chunks[indicies.x] * CHUNK_VOLUME + indicies.y;
+    uvec4 indicies = get_indicies(global_pos, sim_data.render_size);
+    return imageLoad(chunks, ivec3(indicies.xyz)).x * CHUNK_VOLUME + indicies.w;
 }
 
 uint get_data_unchecked(uvec3 global_pos) {
@@ -28,7 +32,7 @@ uint get_data(uvec3 global_pos) {
     uvec3 start_offset = CHUNK_SIZE * sim_data.start_pos;
     if (any(lessThan(global_pos, start_offset))) return MAT_OOB << 24;
     uvec3 rel_pos = global_pos - start_offset;
-    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE*sim_data.render_size))) return MAT_OOB << 24;
+    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE * sim_data.render_size))) return MAT_OOB << 24;
     return get_data_unchecked(global_pos);
 }
 
@@ -36,7 +40,7 @@ void set_data(uvec3 global_pos, uint data) {
     uvec3 start_offset = CHUNK_SIZE * sim_data.start_pos;
     if (any(lessThan(global_pos, start_offset))) return;
     uvec3 rel_pos = global_pos - start_offset;
-    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE*sim_data.render_size))) return;
+    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE * sim_data.render_size))) return;
     uint index = get_index(global_pos);
     voxels[index] = data;
 }
@@ -52,18 +56,18 @@ void main() {
     if (projectile_idx >= sim_data.projectile_count) return;
     Projectile projectile = projectiles[projectile_idx];
 
-    ivec3 grid_iteration_count = ivec3(ceil(2.0*projectile.size * sqrt(2.0)));
-    grid_iteration_count.z = int(ceil((2.0*projectile.size.z + sim_data.dt * projectile.vel) * sqrt(2.0)));
+    ivec3 grid_iteration_count = ivec3(ceil(2.0 * projectile.size * sqrt(2.0)));
+    grid_iteration_count.z = int(ceil((2.0 * projectile.size.z + sim_data.dt * projectile.vel) * sqrt(2.0)));
     vec3 grid_dist = 2.0 * projectile.size.xyz / grid_iteration_count;
     grid_dist.z = (2.0 * projectile.size.z + sim_data.dt * projectile.vel) / grid_iteration_count.z;
     vec3 dir = quat_transform(projectile.dir, vec3(0.0, 0.0, 1.0));
     vec3 right = quat_transform(projectile.dir, vec3(1.0, 0.0, 0.0));
     vec3 up = quat_transform(projectile.dir, vec3(0.0, 1.0, 0.0));
-    vec3 start = projectile.pos.xyz - dir*projectile.size.z - right*projectile.size.x - up*projectile.size.y;
+    vec3 start = projectile.pos.xyz - dir * projectile.size.z - right * projectile.size.x - up * projectile.size.y;
     for (int i = 0; i <= grid_iteration_count.x; i++) {
         for (int j = 0; j <= grid_iteration_count.y; j++) {
             for (int k = 0; k <= grid_iteration_count.z; k++) {
-                vec3 pos = start + dir*grid_dist.z*k + right*grid_dist.x*i + up*grid_dist.y*j;
+                vec3 pos = start + dir * grid_dist.z * k + right * grid_dist.x * i + up * grid_dist.y * j;
                 ivec3 voxel_pos = ivec3(pos);
                 uint data = get_data(voxel_pos);
                 uint voxel_mat = data >> 24;
@@ -76,20 +80,20 @@ void main() {
                     return;
                 }
 
-                float dist_past_bb = grid_dist.z*k - 2.0*projectile.size.z;
+                float dist_past_bb = grid_dist.z * k - 2.0 * projectile.size.z;
                 vec3 delta = RayBoxDist(pos, -dir, vec3(voxel_pos), vec3(voxel_pos + ivec3(1)));
                 float dist_diff = min(delta.x, min(delta.y, delta.z));
-                if(dist_past_bb > 0.0) {
-                    projectile.pos += vec4(dir*(dist_past_bb - dist_diff), 0.0);
+                if (dist_past_bb > 0.0) {
+                    projectile.pos += vec4(dir * (dist_past_bb - dist_diff), 0.0);
                 }
 
-                if(projectile.wall_bounce == 1) {
+                if (projectile.wall_bounce == 1) {
                     vec3 new_dir = dir;
-                    if(delta.x == dist_diff) {
+                    if (delta.x == dist_diff) {
                         new_dir.x *= -1.0;
-                    } else if(delta.y == dist_diff) {
+                    } else if (delta.y == dist_diff) {
                         new_dir.y *= -1.0;
-                    } else if(delta.z == dist_diff) {
+                    } else if (delta.z == dist_diff) {
                         new_dir.z *= -1.0;
                     }
                     projectile.dir = quaternion_from_arc(vec3(0.0, 0.0, 1.0), new_dir);
@@ -110,5 +114,4 @@ void main() {
             }
         }
     }
-    
 }

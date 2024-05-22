@@ -3,9 +3,13 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-layout(set = 0, binding = 0) buffer ChunkBuffer { uint chunks[]; };
-layout(set = 0, binding = 1) buffer VoxelBuffer { uint voxels[]; };
-layout(set = 0, binding = 2) buffer ChunkUpdates { ivec4 chunk_updates[]; };
+layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks;
+layout(set = 0, binding = 1) buffer VoxelBuffer {
+    uint voxels[];
+};
+layout(set = 0, binding = 2) buffer ChunkUpdates {
+    ivec4 chunk_updates[];
+};
 
 layout(set = 0, binding = 3) uniform SimData {
     uvec3 render_size;
@@ -13,11 +17,13 @@ layout(set = 0, binding = 3) uniform SimData {
     uvec3 update_offset;
 } sim_data;
 
-layout(set = 0, binding = 4) buffer Projectiles { Projectile projectiles[]; };
+layout(set = 0, binding = 4) buffer Projectiles {
+    Projectile projectiles[];
+};
 
 uint get_index(uvec3 global_pos) {
-    uvec2 indicies = get_indicies(global_pos, sim_data.render_size);
-    return chunks[indicies.x] * CHUNK_VOLUME + indicies.y;
+    uvec4 indicies = get_indicies(global_pos, sim_data.render_size);
+    return imageLoad(chunks, ivec3(indicies.xyz)).x * CHUNK_VOLUME + indicies.w;
 }
 
 uint get_data_unchecked(uvec3 global_pos) {
@@ -28,14 +34,14 @@ uint get_data(uvec3 global_pos) {
     uvec3 start_offset = CHUNK_SIZE * sim_data.start_pos;
     if (any(lessThan(global_pos, start_offset))) return MAT_OOB << 24;
     uvec3 rel_pos = global_pos - start_offset;
-    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE*sim_data.render_size))) return MAT_OOB << 24;
+    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE * sim_data.render_size))) return MAT_OOB << 24;
     return get_data_unchecked(global_pos);
 }
 
 void set_data(uvec3 global_pos, uint data) {
     uint og_voxel_data = get_data(global_pos);
-    if(og_voxel_data >> 24 == MAT_OOB) return;
-    if(og_voxel_data != data) {
+    if (og_voxel_data >> 24 == MAT_OOB) return;
+    if (og_voxel_data != data) {
         chunk_updates[gl_WorkGroupID.x].w = 1;
     }
     uint index = get_index(global_pos);
@@ -43,7 +49,7 @@ void set_data(uvec3 global_pos, uint data) {
 }
 
 void main() {
-    ivec3 pos = 2*ivec3(gl_WorkGroupSize)*chunk_updates[gl_WorkGroupID.x].xyz + 2*ivec3(gl_LocalInvocationID) + ivec3(sim_data.update_offset); 
+    ivec3 pos = 2 * ivec3(gl_WorkGroupSize) * chunk_updates[gl_WorkGroupID.x].xyz + 2 * ivec3(gl_LocalInvocationID) + ivec3(sim_data.update_offset);
     uvec2 pos_data[2][2][2];
     for (uint i = 0; i < 2; i++) {
         for (uint j = 0; j < 2; j++) {
@@ -70,7 +76,7 @@ void main() {
         for (uint j = 0; j < 2; j++) {
             for (uint k = 0; k < 2; k++) {
                 if (pos_data[i][j][k].x == MAT_AIR) {
-                    int offset = 3*int(((k << 2) | (j << 1) | i));
+                    int offset = 3 * int(((k << 2) | (j << 1) | i));
                     ivec3 d = ivec3(1) - ivec3(i, j, k) * ivec3(2);
                     uint direction_dist = 7;
                     for (uint m = 1; m < 8; m++) {
