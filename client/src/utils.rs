@@ -100,6 +100,21 @@ impl<T: Clone + Eq + PartialEq + Hash> QueueSet<T> {
     pub fn into_iter(self) -> std::collections::vec_deque::IntoIter<T> {
         self.queue.into_iter()
     }
+
+    pub fn keep_if<F>(&mut self, f: F)
+    where
+        F: Fn(&T) -> bool,
+    {
+        let mut new_queue = VecDeque::new();
+        for item in self.queue.iter() {
+            if f(item) {
+                new_queue.push_back(item.clone());
+            } else {
+                self.set.remove(item);
+            }
+        }
+        self.queue = new_queue;
+    }
 }
 
 pub struct VoxelUpdateQueue {
@@ -172,5 +187,18 @@ impl VoxelUpdateQueue {
         self.queue_sets
             .iter()
             .all(|x| x.iter().all(|y| y.iter().all(|z| z.is_empty())))
+    }
+
+    pub fn keep_if<F>(&mut self, f: F)
+    where
+        F: Fn(&[u32; 3]) -> bool,
+    {
+        for x in 0..2 {
+            for y in 0..2 {
+                for z in 0..2 {
+                    self.queue_sets[x][y][z].keep_if(&f);
+                }
+            }
+        }
     }
 }

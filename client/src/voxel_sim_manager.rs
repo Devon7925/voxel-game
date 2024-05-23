@@ -354,11 +354,32 @@ impl VoxelComputePipeline {
         }
 
         self.slice_to_unload = Some(direction);
+
+        //remove queued updates that are now out of bounds
+        self.worldgen_update_queue.keep_if(|loc| {
+            loc[0] >= game_state.start_pos[0]
+                && loc[0] < (game_state.start_pos[0] + game_settings.render_size[0])
+                && loc[1] >= game_state.start_pos[1]
+                && loc[1] < (game_state.start_pos[1] + game_settings.render_size[1])
+                && loc[2] >= game_state.start_pos[2]
+                && loc[2] < (game_state.start_pos[2] + game_settings.render_size[2])
+        });
+        self.chunk_update_queue.keep_if(|loc| {
+            loc[0] >= SUB_CHUNK_COUNT * game_state.start_pos[0]
+                && loc[0]
+                    < SUB_CHUNK_COUNT * (game_state.start_pos[0] + game_settings.render_size[0])
+                && loc[1] >= SUB_CHUNK_COUNT * game_state.start_pos[1]
+                && loc[1]
+                    < SUB_CHUNK_COUNT * (game_state.start_pos[1] + game_settings.render_size[1])
+                && loc[2] >= SUB_CHUNK_COUNT * game_state.start_pos[2]
+                && loc[2]
+                    < SUB_CHUNK_COUNT * (game_state.start_pos[2] + game_settings.render_size[2])
+        });
     }
 
     // chunks are represented as u32 with a 1 representing a changed chunk
     // this function will get the locations of those and push updates and then clear the buffer
-    pub fn push_updates_from_changed(&mut self, game_settings: &GameSettings) {
+    pub fn push_updates_from_changed(&mut self, game_state: &GameState, game_settings: &GameSettings) {
         puffin::profile_function!();
         // last component of 1 means the chunk was changed and therefore means it and surrounding chunks need to be updated
         let mut updates_todo = QueueSet::new();
@@ -389,8 +410,17 @@ impl VoxelComputePipeline {
                 is_chunk_loaded
             };
             if !is_chunk_loaded {
-                self.worldgen_update_queue
-                    .push([chunk[0], chunk[1], chunk[2]]);
+                //check if chunk is inbounds
+                if chunk[0] >= game_state.start_pos[0]
+                    && chunk[0] < (game_state.start_pos[0] + game_settings.render_size[0])
+                    && chunk[1] >= game_state.start_pos[1]
+                    && chunk[1] < (game_state.start_pos[1] + game_settings.render_size[1])
+                    && chunk[2] >= game_state.start_pos[2]
+                    && chunk[2] < (game_state.start_pos[2] + game_settings.render_size[2])
+                {
+                    self.worldgen_update_queue
+                        .push([chunk[0], chunk[1], chunk[2]]);
+                }
             } else {
                 self.chunk_update_queue.push_all(update);
             }
@@ -453,7 +483,7 @@ impl VoxelComputePipeline {
         } else {
             before_future.boxed()
         };
-        let mid_pipeline = if self.worldgen_update_queue.is_empty() {
+        let mid_pipeline = if self.worldgen_update_queue.is_empty() || self.available_chunks.is_empty() {
             early_pipeline.boxed()
         } else {
             let mut builder = AutoCommandBufferBuilder::primary(

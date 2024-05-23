@@ -416,7 +416,7 @@ fn compute_then_render(
             if game.rollback_data.can_step_rollback() {
                 puffin::profile_scope!("do compute");
                 game.voxel_compute
-                    .push_updates_from_changed(&game.game_settings);
+                    .push_updates_from_changed(&game.game_state, &game.game_settings);
 
                 // Compute.
                 game.rollback_data.download_projectiles(

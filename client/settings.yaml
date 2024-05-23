@@ -27,16 +27,16 @@ singleplayer_settings:
     is_remote: false
     player_count: 1
     render_size:
-      x: 64
+      x: 32
       y: 16
-      z: 64
+      z: 32
     spawn_location: 
       x: 10000.0
       y: 1810.0
       z: 10000.0
-    max_loaded_chunks: 8196
-    max_worldgen_rate: 512
-    max_update_rate: 512
+    max_loaded_chunks: 8192
+    max_worldgen_rate: 256
+    max_update_rate: 256
     world_gen: Normal
     fixed_center: false
 practice_range_settings:

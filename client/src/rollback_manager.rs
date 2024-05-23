@@ -729,6 +729,16 @@ impl PlayerSim for RollbackData {
                                         GuiElement::CardEditor => {
                                             self.player_deck.clear();
                                             self.player_deck.extend(gui_state.gui_cards.clone());
+                                            self.controls = self.player_deck
+                                                .iter()
+                                                .map(|a| {
+                                                    a
+                                                        .abilities
+                                                        .iter()
+                                                        .map(|a| StateKeybind::from(a.keybind.clone()))
+                                                        .collect()
+                                                })
+                                                .collect();
                                             self.send_action(
                                                 Action {
                                                     primary_action: None,

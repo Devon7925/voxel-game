@@ -157,13 +157,9 @@ impl Cooldown {
             }
         } else if type_idx == 1 {
             let idx = path.pop_front().unwrap() as usize;
-            if path.is_empty() {
-                panic!();
-            } else {
-                self.abilities[idx]
-                    .card
-                    .modify_from_path(path, modification_type)
-            }
+            self.abilities[idx]
+                .card
+                .modify_from_path(path, modification_type)
         } else {
             panic!("Invalid state");
         }
