@@ -18,7 +18,8 @@ use crate::{
     card_system::Cooldown,
     gui::{GuiElement, GuiState, PaletteState},
     lobby_browser::LobbyBrowser,
-    settings_manager::Settings, utils::Direction,
+    settings_manager::Settings,
+    utils::Direction,
 };
 use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use multipass_system::Pass;
@@ -417,6 +418,21 @@ fn compute_then_render(
                 puffin::profile_scope!("do compute");
                 game.voxel_compute
                     .push_updates_from_changed(&game.game_state, &game.game_settings);
+                // ensure chunks near players are loaded
+                const NEARBY_CHUNK_RANGE: i32 = 2;
+                for player in game.rollback_data.get_players() {
+                    let player_chunk = player.pos.map(|e| e as u32 / CHUNK_SIZE);
+                    for x in -NEARBY_CHUNK_RANGE..=NEARBY_CHUNK_RANGE {
+                        for y in -NEARBY_CHUNK_RANGE..=NEARBY_CHUNK_RANGE {
+                            for z in -NEARBY_CHUNK_RANGE..=NEARBY_CHUNK_RANGE {
+                                let chunk = player_chunk
+                                    .zip(Point3::new(x, y, z), |a, b| a.wrapping_add_signed(b));
+                                game.voxel_compute
+                                    .ensure_chunk_loaded(chunk, &game.game_settings);
+                            }
+                        }
+                    }
+                }
 
                 // Compute.
                 game.rollback_data.download_projectiles(
@@ -469,8 +485,11 @@ fn compute_then_render(
                     }
 
                     if largest_dist > 1 {
-                        let direction = Direction::from_component_direction(largest_component, distance[largest_component] > 0);
-                            
+                        let direction = Direction::from_component_direction(
+                            largest_component,
+                            distance[largest_component] > 0,
+                        );
+
                         game.voxel_compute.move_start_pos(
                             &mut game.game_state,
                             direction,

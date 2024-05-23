@@ -1,3 +1,4 @@
 Chunk Updates
     Try 3D texture for chunk storage
     Only update neighboring chunks when neccessary
+    Always load chunks in a radius around the player

@@ -23,8 +23,8 @@ use vulkano::{
         Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
     },
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        CommandBufferUsage, PrimaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        PrimaryAutoCommandBuffer,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -378,7 +378,11 @@ impl VoxelComputePipeline {
 
     // chunks are represented as u32 with a 1 representing a changed chunk
     // this function will get the locations of those and push updates and then clear the buffer
-    pub fn push_updates_from_changed(&mut self, game_state: &GameState, game_settings: &GameSettings) {
+    pub fn push_updates_from_changed(
+        &mut self,
+        game_state: &GameState,
+        game_settings: &GameSettings,
+    ) {
         puffin::profile_function!();
         // last component of 1 means the chunk was changed and therefore means it and surrounding chunks need to be updated
         let mut updates_todo = QueueSet::new();
@@ -387,7 +391,7 @@ impl VoxelComputePipeline {
             let reader = self.chunk_updates.read().unwrap();
             for i in 0..self.last_update_count {
                 let read_update = reader[i];
-                if read_update[3]&1 == 1 {
+                if read_update[3] & 1 == 1 {
                     let min_x = -((read_update[3] as i32 >> 1) & 1);
                     let min_y = -((read_update[3] as i32 >> 2) & 1);
                     let min_z = -((read_update[3] as i32 >> 3) & 1);
@@ -476,7 +480,12 @@ impl VoxelComputePipeline {
             )
             .unwrap();
 
-            self.dispatch_chunk_unload(&mut builder, game_state, game_settings, direction_to_unload);
+            self.dispatch_chunk_unload(
+                &mut builder,
+                game_state,
+                game_settings,
+                direction_to_unload,
+            );
 
             let command_buffer = builder.build().unwrap();
             self.slice_to_unload = None;
@@ -489,32 +498,33 @@ impl VoxelComputePipeline {
         } else {
             before_future.boxed()
         };
-        let mid_pipeline = if self.worldgen_update_queue.is_empty() || self.available_chunks.is_empty() {
-            early_pipeline.boxed()
-        } else {
-            let mut builder = AutoCommandBufferBuilder::primary(
-                self.command_buffer_allocator.as_ref(),
-                self.compute_queue.queue_family_index(),
-                CommandBufferUsage::OneTimeSubmit,
-            )
-            .unwrap();
+        let mid_pipeline =
+            if self.worldgen_update_queue.is_empty() || self.available_chunks.is_empty() {
+                early_pipeline.boxed()
+            } else {
+                let mut builder = AutoCommandBufferBuilder::primary(
+                    self.command_buffer_allocator.as_ref(),
+                    self.compute_queue.queue_family_index(),
+                    CommandBufferUsage::OneTimeSubmit,
+                )
+                .unwrap();
 
-            // Dispatch will mutate the builder adding commands which won't be sent before we build the
-            // command buffer after dispatches. This will minimize the commands we send to the GPU. For
-            // example, we could be doing tens of dispatches here depending on our needs. Maybe we
-            // wanted to simulate 10 steps at a time...
+                // Dispatch will mutate the builder adding commands which won't be sent before we build the
+                // command buffer after dispatches. This will minimize the commands we send to the GPU. For
+                // example, we could be doing tens of dispatches here depending on our needs. Maybe we
+                // wanted to simulate 10 steps at a time...
 
-            // First compute the next state.
-            self.dispatch_worldgen(&mut builder, game_state, game_settings);
+                // First compute the next state.
+                self.dispatch_worldgen(&mut builder, game_state, game_settings);
 
-            let command_buffer = builder.build().unwrap();
-            early_pipeline
-                .then_execute(self.compute_queue.clone(), command_buffer)
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap()
-                .boxed()
-        };
+                let command_buffer = builder.build().unwrap();
+                early_pipeline
+                    .then_execute(self.compute_queue.clone(), command_buffer)
+                    .unwrap()
+                    .then_signal_fence_and_flush()
+                    .unwrap()
+                    .boxed()
+            };
         let finished_pipeline = if self.chunk_update_queue.is_empty() {
             mid_pipeline.boxed()
         } else {
@@ -604,8 +614,8 @@ impl VoxelComputePipeline {
             .bind_descriptor_sets(PipelineBindPoint::Compute, pipeline_layout.clone(), 0, set)
             .unwrap()
             .dispatch([
-                game_settings.render_size[(direction.component_index() + 1) % 3]/16,
-                game_settings.render_size[(direction.component_index() + 2) % 3]/16,
+                game_settings.render_size[(direction.component_index() + 1) % 3] / 16,
+                game_settings.render_size[(direction.component_index() + 2) % 3] / 16,
                 1,
             ])
             .unwrap();
@@ -651,9 +661,10 @@ impl VoxelComputePipeline {
                         }
                     }
                     {
-                        let adj_pos = [0, 1, 2].map(|i| loc[i].rem_euclid(game_settings.render_size[i]));
-                        self.cpu_chunks_copy[adj_pos[0] as usize][adj_pos[1] as usize][adj_pos[2] as usize] =
-                            available_chunk_idx;
+                        let adj_pos =
+                            [0, 1, 2].map(|i| loc[i].rem_euclid(game_settings.render_size[i]));
+                        self.cpu_chunks_copy[adj_pos[0] as usize][adj_pos[1] as usize]
+                            [adj_pos[2] as usize] = available_chunk_idx;
                     };
                     for i in 0..SUB_CHUNK_COUNT {
                         for j in 0..SUB_CHUNK_COUNT {
@@ -774,6 +785,13 @@ impl VoxelComputePipeline {
             .unwrap()
             .dispatch([chunk_update_count as u32, 1, 1])
             .unwrap();
+    }
+
+    pub fn ensure_chunk_loaded(&mut self, chunk: Point3<u32>, game_settings: &GameSettings) {
+        if self.get_chunk(chunk.into(), game_settings) == 0 {
+            self.worldgen_update_queue
+                .push([chunk[0], chunk[1], chunk[2]]);
+        }
     }
 }
 
