@@ -398,6 +398,7 @@ impl DraggableCard {
             }
             DraggableCard::CooldownModifier(modifier) => {
                 let item_id = egui::Id::new(id_source).with(path.clone());
+                let hover_text = modifier.get_hover_text();
                 match modifier {
                     CooldownModifier::SimpleCooldownModifier(
                         SimpleCooldownModifier::AddCharge,
@@ -407,7 +408,7 @@ impl DraggableCard {
                         item_id,
                         "Add Charge",
                         *v,
-                        String::new(),
+                        hover_text,
                         modify_path,
                         path,
                     ),
@@ -419,7 +420,7 @@ impl DraggableCard {
                         item_id,
                         "Add Cooldown",
                         *v,
-                        String::new(),
+                        hover_text,
                         modify_path,
                         path,
                     ),
@@ -431,7 +432,7 @@ impl DraggableCard {
                         item_id,
                         "Multiply Impact",
                         *v,
-                        String::new(),
+                        hover_text,
                         modify_path,
                         path,
                     ),
@@ -439,13 +440,14 @@ impl DraggableCard {
             }
             DraggableCard::MultiCastModifier(modifier) => {
                 let item_id = egui::Id::new(id_source).with(path.clone());
-                drag_source(ui, item_id, |ui| match modifier {
+                let hover_text = modifier.get_hover_text();
+                match modifier {
                     MultiCastModifier::Spread(v) => add_hoverable_basic_modifer(
                         ui,
                         item_id,
                         "Spread",
                         *v,
-                        String::new(),
+                        hover_text,
                         modify_path,
                         path,
                     ),
@@ -454,11 +456,11 @@ impl DraggableCard {
                         item_id,
                         "Duplication",
                         *v,
-                        String::new(),
+                        hover_text,
                         modify_path,
                         path,
                     ),
-                });
+                }
             }
             DraggableCard::ProjectileModifier(modifier) => {
                 let item_id = egui::Id::new(id_source).with(path.clone());

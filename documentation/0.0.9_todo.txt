@@ -1,1 +1,6 @@
 Experiment with moving voxel storage to 3D texture
+
+Card Editor
+    Basic keybind editing
+
+Settings editor

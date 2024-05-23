@@ -17,12 +17,27 @@ pub enum CooldownModifier {
     SimpleCooldownModifier(SimpleCooldownModifier, u32),
 }
 
+impl CooldownModifier {
+    pub fn get_hover_text(&self) -> String {
+        match self {
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => format!("Add {} charges", s),
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => format!("Increace cooldown by {}s ({} per)", SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT*(*s as f32), SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT),
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increaces the cooldown of all other abilities", s),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum SimpleCooldownModifier {
     AddCharge,
     AddCooldown,
     MultiplyImpact,
 }
+
+impl SimpleCooldownModifier {
+    const ADD_COOLDOWN_AMOUNT: f32 = 0.5;
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Ability {
     pub card: BaseCard,
@@ -97,7 +112,10 @@ impl Cooldown {
                 CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => {
                     ability_charges += s;
                 }
-                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => {
+                CooldownModifier::SimpleCooldownModifier(
+                    SimpleCooldownModifier::AddCooldown,
+                    s,
+                ) => {
                     added_cooldown += s;
                 }
                 CooldownModifier::SimpleCooldownModifier(
@@ -108,12 +126,16 @@ impl Cooldown {
                 }
             }
         }
-        let cooldown = 0.5 * added_cooldown as f32
-            + Self::GLOBAL_COOLDOWN_MULTIPLIER * (sum + 2.0 * max) / 3.0 * (1.0 + 0.25 * (ability_charges as f32 + 1.0).ln()) / (impact_multiplier / total_impact);
+        let cooldown = SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT * added_cooldown as f32
+            + Self::GLOBAL_COOLDOWN_MULTIPLIER * (sum + 2.0 * max) / 3.0
+                * (1.0 + 0.25 * (ability_charges as f32 + 1.0).ln())
+                / (impact_multiplier / total_impact);
         let recovery = ability_values
             .iter()
             .map(|val| {
-                Self::GLOBAL_COOLDOWN_MULTIPLIER * 0.5 * added_cooldown as f32 + val * (1.0 - (-(ability_charges as f32 / 10.0)).exp()) / (impact_multiplier / total_impact)
+                Self::GLOBAL_COOLDOWN_MULTIPLIER * 0.5 * added_cooldown as f32
+                    + val * (1.0 - (-(ability_charges as f32 / 10.0)).exp())
+                        / (impact_multiplier / total_impact)
             })
             .collect();
         (cooldown, recovery)
@@ -172,7 +194,8 @@ impl Cooldown {
             let idx = path.pop_front().unwrap() as usize;
             assert!(path.is_empty());
             let modifier = self.modifiers[idx].clone();
-            self.modifiers[idx] = CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, 0);
+            self.modifiers[idx] =
+                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, 0);
             DraggableCard::CooldownModifier(modifier)
         } else if type_idx == 1 {
             let idx = path.pop_front().unwrap() as usize;
@@ -202,7 +225,9 @@ impl Cooldown {
                     CooldownModifier::SimpleCooldownModifier(last_type, last_s) => {
                         for modifier in self.modifiers.iter_mut() {
                             match modifier {
-                                CooldownModifier::SimpleCooldownModifier(current_type, s) if *current_type == last_type => {
+                                CooldownModifier::SimpleCooldownModifier(current_type, s)
+                                    if *current_type == last_type =>
+                                {
                                     *s += last_s;
                                     combined = true;
                                     break;
@@ -314,6 +339,16 @@ pub enum ProjectileModifierType {
 pub enum MultiCastModifier {
     Spread(u32),
     Duplication(u32),
+}
+impl MultiCastModifier {
+    pub fn get_hover_text(&self) -> String {
+        match self {
+            MultiCastModifier::Spread(s) => format!("Increace spread by {}", s),
+            MultiCastModifier::Duplication(s) => {
+                format!("Create {} copies of the projectile", 2_u32.pow(*s))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -1770,9 +1805,17 @@ impl CardManager {
         let mut add_cooldown = 0;
         for modifier in cooldown.modifiers {
             match modifier {
-                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, c) => add_charge += c,
-                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, c) => add_cooldown += c,
-                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, _c) => {},
+                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, c) => {
+                    add_charge += c
+                }
+                CooldownModifier::SimpleCooldownModifier(
+                    SimpleCooldownModifier::AddCooldown,
+                    c,
+                ) => add_cooldown += c,
+                CooldownModifier::SimpleCooldownModifier(
+                    SimpleCooldownModifier::MultiplyImpact,
+                    _c,
+                ) => {}
             }
         }
         ReferencedCooldown {
