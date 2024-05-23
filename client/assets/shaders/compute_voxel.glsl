@@ -42,7 +42,18 @@ void set_data(uvec3 global_pos, uint data) {
     uint og_voxel_data = get_data(global_pos);
     if (og_voxel_data >> 24 == MAT_OOB) return;
     if (og_voxel_data != data) {
-        chunk_updates[gl_WorkGroupID.x].w = 1;
+        uvec3 pos_in_chunk = global_pos & 0xF;
+        int modification_flags = 0x1;
+        if (pos_in_chunk.x == 0 && gl_LocalInvocationID.x < 7) { modification_flags |= 0x2; }
+        if (pos_in_chunk.y == 0 && gl_LocalInvocationID.y < 7) { modification_flags |= 0x4; }
+        if (pos_in_chunk.z == 0 && gl_LocalInvocationID.z < 7) { modification_flags |= 0x8; }
+        if (pos_in_chunk.x == 15) { modification_flags |= 0x10; }
+        if (pos_in_chunk.x == 0 && gl_LocalInvocationID.x == 7) { modification_flags |= 0x10; }
+        if (pos_in_chunk.y == 15) { modification_flags |= 0x20; }
+        if (pos_in_chunk.y == 0 && gl_LocalInvocationID.y == 7) { modification_flags |= 0x20; }
+        if (pos_in_chunk.z == 15) { modification_flags |= 0x40; }
+        if (pos_in_chunk.z == 0 && gl_LocalInvocationID.z == 7) { modification_flags |= 0x40; }
+        atomicOr(chunk_updates[gl_WorkGroupID.x].w, modification_flags);
     }
     uint index = get_index(global_pos);
     voxels[index] = data;

@@ -337,7 +337,6 @@ impl VoxelComputePipeline {
         for y_i in 0..game_settings.render_size[(direction.component_index() + 1) % 3] {
             for z_i in 0..game_settings.render_size[(direction.component_index() + 2) % 3] {
                 let mut chunk_location = [
-                    //todo fix
                     game_state.start_pos[0],
                     game_state.start_pos[1],
                     game_state.start_pos[2],
@@ -388,10 +387,16 @@ impl VoxelComputePipeline {
             let reader = self.chunk_updates.read().unwrap();
             for i in 0..self.last_update_count {
                 let read_update = reader[i];
-                if read_update[3] == 1 {
-                    for x_offset in -1..=1 {
-                        for y_offset in -1..=1 {
-                            for z_offset in -1..=1 {
+                if read_update[3]&1 == 1 {
+                    let min_x = -((read_update[3] as i32 >> 1) & 1);
+                    let min_y = -((read_update[3] as i32 >> 2) & 1);
+                    let min_z = -((read_update[3] as i32 >> 3) & 1);
+                    let max_x = (read_update[3] as i32 >> 4) & 1;
+                    let max_y = (read_update[3] as i32 >> 5) & 1;
+                    let max_z = (read_update[3] as i32 >> 6) & 1;
+                    for x_offset in min_x..=max_x {
+                        for y_offset in min_y..=max_y {
+                            for z_offset in min_z..=max_z {
                                 updates_todo.push([
                                     read_update[0].wrapping_add_signed(x_offset),
                                     read_update[1].wrapping_add_signed(y_offset),
@@ -462,6 +467,7 @@ impl VoxelComputePipeline {
         F: GpuFuture + 'static,
     {
         puffin::profile_function!();
+        println!("available chunks: {}", self.available_chunks.len());
         let early_pipeline = if let Some(direction_to_unload) = self.slice_to_unload.clone() {
             let mut builder = AutoCommandBufferBuilder::primary(
                 self.command_buffer_allocator.as_ref(),

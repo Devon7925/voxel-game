@@ -458,17 +458,17 @@ fn compute_then_render(
                         .zip(current_center, |a, b| a as i32 - b as i32)
                         .to_vec();
 
-                    if distance != Vector3::new(0, 0, 0) {
-                        // compute largest distance component
-                        let mut largest_dist = 0;
-                        let mut largest_component = 0;
-                        for i in 0..3 {
-                            if distance[i].abs() > largest_dist {
-                                largest_dist = distance[i].abs();
-                                largest_component = i;
-                            }
+                    // compute largest distance component
+                    let mut largest_dist = 0;
+                    let mut largest_component = 0;
+                    for i in 0..3 {
+                        if distance[i].abs() > largest_dist {
+                            largest_dist = distance[i].abs();
+                            largest_component = i;
                         }
+                    }
 
+                    if largest_dist > 1 {
                         let direction = Direction::from_component_direction(largest_component, distance[largest_component] > 0);
                             
                         game.voxel_compute.move_start_pos(

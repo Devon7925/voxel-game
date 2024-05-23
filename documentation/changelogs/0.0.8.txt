@@ -1,2 +1,3 @@
 Chunk Updates
     Try 3D texture for chunk storage
+    Only update neighboring chunks when neccessary
