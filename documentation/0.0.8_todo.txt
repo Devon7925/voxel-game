@@ -8,5 +8,4 @@ Rendering
     Experiment with reflections
     
 Multiplayer
-    warn when creating a lobby fails
     warn when listing lobbies fails

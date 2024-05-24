@@ -119,6 +119,7 @@ fn main() {
 
     let mut gui_state = GuiState {
         menu_stack: vec![GuiElement::MainMenu],
+        errors: Vec::new(),
         gui_cards: player_deck.clone(),
         palette_state: PaletteState::ProjectileModifiers,
         should_exit: false,

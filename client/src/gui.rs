@@ -43,6 +43,7 @@ pub enum PaletteState {
 
 pub struct GuiState {
     pub menu_stack: Vec<GuiElement>,
+    pub errors: Vec<String>,
     pub gui_cards: Vec<Cooldown>,
     pub palette_state: PaletteState,
     pub lobby_browser: LobbyBrowser,
@@ -1048,7 +1049,7 @@ pub fn add_hoverable_basic_modifer(
     }
 }
 
-pub fn card_editor(ctx: egui::Context, gui_state: &mut GuiState) {
+pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
     egui::Area::new("card editor")
         .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
         .show(&ctx, |ui| {

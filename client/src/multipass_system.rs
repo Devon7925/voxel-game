@@ -8,7 +8,7 @@
 // according to those terms.
 use cgmath::{Matrix4, Point3, SquareMatrix, Vector3};
 use egui_winit_vulkano::{
-    egui::{self, epaint, pos2, Align2, Color32, Rect, RichText, Stroke, Vec2},
+    egui::{self, epaint, pos2, Align2, Color32, Margin, Order, Rect, RichText, Stroke, Vec2},
     Gui, GuiConfig,
 };
 use rfd::FileDialog;
@@ -743,7 +743,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                         });
                 }
                 Some(&GuiElement::CardEditor) => {
-                    card_editor(ctx, gui_state);
+                    card_editor(&ctx, gui_state);
                 }
 
                 Some(&GuiElement::MultiplayerMenu) => {
@@ -772,6 +772,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 Ok(new_lobby_response) => new_lobby_response,
                                                 Err(e) => {
                                                     println!("error creating lobby: {:?}", e);
+                                                    gui_state.errors.push(format!("Error creating lobby {}", e).to_string());
                                                     return;
                                                 }
                                             };
@@ -780,6 +781,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 Ok(new_lobby_id) => new_lobby_id,
                                                 Err(e) => {
                                                     println!("error creating lobby: {:?}", e);
+                                                    gui_state.errors.push(format!("Error creating lobby {}", e).to_string());
                                                     return;
                                                 }
                                             };
@@ -825,6 +827,9 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     ui.vertical_centered(|ui| {
                                         let lobby_list = gui_state.lobby_browser.get_lobbies();
                                         horizontal_centerer(ui, |ui| {
+                                            if lobby_list.is_empty() {
+                                                ui.label("No lobbies found");
+                                            }
                                             egui::Grid::new("lobby_grid")
                                                 .num_columns(2)
                                                 .spacing([40.0, 4.0])
@@ -884,6 +889,41 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                 }
                 None => {}
             }
+            let corner_offset = 10.0;
+            egui::Area::new("errors")
+                .order(Order::Foreground)
+                .anchor(
+                    Align2::RIGHT_BOTTOM,
+                    Vec2::new(-corner_offset, -corner_offset),
+                )
+                .show(&ctx, |ui| {
+                    let mut errors_to_remove = vec![];
+                    for (err_idx, error) in gui_state.errors.iter().enumerate() {
+                        egui::Frame {
+                            inner_margin: Margin {
+                                left: 4.0,
+                                right: 4.0,
+                                top: 4.0,
+                                bottom: 4.0,
+                            },
+                            ..Default::default()
+                        }
+                            .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+                            .rounding(ui.visuals().widgets.noninteractive.rounding)
+                            .show(ui, |ui| {
+                                ui.style_mut().wrap = Some(false);
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(error).color(egui::Color32::WHITE));
+                                    if ui.button("X").on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                                        errors_to_remove.push(err_idx);
+                                    }
+                                });
+                            });
+                    }
+                    for err_idx in errors_to_remove.iter().rev() {
+                        gui_state.errors.remove(*err_idx);
+                    }
+                });
         });
         let cb = self
             .frame

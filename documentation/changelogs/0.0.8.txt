@@ -6,3 +6,6 @@ Chunk Updates
 Card Editor
     Multicast modifier hovers
     Cooldown modifier hovers
+
+Multiplayer
+    warn when creating a lobby fails
