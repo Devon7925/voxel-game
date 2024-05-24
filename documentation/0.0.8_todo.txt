@@ -6,6 +6,3 @@ Rendering
     Improve ice rendering with depth based transparency
     Experiment with decreacing the impact of high frequency textures when far away to reduce aliasing problems
     Experiment with reflections
-    
-Multiplayer
-    warn when listing lobbies fails

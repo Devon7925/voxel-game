@@ -9,3 +9,4 @@ Card Editor
 
 Multiplayer
     warn when creating a lobby fails
+    warn when listing lobbies fails

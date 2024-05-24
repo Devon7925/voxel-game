@@ -825,7 +825,13 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 );
                                 vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
-                                        let lobby_list = gui_state.lobby_browser.get_lobbies();
+                                        let lobby_list = match gui_state.lobby_browser.get_lobbies() {
+                                            Ok(lobby_list) => lobby_list,
+                                            Err(err) => {
+                                                gui_state.errors.push(format!("Error getting lobbies: {}", err));
+                                                vec![]
+                                            }
+                                        };
                                         horizontal_centerer(ui, |ui| {
                                             if lobby_list.is_empty() {
                                                 ui.label("No lobbies found");
