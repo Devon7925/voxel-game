@@ -128,6 +128,7 @@ fn main() {
     };
 
     let mut next_frame_time = Instant::now();
+    let mut last_frame_time = Instant::now();
     loop {
         let should_continue = handle_events(
             &mut event_loop,
@@ -152,11 +153,19 @@ fn main() {
                     .unwrap_or(DEFAULT_DELTA_TIME),
             );
             let skip_render = if app.game.is_some() && !gui_state.game_just_started {
-                (Instant::now() - next_frame_time).as_secs_f32() > 0.0
+                if (Instant::now() - last_frame_time).as_secs_f32() > 2.0 {
+                    // enforce minimum frame rate of 0.5fps
+                    false
+                } else {
+                    (Instant::now() - next_frame_time).as_secs_f32() > 0.0
+                }
             } else {
                 next_frame_time = Instant::now();
                 false
             };
+            if !skip_render {
+                last_frame_time = Instant::now();
+            }
             gui_state.game_just_started = false;
             if let Some(game) = app.game.as_mut() {
                 game.rollback_data
@@ -194,7 +203,7 @@ fn main() {
                 .unwrap()
                 .downcast_ref::<Window>()
                 .unwrap();
-            window.set_cursor_visible(gui_state.menu_stack.len() > 0 && window.has_focus());
+            window.set_cursor_visible(gui_state.menu_stack.len() > 0 || !window.has_focus());
             if let Some(game) = app.game.as_mut() {
                 game.rollback_data.end_frame();
             }

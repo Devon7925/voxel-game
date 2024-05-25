@@ -10,3 +10,6 @@ Card Editor
 Multiplayer
     warn when creating a lobby fails
     warn when listing lobbies fails
+
+Rendering
+    decreaced the impact of high frequency textures when far away to reduce aliasing problems

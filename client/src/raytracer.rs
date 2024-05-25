@@ -249,6 +249,7 @@ impl PointLightingSystem {
             shadow_ray_dist: graphics_settings.shadow_ray_dist.into(),
             transparent_shadow_ray_dist: graphics_settings.transparent_shadow_ray_dist.into(),
             ao_ray_dist: graphics_settings.ao_ray_dist.into(),
+            vertical_resolution: viewport_dimensions[1],
         };
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();

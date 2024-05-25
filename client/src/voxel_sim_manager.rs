@@ -471,7 +471,6 @@ impl VoxelComputePipeline {
         F: GpuFuture + 'static,
     {
         puffin::profile_function!();
-        println!("available chunks: {}", self.available_chunks.len());
         let early_pipeline = if let Some(direction_to_unload) = self.slice_to_unload.clone() {
             let mut builder = AutoCommandBufferBuilder::primary(
                 self.command_buffer_allocator.as_ref(),

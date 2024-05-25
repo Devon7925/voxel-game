@@ -35,6 +35,7 @@ layout(push_constant) uniform PushConstants {
     uint shadow_ray_dist;
     uint transparent_shadow_ray_dist;
     uint ao_ray_dist;
+    uint vertical_resolution;
 } push_constants;
 
 layout(location = 0) in vec2 v_screen_coords;
@@ -88,7 +89,7 @@ const bool is_transparent[] = {
     true,
     true,
     false,
-};
+    };
 
 RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles) {
     uint offset = 0;
@@ -402,30 +403,31 @@ const MaterialRenderProps material_render_props[] = {
         ), 0.2, 0.0, vec3(0.8)),
     };
 
-MaterialProperties material_props(uint voxel_data, vec3 pos, vec3 in_normal) {
-    uint material = voxel_data >> 24;
-    uint data = voxel_data & 0xFFFFFF;
+MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) {
+    uint material = resultLayer.voxel_data >> 24;
+    uint data = resultLayer.voxel_data & 0xFFFFFF;
     if (material == MAT_AIR) {
         // air: invalid state
-        return MaterialProperties(vec3(1.0, 0.0, 0.0), in_normal, 0.0, 0.0);
+        return MaterialProperties(vec3(1.0, 0.0, 0.0), resultLayer.normal, 0.0, 0.0);
     } else if (material == MAT_OOB) {
         // out of bounds: invalid state
-        return MaterialProperties(vec3(0.0, 0.0, 1.0), in_normal, 0.0, 0.0);
+        return MaterialProperties(vec3(0.0, 0.0, 1.0), resultLayer.normal, 0.0, 0.0);
     } else if (material == MAT_PROJECTILE) {
-        return MaterialProperties(vec3(1.0, 0.3, 0.3), in_normal, 0.0, 0.5);
+        return MaterialProperties(vec3(1.0, 0.3, 0.3), resultLayer.normal, 0.0, 0.5);
     }
     MaterialRenderProps mat_render_props = material_render_props[material];
-    vec3 normal = in_normal;
+    vec3 normal = resultLayer.normal;
     vec3 color = mat_render_props.color;
     float shine = mat_render_props.shine;
     float transparency = mat_render_props.transparency;
     for (int layer_idx = 0; layer_idx < 3; layer_idx++) {
         MaterialNoiseLayer layer = mat_render_props.layers[layer_idx];
-        vec4 noise = voronoise(layer.scale * pos, 1.0, 1.0);
-        normal += layer.normal_impact * noise.xyz;
-        color += mix(layer.light_color, layer.dark_color, noise.w);
-        shine += layer.shine_impact * noise.w;
-        transparency += layer.transparency_impact * noise.w;
+        vec4 noise = voronoise(layer.scale * resultLayer.pos, 1.0, 1.0);
+        float distance_noise_factor = clamp(-0.25 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (resultLayer.dist * layer.scale), 0.0, 1.0);
+        normal += distance_noise_factor * layer.normal_impact * noise.xyz;
+        color += mix(layer.light_color, layer.dark_color, mix(0.5, (noise.w + 1.0) / 2.0, distance_noise_factor));
+        shine += distance_noise_factor * layer.shine_impact * noise.w;
+        transparency += distance_noise_factor * layer.transparency_impact * noise.w;
     }
     normal = normalize(normal);
     return MaterialProperties(
@@ -448,7 +450,7 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             color += multiplier * (sky_brightness * vec3(0.429, 0.608, 0.622) + vec3(0.1, 0.1, 0.4));
             break;
         }
-        MaterialProperties mat_props = material_props(primary_ray.layers[i].voxel_data, primary_ray.layers[i].pos, primary_ray.layers[i].normal);
+        MaterialProperties mat_props = material_props(primary_ray.layers[i], ray);
         color += (1 - mat_props.transparency) * multiplier * 0.05 * mat_props.color;
 
         RaycastResultLayer shade_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist, true);
