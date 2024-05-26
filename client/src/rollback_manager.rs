@@ -1959,10 +1959,10 @@ pub fn is_inbounds(
     game_state: &GameState,
     game_settings: &GameSettings,
 ) -> bool {
-    (global_pos / CHUNK_SIZE).zip(game_state.start_pos, |a, b| a >= b)
+    (global_pos / CHUNK_SIZE as u32).zip(game_state.start_pos, |a, b| a >= b)
         == Point3::new(true, true, true)
     &&
-    (global_pos / CHUNK_SIZE).zip(game_state.start_pos + game_settings.render_size, |a, b| {
+    (global_pos / CHUNK_SIZE as u32).zip(game_state.start_pos + game_settings.render_size, |a, b| {
         a < b
     }) == Point3::new(true, true, true)
 }
@@ -1977,12 +1977,12 @@ pub fn get_index(
         return None;
     }
     let chunk_pos =
-        (global_pos / CHUNK_SIZE).zip(Point3::from_vec(game_settings.render_size), |a, b| a % b);
-    let pos_in_chunk = global_pos % CHUNK_SIZE;
+        (global_pos / CHUNK_SIZE as u32).zip(Point3::from_vec(game_settings.render_size), |a, b| a % b);
+    let pos_in_chunk = global_pos % CHUNK_SIZE as u32;
     let chunk_idx = cpu_chunks[chunk_pos.x as usize][chunk_pos.y as usize][chunk_pos.z as usize];
     let idx_in_chunk =
-        pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE + pos_in_chunk.y * CHUNK_SIZE + pos_in_chunk.z;
-    Some(chunk_idx * CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE + idx_in_chunk)
+        pos_in_chunk.x * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 + pos_in_chunk.y * CHUNK_SIZE as u32 + pos_in_chunk.z;
+    Some(chunk_idx * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 + idx_in_chunk)
 }
 
 struct Hitsphere {
@@ -2279,7 +2279,7 @@ impl Entity {
                             } else {
                                 VoxelMaterial::Unloaded.to_memory()
                             };
-                            if voxel >> 24 != 0 {
+                            if voxel >> 24 != 0 && voxel >> 24 != 9 {
                                 if component != 1
                                     && prev_collision_vec[1] == 1
                                     && (pos - start_pos).y < 1.0
@@ -2364,7 +2364,7 @@ impl Entity {
                 } else {
                     VoxelMaterial::Unloaded.to_memory()
                 };
-                if voxel >> 24 != 0 {
+                if voxel >> 24 != 0 && voxel >> 24 != 9 {
                     return false;
                 }
             }

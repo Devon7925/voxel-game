@@ -3,42 +3,27 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks;
-layout(set = 0, binding = 1) buffer VoxelBuffer {
+layout(set = 0, binding = 0) buffer VoxelBuffer {
     uint voxels[];
 };
-layout(set = 0, binding = 2) buffer ChunkLoads {
+layout(set = 0, binding = 1) buffer ChunkLoads {
     ivec4 chunk_loads[];
 };
 
-layout(set = 0, binding = 3) uniform SimData {
+layout(set = 0, binding = 2) uniform SimData {
     uvec3 render_size;
     uvec3 start_pos;
+    uint count;
 } sim_data;
 
-layout(set = 0, binding = 4) buffer Projectiles {
-    Projectile projectiles[];
+layout(set = 0, binding = 3) buffer ChunkLoadResults {
+    uint load_results[];
 };
 
-uint get_index(uvec3 global_pos) {
-    uvec4 indicies = get_indicies(global_pos, sim_data.render_size);
-    return imageLoad(chunks, ivec3(indicies.xyz)).x * CHUNK_VOLUME + indicies.w;
-}
-
-uint get_data_unchecked(uvec3 global_pos) {
-    return voxels[get_index(global_pos)];
-}
-
-uint get_data(uvec3 global_pos) {
-    uvec3 start_offset = CHUNK_SIZE * sim_data.start_pos;
-    if (any(lessThan(global_pos, start_offset))) return MAT_OOB << 24;
-    uvec3 rel_pos = global_pos - start_offset;
-    if (any(greaterThanEqual(rel_pos, CHUNK_SIZE * sim_data.render_size))) return MAT_OOB << 24;
-    return get_data_unchecked(global_pos);
-}
-
-void set_data(uvec3 global_pos, uint data) {
-    voxels[get_index(global_pos)] = data;
+void set_data_in_chunk(uvec3 global_pos, uint chunk_idx, uint data) {
+    uvec3 pos_in_chunk = global_pos & POS_IN_CHUNK_MASK;
+    uint idx_in_chunk = pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE + pos_in_chunk.y * CHUNK_SIZE + pos_in_chunk.z;
+    voxels[chunk_idx * CHUNK_VOLUME + idx_in_chunk] = data;
 }
 
 uint get_worldgen(uvec3 global_pos) {
@@ -68,6 +53,9 @@ uint get_worldgen(uvec3 global_pos) {
 void main() {
     uvec3 pos = gl_WorkGroupSize * chunk_loads[gl_WorkGroupID.x].xyz + gl_LocalInvocationID;
     uvec4 indicies = get_indicies(pos, sim_data.render_size);
-    imageStore(chunks, ivec3(indicies.xyz), uvec4(chunk_loads[gl_WorkGroupID.x].w));
-    set_data(pos, get_worldgen(pos));
+    uint data = get_worldgen(pos);
+    set_data_in_chunk(pos, chunk_loads[gl_WorkGroupID.x].w, data);
+    if (data >> 24 != MAT_AIR) {
+        load_results[gl_WorkGroupID.x / 8] = chunk_loads[gl_WorkGroupID.x].w;
+    }
 }

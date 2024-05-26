@@ -1,5 +1,4 @@
 Chunk Updates
-    Allow for all air chunks to be unloaded
     Prioritize updates near players
 
 Rendering

@@ -89,6 +89,7 @@ const bool is_transparent[] = {
     true,
     true,
     false,
+    true,
     };
 
 RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles) {
@@ -154,7 +155,17 @@ RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool 
     for (uint i = 0; i < max_iterations; i++) {
         vec3 floor_pos = floor(ray_pos);
         voxel_data = get_data(uvec3(floor_pos));
-        if (voxel_data >> 24 != MAT_AIR) {
+        vec3 v_min;
+        vec3 v_max;
+        uint voxel_material = voxel_data >> 24;
+        if (voxel_material == MAT_AIR) {
+            uint dist = get_dist(voxel_data, offset);
+            v_min = floor_pos - vec3(dist);
+            v_max = floor_pos + vec3(dist + 1);
+        } else if (voxel_material == MAT_AIR_OOB) {
+            v_min = floor(ray_pos / CHUNK_SIZE) * CHUNK_SIZE;
+            v_max = v_min + vec3(CHUNK_SIZE);
+        } else {
             did_hit = true;
             end_ray_pos = ray_pos;
             end_depth = depth;
@@ -163,9 +174,6 @@ RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool 
             end_depth = depth;
             break;
         }
-        uint dist = get_dist(voxel_data, offset);
-        vec3 v_min = floor_pos - vec3(dist);
-        vec3 v_max = floor_pos + vec3(dist + 1);
         vec3 delta = ray_box_dist(ray_pos, ray, v_min, v_max);
         float dist_diff = min(delta.x, min(delta.y, delta.z));
         depth += dist_diff;
@@ -222,19 +230,26 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         voxel_data = get_data(uvec3(floor_pos));
         uint dist = 0;
         uint voxel_material = voxel_data >> 24;
+        vec3 v_min;
+        vec3 v_max;
         if (voxel_material == MAT_AIR) {
             dist = get_dist(voxel_data, offset);
+            v_min = floor_pos - vec3(dist);
+            v_max = floor_pos + vec3(dist + 1);
+        } else if (voxel_material == MAT_AIR_OOB) {
+            v_min = floor(ray_pos / CHUNK_SIZE) * CHUNK_SIZE;
+            v_max = v_min + vec3(CHUNK_SIZE);
         } else if (is_transparent[voxel_material]) {
             layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
             layer_idx++;
             if (layer_idx >= LAYER_COUNT) break;
+            v_min = floor_pos - vec3(dist);
+            v_max = floor_pos + vec3(dist + 1);
         } else {
             layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
             layer_idx++;
             break;
         }
-        vec3 v_min = floor_pos - vec3(dist);
-        vec3 v_max = floor_pos + vec3(dist + 1);
         vec3 delta = ray_box_dist(ray_pos, ray, v_min, v_max);
         float dist_diff = min(delta.x, min(delta.y, delta.z));
         if (depth + dist_diff > raster_depth && raster_depth > 0) {
@@ -401,12 +416,18 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
         ), 0.2, 0.0, vec3(0.8)),
+    // AIR OOB
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.0, 1.0, vec3(0.0)),
     };
 
 MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) {
     uint material = resultLayer.voxel_data >> 24;
     uint data = resultLayer.voxel_data & 0xFFFFFF;
-    if (material == MAT_AIR) {
+    if (material == MAT_AIR || material == MAT_AIR_OOB) {
         // air: invalid state
         return MaterialProperties(vec3(1.0, 0.0, 0.0), resultLayer.normal, 0.0, 0.0);
     } else if (material == MAT_OOB) {

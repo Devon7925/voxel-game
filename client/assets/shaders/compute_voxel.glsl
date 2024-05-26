@@ -41,6 +41,7 @@ uint get_data(uvec3 global_pos) {
 void set_data(uvec3 global_pos, uint data) {
     uint og_voxel_data = get_data(global_pos);
     if (og_voxel_data >> 24 == MAT_OOB) return;
+    if (og_voxel_data >> 24 == MAT_AIR_OOB) return;
     if (og_voxel_data != data) {
         uvec3 pos_in_chunk = global_pos & 0xF;
         int modification_flags = 0x1;
@@ -95,11 +96,14 @@ void main() {
                         if (pos_data[dir.x][dir.y][dir.z].x == MAT_OOB) {
                             direction_dist = min(direction_dist, bitfieldExtract(pos_data[i][j][k].y, offset, 3));
                             continue;
-                        } else if (pos_data[dir.x][dir.y][dir.z].x != MAT_AIR) {
-                            direction_dist = 0;
-                            break;
+                        } else if (pos_data[dir.x][dir.y][dir.z].x == MAT_AIR) {
+                            direction_dist = min(direction_dist, bitfieldExtract(pos_data[dir.x][dir.y][dir.z].y, offset, 3) + 1);
+                            continue;
+                        } else if (pos_data[dir.x][dir.y][dir.z].x == MAT_AIR_OOB) {
+                            continue;
                         }
-                        direction_dist = min(direction_dist, bitfieldExtract(pos_data[dir.x][dir.y][dir.z].y, offset, 3) + 1);
+                        direction_dist = 0;
+                        break;
                     }
                     pos_data[i][j][k].y = bitfieldInsert(pos_data[i][j][k].y, direction_dist, offset, 3);
                 }

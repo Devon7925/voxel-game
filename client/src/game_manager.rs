@@ -41,7 +41,7 @@ impl Game {
         let game_state = GameState {
             start_pos: game_settings.spawn_location.zip(
                 Point3::from_vec(game_settings.render_size),
-                |spawn, size| spawn as u32 / CHUNK_SIZE - size / 2,
+                |spawn, size| spawn as u32 / CHUNK_SIZE as u32 - size / 2,
             ),
             players_center: game_settings.spawn_location.into(),
         };
@@ -91,7 +91,7 @@ impl Game {
         let game_state = GameState {
             start_pos: game_settings.spawn_location.zip(
                 Point3::from_vec(game_settings.render_size),
-                |spawn, size| spawn as u32 / CHUNK_SIZE - size / 2,
+                |spawn, size| spawn as u32 / CHUNK_SIZE as u32 - size / 2,
             ),
             players_center: game_settings.spawn_location.into(),
         };

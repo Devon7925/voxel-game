@@ -28,7 +28,7 @@ singleplayer_settings:
     player_count: 1
     render_size:
       x: 32
-      y: 16
+      y: 32
       z: 32
     spawn_location: 
       x: 10000.0

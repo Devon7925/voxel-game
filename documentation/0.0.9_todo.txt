@@ -4,3 +4,7 @@ Card Editor
     Basic keybind editing
 
 Settings editor
+
+Check how trying to put voxels in AIR_OOB chunks is handled
+
+Clean up voxel_sim_manager

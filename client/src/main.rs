@@ -41,9 +41,9 @@ use winit::{
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
-pub const CHUNK_SIZE: u32 = 16;
-const SUB_CHUNK_COUNT: u32 = CHUNK_SIZE / 16;
-const WORLDGEN_CHUNK_COUNT: u32 = CHUNK_SIZE / 8;
+pub const CHUNK_SIZE: usize = 16;
+const SUB_CHUNK_COUNT: usize = CHUNK_SIZE / 16;
+const WORLDGEN_CHUNK_COUNT: usize = CHUNK_SIZE / 8;
 
 const MAX_CHUNK_UPDATE_RATE: usize = 1024;
 const MAX_WORLDGEN_RATE: usize = 1024;
@@ -431,7 +431,7 @@ fn compute_then_render(
                 // ensure chunks near players are loaded
                 const NEARBY_CHUNK_RANGE: i32 = 2;
                 for player in game.rollback_data.get_players() {
-                    let player_chunk = player.pos.map(|e| e as u32 / CHUNK_SIZE);
+                    let player_chunk = player.pos.map(|e| e as u32 / CHUNK_SIZE as u32);
                     for x in -NEARBY_CHUNK_RANGE..=NEARBY_CHUNK_RANGE {
                         for y in -NEARBY_CHUNK_RANGE..=NEARBY_CHUNK_RANGE {
                             for z in -NEARBY_CHUNK_RANGE..=NEARBY_CHUNK_RANGE {
@@ -479,7 +479,7 @@ fn compute_then_render(
                     let player_average_center = game
                         .game_state
                         .players_center
-                        .map(|e| e as u32 / CHUNK_SIZE);
+                        .map(|e| e as u32 / CHUNK_SIZE as u32);
                     let distance = player_average_center
                         .zip(current_center, |a, b| a as i32 - b as i32)
                         .to_vec();

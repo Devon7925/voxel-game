@@ -358,8 +358,11 @@ pub enum VoxelMaterial {
     Unloaded,
     Dirt,
     Grass,
+    Projectile,
     Ice,
     Glass,
+    Player,
+    UnloadedAir,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -389,7 +392,7 @@ pub enum StatusEffect {
 }
 
 impl VoxelMaterial {
-    pub const FRICTION_COEFFICIENTS: [f32; 8] = [0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 0.1, 1.0];
+    pub const FRICTION_COEFFICIENTS: [f32; 10] = [0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 0.1, 1.0, 0.0, 0.0];
     pub fn to_memory(&self) -> u32 {
         match self {
             VoxelMaterial::Air => 0 << 24,
@@ -397,8 +400,11 @@ impl VoxelMaterial {
             VoxelMaterial::Unloaded => 2 << 24,
             VoxelMaterial::Dirt => 3 << 24,
             VoxelMaterial::Grass => 4 << 24,
+            VoxelMaterial::Projectile => 5 << 24,
             VoxelMaterial::Ice => 6 << 24,
             VoxelMaterial::Glass => 7 << 24,
+            VoxelMaterial::Player => 8 << 24,
+            VoxelMaterial::UnloadedAir => 9 << 24,
         }
     }
 }
@@ -754,8 +760,11 @@ impl BaseCard {
                     VoxelMaterial::Unloaded => panic!("Invalid state"),
                     VoxelMaterial::Dirt => 0.5,
                     VoxelMaterial::Grass => 0.5,
+                    VoxelMaterial::Projectile => panic!("Invalid state"),
                     VoxelMaterial::Ice => 2.0,
                     VoxelMaterial::Glass => 1.5,
+                    VoxelMaterial::Player => panic!("Invalid state"),
+                    VoxelMaterial::UnloadedAir => panic!("Invalid state"),
                 };
                 vec![CardValue {
                     damage: 0.0,
