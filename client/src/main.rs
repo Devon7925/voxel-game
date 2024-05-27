@@ -46,6 +46,7 @@ const SUB_CHUNK_COUNT: usize = CHUNK_SIZE / 16;
 const WORLDGEN_CHUNK_COUNT: usize = CHUNK_SIZE / 8;
 
 const MAX_CHUNK_UPDATE_RATE: usize = 1024;
+const MAX_VOXEL_UPDATE_RATE: usize = 1024;
 const MAX_WORLDGEN_RATE: usize = 1024;
 
 const DEFAULT_DELTA_TIME: f32 = 1.0 / 60.0;

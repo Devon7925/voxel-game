@@ -1611,13 +1611,8 @@ impl WorldState {
 
         // update voxels
         if is_real_update && voxels_to_write.len() > 0 {
-            let mut writer = voxels.write().unwrap();
             for (pos, material) in voxels_to_write {
-                vox_compute.queue_update_from_voxel_pos(&[pos.x, pos.y, pos.z], game_settings);
-                let Some(index) = get_index(pos, &vox_compute.cpu_chunks(), game_state, game_settings) else {
-                    panic!("voxel out of bounds");
-                };
-                writer[index as usize] = material;
+                vox_compute.queue_voxel_write([pos[0], pos[1], pos[2], material]);
             }
         }
 

@@ -8,3 +8,5 @@ Settings editor
 Check how trying to put voxels in AIR_OOB chunks is handled
 
 Clean up voxel_sim_manager
+
+Add cooldown for cooldown update to prevent spamming causing lag
