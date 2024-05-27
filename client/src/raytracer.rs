@@ -182,10 +182,10 @@ impl PointLightingSystem {
                 start_pos: game.game_state.start_pos.into(),
             };
 
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
+            let uniform_subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *uniform_subbuffer.write().unwrap() = uniform_data;
 
-            subbuffer
+            uniform_subbuffer
         };
 
         PersistentDescriptorSet::new(

@@ -1,9 +1,9 @@
 Chunk Updates
     Prioritize updates near players
+    Convert voxel writing to compute shader
 
 Rendering
     Improve ice rendering with depth based transparency
-    Experiment with mixing textures on voxel borders
     Experiment with pbr(https://learnopengl.com/PBR/Theory)
         Trowbridge-Reitz GGX
         Schlick-GGX

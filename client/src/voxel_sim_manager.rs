@@ -678,10 +678,10 @@ impl VoxelComputePipeline {
                 component: direction.component_index() as u32,
             };
 
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
+            let uniform_subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *uniform_subbuffer.write().unwrap() = uniform_data;
 
-            subbuffer
+            uniform_subbuffer
         };
 
         let sim_uniform_buffer_subbuffer = {
@@ -690,10 +690,10 @@ impl VoxelComputePipeline {
                 start_pos: game_state.start_pos.into(),
             };
 
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
+            let uniform_subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *uniform_subbuffer.write().unwrap() = uniform_data;
 
-            subbuffer
+            uniform_subbuffer
         };
 
         let set = PersistentDescriptorSet::new(
@@ -800,10 +800,10 @@ impl VoxelComputePipeline {
                 count: self.last_worldgen_count as u32,
             };
 
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
+            let uniform_subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *uniform_subbuffer.write().unwrap() = uniform_data;
 
-            subbuffer
+            uniform_subbuffer
         };
 
         let compute_set = PersistentDescriptorSet::new(
@@ -840,10 +840,10 @@ impl VoxelComputePipeline {
                 count: self.last_worldgen_count as u32,
             };
 
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
+            let uniform_subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *uniform_subbuffer.write().unwrap() = uniform_data;
 
-            subbuffer
+            uniform_subbuffer
         };
 
         let complete_set = PersistentDescriptorSet::new(
@@ -930,10 +930,10 @@ impl VoxelComputePipeline {
                 update_offset: self.chunk_update_queue.queue_set_idx().into(),
             };
 
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
+            let uniform_subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *uniform_subbuffer.write().unwrap() = uniform_data;
 
-            subbuffer
+            uniform_subbuffer
         };
 
         let set = PersistentDescriptorSet::new(

@@ -209,10 +209,10 @@ impl RasterizerSystem {
                 proj: proj.into(),
             };
 
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
+            let uniform_subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *uniform_subbuffer.write().unwrap() = uniform_data;
 
-            subbuffer
+            uniform_subbuffer
         };
 
         let mut player_writer = self.player_instance_data.write().unwrap();
@@ -243,10 +243,10 @@ impl RasterizerSystem {
                 material_color: [1.0, 0.0, 0.0, 0.0],
             };
 
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
+            let uniform_subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *uniform_subbuffer.write().unwrap() = uniform_data;
 
-            subbuffer
+            uniform_subbuffer
         };
         let player_descriptor_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,

@@ -197,10 +197,10 @@ impl ProjectileComputePipeline {
                 projectile_count: self.upload_projectile_count as u32,
             };
 
-            let subbuffer = self.uniform_buffer.allocate_sized().unwrap();
-            *subbuffer.write().unwrap() = uniform_data;
+            let uniform_subbuffer = self.uniform_buffer.allocate_sized().unwrap();
+            *uniform_subbuffer.write().unwrap() = uniform_data;
 
-            subbuffer
+            uniform_subbuffer
         };
         let set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,

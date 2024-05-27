@@ -342,6 +342,7 @@ struct MaterialProperties {
     vec3 normal;
     float shine;
     float transparency;
+    float height;
 };
 
 struct MaterialNoiseLayer {
@@ -429,23 +430,25 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
     uint data = resultLayer.voxel_data & 0xFFFFFF;
     if (material == MAT_AIR || material == MAT_AIR_OOB) {
         // air: invalid state
-        return MaterialProperties(vec3(1.0, 0.0, 0.0), resultLayer.normal, 0.0, 0.0);
+        return MaterialProperties(vec3(1.0, 0.0, 0.0), resultLayer.normal, 0.0, 0.0, 0.0);
     } else if (material == MAT_OOB) {
         // out of bounds: invalid state
-        return MaterialProperties(vec3(0.0, 0.0, 1.0), resultLayer.normal, 0.0, 0.0);
+        return MaterialProperties(vec3(0.0, 0.0, 1.0), resultLayer.normal, 0.0, 0.0, 0.0);
     } else if (material == MAT_PROJECTILE) {
-        return MaterialProperties(vec3(1.0, 0.3, 0.3), resultLayer.normal, 0.0, 0.5);
+        return MaterialProperties(vec3(1.0, 0.3, 0.3), resultLayer.normal, 0.0, 0.5, 0.0);
     }
     MaterialRenderProps mat_render_props = material_render_props[material];
     vec3 normal = resultLayer.normal;
     vec3 color = mat_render_props.color;
     float shine = mat_render_props.shine;
     float transparency = mat_render_props.transparency;
+    float height = 0;
     for (int layer_idx = 0; layer_idx < 3; layer_idx++) {
         MaterialNoiseLayer layer = mat_render_props.layers[layer_idx];
-        vec4 noise = voronoise(layer.scale * resultLayer.pos, 1.0, 1.0);
+        vec4 noise = grad_noise(layer.scale * resultLayer.pos);
         float distance_noise_factor = clamp(-0.25 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (resultLayer.dist * layer.scale), 0.0, 1.0);
-        normal += distance_noise_factor * layer.normal_impact * noise.xyz;
+        normal += distance_noise_factor * layer.normal_impact * noise.xyz * (vec3(1)-abs(resultLayer.normal));
+        height += distance_noise_factor * layer.normal_impact * noise.w;
         color += mix(layer.light_color, layer.dark_color, mix(0.5, (noise.w + 1.0) / 2.0, distance_noise_factor));
         shine += distance_noise_factor * layer.shine_impact * noise.w;
         transparency += distance_noise_factor * layer.transparency_impact * noise.w;
@@ -455,8 +458,59 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
         color * (1.0 - float(data) / material_damage_threshhold[material]),
         normal,
         shine,
-        transparency
+        transparency,
+        height
     );
+}
+
+struct HeightData {
+    float offset;
+    float scale;
+    float impact;
+};
+
+const HeightData height_data[] = {
+    HeightData(0.0, 0.0, 0.0),
+    HeightData(0.0, 2.0, 0.35),
+    HeightData(0.0, 0.0, 0.0),
+    HeightData(0.0, 7.0, 0.2),
+    HeightData(0.0, 20.0, 0.5),
+    HeightData(0.0, 0.0, 0.0),
+    HeightData(0.0, 2.0, 0.35),
+    HeightData(0.0, 1.0, 0.35),
+    HeightData(0.0, 0.0, 0.0),
+    HeightData(0.0, 0.0, 0.0),
+};
+
+MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_dir) {
+    vec3 relative_pos = resultLayer.pos - floor(resultLayer.pos) - 0.5;
+    vec3 weights = abs(relative_pos);
+    uint result_vox = resultLayer.voxel_data;
+    HeightData voxel_height_data = height_data[result_vox >> 24];
+    float result_height = voxel_height_data.offset + voxel_height_data.impact * grad_noise(voxel_height_data.scale * resultLayer.pos).w - weights.x * weights.y * weights.z;
+    for (int i = 1; i < 8; i++) {
+        uint voxel = get_data(uvec3(floor(resultLayer.pos) + vec3(float(i & 1), float((i & 2) >> 1), float((i & 4) >> 2)) * sign(relative_pos)));
+        if (
+            voxel >> 24 == MAT_OOB
+                || voxel >> 24 == MAT_AIR
+                || voxel >> 24 == MAT_AIR_OOB
+        ) continue;
+        float weight = 1.0;
+        if ((i & 1) > 0) weight *= 1.0 - weights.x;
+        else weight *= weights.x;
+        if ((i & 2) > 0) weight *= 1.0 - weights.y;
+        else weight *= weights.y;
+        if ((i & 4) > 0) weight *= 1.0 - weights.z;
+        else weight *= weights.z;
+        voxel_height_data = height_data[voxel >> 24];
+        float height = voxel_height_data.offset + voxel_height_data.impact * grad_noise(voxel_height_data.scale * resultLayer.pos).w - weight;
+        if (height > result_height) {
+            result_height = height;
+            result_vox = voxel;
+        }
+    }
+    resultLayer.voxel_data = result_vox;
+    return material_props(resultLayer, ray_dir);
 }
 
 vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
@@ -471,7 +525,7 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             color += multiplier * (sky_brightness * vec3(0.429, 0.608, 0.622) + vec3(0.1, 0.1, 0.4));
             break;
         }
-        MaterialProperties mat_props = material_props(primary_ray.layers[i], ray);
+        MaterialProperties mat_props = position_material(primary_ray.layers[i], ray);
         color += (1 - mat_props.transparency) * multiplier * 0.05 * mat_props.color;
 
         RaycastResultLayer shade_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist, true);
