@@ -7,9 +7,6 @@ Rendering
         Trowbridge-Reitz GGX
         Schlick-GGX
         Fresnel Equation + Reflections
-    Fix texture anti-aliasing
-        New noise functions
-        Material mixing
     
 Investigate projectiles not launching
 
