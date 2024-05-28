@@ -2056,6 +2056,7 @@ impl Entity {
             let mut move_vec = Vector3::new(0.0, 0.0, 0.0);
             let player_forward = horizontal_rot * Vector3::new(0.0, 0.0, 1.0);
             let player_right = horizontal_rot * Vector3::new(-1.0, 0.0, 0.0);
+            let mut speed_multiplier = 1.0;
             if action.forward {
                 move_vec += player_forward;
             }
@@ -2073,11 +2074,12 @@ impl Entity {
             }
             if action.crouch {
                 move_vec -= Vector3::new(0.0, 0.5, 0.0);
+                speed_multiplier = 0.5;
             }
             if move_vec.magnitude() > 0.0 {
                 move_vec = move_vec.normalize();
             }
-            let accel_speed = player_stats[player_idx].speed
+            let accel_speed = speed_multiplier * player_stats[player_idx].speed
                 * if self.collision_vec != Vector3::new(0, 0, 0) {
                     80.0
                 } else {

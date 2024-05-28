@@ -228,12 +228,11 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
     for (uint i = 0; i < max_iterations; i++) {
         vec3 floor_pos = floor(ray_pos);
         voxel_data = get_data(uvec3(floor_pos));
-        uint dist = 0;
         uint voxel_material = voxel_data >> 24;
         vec3 v_min;
         vec3 v_max;
         if (voxel_material == MAT_AIR) {
-            dist = get_dist(voxel_data, offset);
+            uint dist = get_dist(voxel_data, offset);
             v_min = floor_pos - vec3(dist);
             v_max = floor_pos + vec3(dist + 1);
         } else if (voxel_material == MAT_AIR_OOB) {
@@ -243,8 +242,8 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
             layer_idx++;
             if (layer_idx >= LAYER_COUNT) break;
-            v_min = floor_pos - vec3(dist);
-            v_max = floor_pos + vec3(dist + 1);
+            v_min = floor_pos;
+            v_max = floor_pos + vec3(1);
         } else {
             layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
             layer_idx++;
@@ -401,8 +400,8 @@ const MaterialRenderProps material_render_props[] = {
         ), 0.0, 0.5, vec3(1.0, 0.3, 0.3)),
     // ICE
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(2.0, 0.35, 0.1, 0.1, vec3(0.1, 0.1, 0.35), vec3(0.0)),
-            MaterialNoiseLayer(20.0, 0.2, 0.2, 0.05, vec3(0.1), vec3(-0.1)),
+            MaterialNoiseLayer(1.7, 0.2, 0.1, 0.1, vec3(0.1, 0.1, 0.35), vec3(0.0)),
+            MaterialNoiseLayer(21.0, 0.1, 0.1, 0.05, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.05, vec3(0.1), vec3(-0.1))
         ), 0.35, 0.3, vec3(0.65)),
     // GLASS
@@ -471,16 +470,16 @@ struct HeightData {
 
 const HeightData height_data[] = {
     HeightData(0.0, 0.0, 0.0),
-    HeightData(0.2, 2.0, 0.35),
+    HeightData(0.2, 2.0, 0.5),
     HeightData(0.0, 0.0, 0.0),
     HeightData(0.4, 7.0, 0.2),
     HeightData(0.6, 20.0, 0.5),
     HeightData(0.0, 0.0, 0.0),
-    HeightData(0.8, 2.0, 0.35),
+    HeightData(0.8, 1.7, 0.3),
     HeightData(0.1, 1.0, 0.35),
     HeightData(0.0, 0.0, 0.0),
     HeightData(0.0, 0.0, 0.0),
-};
+    };
 
 MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_dir) {
     if (resultLayer.voxel_data >> 24 == MAT_PLAYER || resultLayer.voxel_data >> 24 == MAT_PROJECTILE) {
@@ -507,7 +506,7 @@ MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_di
         else weight *= weights.z;
         voxel_height_data = height_data[voxel >> 24];
         float distance_noise_factor = clamp(-0.1 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (resultLayer.dist * voxel_height_data.scale), 0.0, 1.0);
-        float height = (voxel_height_data.offset + voxel_height_data.impact * distance_noise_factor * grad_noise(voxel_height_data.scale * resultLayer.pos).w) * weight;
+        float height = (voxel_height_data.offset - voxel_height_data.impact * distance_noise_factor * grad_noise(voxel_height_data.scale * resultLayer.pos).w) * weight;
         if (height > result_height) {
             result_height = height;
             result_vox = voxel;
