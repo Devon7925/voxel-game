@@ -483,6 +483,9 @@ const HeightData height_data[] = {
 };
 
 MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_dir) {
+    if (resultLayer.voxel_data >> 24 == MAT_PLAYER || resultLayer.voxel_data >> 24 == MAT_PROJECTILE) {
+        return material_props(resultLayer, ray_dir);
+    }
     vec3 relative_pos = resultLayer.pos - floor(resultLayer.pos) - 0.5;
     vec3 weights = abs(relative_pos);
     uint result_vox = resultLayer.voxel_data;
