@@ -8,7 +8,6 @@ use cgmath::{EuclideanSpace, Point3};
 use crate::{
     app::CreationInterface,
     card_system::{CardManager, Cooldown},
-    projectile_sim_manager::ProjectileComputePipeline,
     rollback_manager::{PlayerSim, ReplayData, RollbackData},
     settings_manager::Settings,
     voxel_sim_manager::VoxelComputePipeline,
@@ -18,7 +17,6 @@ use voxel_shared::{GameSettings, RoomId};
 
 pub struct Game {
     pub voxel_compute: VoxelComputePipeline,
-    pub projectile_compute: ProjectileComputePipeline,
     pub rollback_data: Box<dyn PlayerSim>,
     pub card_manager: CardManager,
     pub game_state: GameState,
@@ -57,13 +55,11 @@ impl Game {
         ));
 
         let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);
-        let projectile_compute = ProjectileComputePipeline::new(creation_interface);
 
         voxel_compute.queue_update_from_world_pos(&game_settings.spawn_location, &game_settings);
 
         Game {
             voxel_compute,
-            projectile_compute,
             rollback_data,
             card_manager,
             game_state,
@@ -105,13 +101,11 @@ impl Game {
         ));
 
         let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);
-        let projectile_compute = ProjectileComputePipeline::new(creation_interface);
 
         voxel_compute.queue_update_from_world_pos(&game_settings.spawn_location, &game_settings);
 
         Game {
             voxel_compute,
-            projectile_compute,
             rollback_data,
             card_manager,
             game_state,

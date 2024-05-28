@@ -5,7 +5,6 @@ mod gui;
 mod lobby_browser;
 mod multipass_system;
 mod networking;
-mod projectile_sim_manager;
 mod rasterizer;
 mod raytracer;
 mod rollback_manager;
@@ -448,9 +447,7 @@ fn compute_then_render(
                 // Compute.
                 game.rollback_data.download_projectiles(
                     &game.card_manager,
-                    &game.projectile_compute,
                     &mut game.voxel_compute,
-                    &game.game_state,
                     &game.game_settings,
                 );
                 game.rollback_data.step_rollback(
@@ -509,17 +506,10 @@ fn compute_then_render(
                     }
                 }
 
-                game.projectile_compute
+                game.voxel_compute
                     .upload(game.rollback_data.get_rollback_projectiles());
-                let after_proj_compute = game.projectile_compute.compute(
-                    future,
-                    &game.game_state,
-                    &game.game_settings,
-                    &game.rollback_data,
-                    &game.voxel_compute,
-                );
                 game.voxel_compute.compute(
-                    after_proj_compute,
+                    future,
                     &mut game.game_state,
                     &game.game_settings,
                 )

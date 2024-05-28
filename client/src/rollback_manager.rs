@@ -27,9 +27,8 @@ use crate::{
     game_manager::GameState,
     gui::{GuiElement, GuiState},
     networking::{NetworkConnection, NetworkPacket},
-    projectile_sim_manager::{Projectile, ProjectileComputePipeline},
     settings_manager::{Control, Settings},
-    voxel_sim_manager::VoxelComputePipeline,
+    voxel_sim_manager::{Projectile, VoxelComputePipeline},
     WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
 };
 use voxel_shared::{GameSettings, RoomId, WorldGenSettings};
@@ -67,9 +66,7 @@ pub trait PlayerSim {
     fn download_projectiles(
         &mut self,
         card_manager: &CardManager,
-        projectile_compute: &ProjectileComputePipeline,
-        vox_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
+        voxel_compute: &mut VoxelComputePipeline,
         game_settings: &GameSettings,
     );
 
@@ -490,15 +487,11 @@ impl PlayerSim for RollbackData {
     fn download_projectiles(
         &mut self,
         card_manager: &CardManager,
-        projectile_compute: &ProjectileComputePipeline,
         vox_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
         game_settings: &GameSettings,
     ) {
-        self.rollback_state.projectiles = projectile_compute.download_projectiles(
+        self.rollback_state.projectiles = vox_compute.download_projectiles(
             card_manager,
-            vox_compute,
-            game_state,
             game_settings,
         );
     }
@@ -1103,15 +1096,11 @@ impl PlayerSim for ReplayData {
     fn download_projectiles(
         &mut self,
         card_manager: &CardManager,
-        projectile_compute: &ProjectileComputePipeline,
         vox_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
         game_settings: &GameSettings,
     ) {
-        self.state.projectiles = projectile_compute.download_projectiles(
+        self.state.projectiles = vox_compute.download_projectiles(
             card_manager,
-            vox_compute,
-            game_state,
             game_settings,
         );
     }

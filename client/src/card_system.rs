@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
 use serde::{Deserialize, Serialize};
 
-use crate::{gui::ModificationType, projectile_sim_manager::Projectile, settings_manager::Control};
+use crate::{gui::ModificationType, voxel_sim_manager::Projectile, settings_manager::Control};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Cooldown {

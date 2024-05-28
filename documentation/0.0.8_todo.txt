@@ -7,5 +7,3 @@ Rendering
         Trowbridge-Reitz GGX
         Schlick-GGX
         Fresnel Equation + Reflections
-
-Fix crash panic occurred: "called `Validated::unwrap` on a `ValidationError` value: access to a resource has been denied (resource use: Some(ResourceUseRef { command_index: 3, command_name: \"execute_commands\", resource_in_command: SecondaryCommandBuffer { index: 0 }, secondary_use_ref: Some(SecondaryResourceUseRef { command_index: 5, command_name: \"draw\", resource_in_command: DescriptorSet { set: 1, binding: 1, index: 0 } }) }), error: the resource is already in use, and there is no tracking of concurrent usages)" at C:\Users\impor\.cargo\registry\src\index.crates.io-6f17d22bba15001f\vulkano-0.34.1\src\lib.rs:445:17

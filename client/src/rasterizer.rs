@@ -262,7 +262,7 @@ impl RasterizerSystem {
         let mut builder = AutoCommandBufferBuilder::secondary(
             self.command_buffer_allocator.as_ref(),
             self.gfx_queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
+            CommandBufferUsage::OneTimeSubmit,
             CommandBufferInheritanceInfo {
                 render_pass: Some(self.subpass.clone().into()),
                 ..Default::default()
