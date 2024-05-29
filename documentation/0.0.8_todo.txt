@@ -1,7 +1,3 @@
 Chunk Updates
     Update priority system
     Check if newly loaded chunks are visible for chunk loading
-
-Rendering
-    Fix player rendering
-    Fix projectile rendering

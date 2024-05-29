@@ -400,7 +400,7 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 0.5, vec3(1.0, 0.3, 0.3)),
+        ), 0.0, 1.0, 0.5, vec3(1.0, 0.3, 0.3)),
     // ICE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(1.7, 0.2, 0.1, 0.1, vec3(0.1, 0.1, 0.35), vec3(0.0)),
@@ -430,16 +430,16 @@ const MaterialRenderProps material_render_props[] = {
 MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) {
     uint material = resultLayer.voxel_data >> 24;
     uint data = resultLayer.voxel_data & 0xFFFFFF;
+    MaterialRenderProps mat_render_props = material_render_props[material];
     if (material == MAT_AIR || material == MAT_AIR_OOB) {
         // air: invalid state
         return MaterialProperties(vec3(1.0, 0.0, 0.0), resultLayer.normal, 0.0, 0.0, 0.0, 0.0, 0.0);
     } else if (material == MAT_OOB) {
         // out of bounds: invalid state
         return MaterialProperties(vec3(0.0, 0.0, 1.0), resultLayer.normal, 0.0, 0.0, 0.0, 0.0, 0.0);
-    } else if (material == MAT_PROJECTILE) {
-        return MaterialProperties(vec3(1.0, 0.3, 0.3), resultLayer.normal, 0.0, 0.0, 0.5, 0.0, 0.0);
+    } else if (material == MAT_PROJECTILE || material == MAT_PLAYER) {
+        return MaterialProperties(mat_render_props.color, resultLayer.normal, mat_render_props.ior, mat_render_props.roughness, 0.0, 0.1, mat_render_props.transparency);
     }
-    MaterialRenderProps mat_render_props = material_render_props[material];
     vec3 normal = resultLayer.normal;
     vec3 color = mat_render_props.color;
     float roughness = mat_render_props.roughness;
@@ -459,9 +459,9 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
         normal,
         mat_render_props.ior,
         roughness,
-        transparency,
         0.0,
-        0.1
+        0.1,
+        transparency
     );
 }
 

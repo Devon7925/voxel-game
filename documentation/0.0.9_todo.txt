@@ -5,7 +5,9 @@ Card Editor
     Add cooldown for cooldown update to prevent spamming causing lag
     Update all cooldowns when neccessary
 
-Settings editor
+Settings
+    editor
+    add reflection distance setting
 
 Check how trying to put voxels in AIR_OOB chunks is handled and fix if necessary
 
