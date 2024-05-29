@@ -9,3 +9,4 @@ Tiny fast projectiles are hard to see
 Tiny fast projectiles can sometimes pass through players without colliding
 
 Voxel mixing makes looking through a transparent voxel to a neighbor voxel look wrong
+AIR_OOB chunks can use a lot of iterations along their borders

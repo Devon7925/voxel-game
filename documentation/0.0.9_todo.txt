@@ -2,11 +2,13 @@ Experiment with moving voxel storage to 3D texture
 
 Card Editor
     Basic keybind editing
+    Add cooldown for cooldown update to prevent spamming causing lag
+    Update all cooldowns when neccessary
 
 Settings editor
 
-Check how trying to put voxels in AIR_OOB chunks is handled
+Check how trying to put voxels in AIR_OOB chunks is handled and fix if necessary
 
 Clean up voxel_sim_manager
-
-Add cooldown for cooldown update to prevent spamming causing lag
+    Shared descriptor sets
+    General cleaning

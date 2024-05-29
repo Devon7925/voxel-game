@@ -16,3 +16,5 @@ Multiplayer
 Rendering
     decreaced the impact of high frequency textures when far away to reduce aliasing problems
     textures now mixed on voxel borders
+    Added physically based rendering
+    Added reflections

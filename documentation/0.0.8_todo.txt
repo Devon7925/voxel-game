@@ -1,5 +1,6 @@
 Chunk Updates
-    Prioritize updates near players
+    Update priority system
+    Check if newly loaded chunks are visible for chunk loading
 
 Rendering
     Fix player rendering
