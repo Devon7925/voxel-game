@@ -2,8 +2,5 @@ Chunk Updates
     Prioritize updates near players
 
 Rendering
-    Improve ice rendering with depth based transparency
-    Experiment with pbr(https://learnopengl.com/PBR/Theory)
-        Trowbridge-Reitz GGX
-        Schlick-GGX
-        Fresnel Equation + Reflections
+    Fix player rendering
+    Fix projectile rendering

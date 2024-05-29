@@ -337,17 +337,19 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
 }
 
 struct MaterialProperties {
-    vec3 color;
+    vec3 albedo;
     vec3 normal;
-    float shine;
+    float ior;
+    float roughness;
+    float metallic;
+    float emmision;
     float transparency;
-    float height;
 };
 
 struct MaterialNoiseLayer {
     float scale;
     float normal_impact;
-    float shine_impact;
+    float roughness_impact;
     float transparency_impact;
     vec3 light_color;
     vec3 dark_color;
@@ -355,7 +357,8 @@ struct MaterialNoiseLayer {
 
 struct MaterialRenderProps {
     MaterialNoiseLayer layers[3];
-    float shine;
+    float ior;
+    float roughness;
     float transparency;
     vec3 color;
 };
@@ -367,61 +370,61 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 1.0, vec3(0.0)),
+        ), 0.0, 0.0, 1.0, vec3(0.0)),
     // STONE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(2.0, 0.35, 0.1, 0.0, vec3(0.5), vec3(0.0)),
             MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-        ), 0.35, 0.0, vec3(0.2)),
+        ), 0.04, 0.35, 0.0, vec3(0.2)),
     // OOB
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 1.0, vec3(0.0)),
+        ), 0.0, 0.0, 1.0, vec3(0.0)),
     // DIRT
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(7.0, 0.2, 0.0, 0.0, vec3(0.3, 0.05, -0.2), vec3(0.0)),
             MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-        ), 0.25, 0.0, vec3(0.2)),
+        ), 0.02, 0.75, 0.0, vec3(0.2)),
     // GRASS
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(20.0, 0.5, 0.2, 0.0, vec3(0.15, 0.5, 0.15), vec3(0.0)),
             MaterialNoiseLayer(50.0, 0.1, 0.1, 0.0, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-        ), 0.1, 0.0, vec3(0.1, 0.3, 0.1)),
+        ), 0.02, 0.7, 0.0, vec3(0.1, 0.3, 0.1)),
     // PROJECTILE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.5, vec3(1.0, 0.3, 0.3)),
+        ), 0.0, 0.0, 0.5, vec3(1.0, 0.3, 0.3)),
     // ICE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(1.7, 0.2, 0.1, 0.1, vec3(0.1, 0.1, 0.35), vec3(0.0)),
             MaterialNoiseLayer(21.0, 0.1, 0.1, 0.05, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.05, vec3(0.1), vec3(-0.1))
-        ), 0.35, 0.3, vec3(0.65)),
+        ), 0.05, 0.35, 0.3, vec3(0.65)),
     // GLASS
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(1.0, 0.35, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.35, 0.7, vec3(0.7)),
+        ), 0.05, 0.35, 0.7, vec3(0.7)),
     // PLAYER
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.2, 0.0, vec3(0.8)),
+        ), 0.0, 0.2, 0.0, vec3(0.8)),
     // AIR OOB
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 1.0, vec3(0.0)),
+        ), 0.0, 0.0, 1.0, vec3(0.0)),
     };
 
 MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) {
@@ -429,36 +432,36 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
     uint data = resultLayer.voxel_data & 0xFFFFFF;
     if (material == MAT_AIR || material == MAT_AIR_OOB) {
         // air: invalid state
-        return MaterialProperties(vec3(1.0, 0.0, 0.0), resultLayer.normal, 0.0, 0.0, 0.0);
+        return MaterialProperties(vec3(1.0, 0.0, 0.0), resultLayer.normal, 0.0, 0.0, 0.0, 0.0, 0.0);
     } else if (material == MAT_OOB) {
         // out of bounds: invalid state
-        return MaterialProperties(vec3(0.0, 0.0, 1.0), resultLayer.normal, 0.0, 0.0, 0.0);
+        return MaterialProperties(vec3(0.0, 0.0, 1.0), resultLayer.normal, 0.0, 0.0, 0.0, 0.0, 0.0);
     } else if (material == MAT_PROJECTILE) {
-        return MaterialProperties(vec3(1.0, 0.3, 0.3), resultLayer.normal, 0.0, 0.5, 0.0);
+        return MaterialProperties(vec3(1.0, 0.3, 0.3), resultLayer.normal, 0.0, 0.0, 0.5, 0.0, 0.0);
     }
     MaterialRenderProps mat_render_props = material_render_props[material];
     vec3 normal = resultLayer.normal;
     vec3 color = mat_render_props.color;
-    float shine = mat_render_props.shine;
+    float roughness = mat_render_props.roughness;
     float transparency = mat_render_props.transparency;
-    float height = 0;
     for (int layer_idx = 0; layer_idx < 3; layer_idx++) {
         MaterialNoiseLayer layer = mat_render_props.layers[layer_idx];
         vec4 noise = grad_noise(layer.scale * resultLayer.pos);
         float distance_noise_factor = clamp(-0.1 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (resultLayer.dist * layer.scale), 0.0, 1.0);
         normal += distance_noise_factor * layer.normal_impact * noise.xyz * (vec3(1) - abs(resultLayer.normal));
-        height += distance_noise_factor * layer.normal_impact * noise.w;
         color += mix(layer.light_color, layer.dark_color, mix(0.5, (noise.w + 1.0) / 2.0, distance_noise_factor));
-        shine += distance_noise_factor * layer.shine_impact * noise.w;
+        roughness += distance_noise_factor * layer.roughness_impact * noise.w;
         transparency += distance_noise_factor * layer.transparency_impact * noise.w;
     }
     normal = normalize(normal);
     return MaterialProperties(
         color * (1.0 - float(data) / material_damage_threshhold[material]),
         normal,
-        shine,
+        mat_render_props.ior,
+        roughness,
         transparency,
-        height
+        0.0,
+        0.1
     );
 }
 
@@ -516,6 +519,71 @@ MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_di
     return material_props(resultLayer, ray_dir);
 }
 
+float DistributionGGX(vec3 N, vec3 H, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+
+    float num = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return num / denom;
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = (roughness + 1.0);
+    float k = (r * r) / 8.0;
+
+    float num = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return num / denom;
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}
+
+vec3 fresnelSchlick(float cosTheta, vec3 F0)
+{
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 get_light(vec3 L, vec3 V, vec3 lightColor, float attenuation, MaterialProperties mat_props) {
+    vec3 F0 = vec3(mat_props.ior);
+    F0 = mix(F0, mat_props.albedo, mat_props.metallic);
+    // calculate per-light radiance
+    vec3 H = normalize(V + L);
+    vec3 radiance = lightColor * attenuation;
+
+    // cook-torrance brdf
+    float NDF = DistributionGGX(mat_props.normal, H, mat_props.roughness);
+    float G = GeometrySmith(mat_props.normal, V, L, mat_props.roughness);
+    vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - mat_props.metallic;
+
+    vec3 numerator = NDF * G * F;
+    float denominator = 4.0 * max(dot(mat_props.normal, V), 0.0) * max(dot(mat_props.normal, L), 0.0) + 0.0001;
+    vec3 specular = numerator / denominator;
+
+    // add to outgoing radiance Lo
+    float NdotL = max(dot(mat_props.normal, L), 0.0);
+    return (kD * mat_props.albedo / PI + specular) * radiance * NdotL;
+}
+
 vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
     vec3 color = vec3(0.0);
     float multiplier = 1.0;
@@ -529,7 +597,7 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             break;
         }
         MaterialProperties mat_props = position_material(primary_ray.layers[i], ray);
-        color += (1 - mat_props.transparency) * multiplier * 0.05 * mat_props.color;
+        color += (1 - mat_props.transparency) * multiplier * mat_props.albedo * mat_props.emmision;
 
         RaycastResultLayer shade_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist, true);
         float shade_transparency = material_render_props[shade_check.voxel_data >> 24].transparency;
@@ -541,21 +609,31 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             shade_check = simple_raycast(shade_check.pos - dist_diff * light_dir, -light_dir, push_constants.transparent_shadow_ray_dist, false);
         }
         if (shade_check.dist == 0.0 || shade_check.voxel_data >> 24 == MAT_OOB) {
-            float diffuse = max(dot(mat_props.normal, -light_dir), 0.0);
-            vec3 halfway = normalize(-light_dir - ray);
-            float specular = pow(max(dot(halfway, mat_props.normal), 0.0), 32.0);
-            color += shade_transparency * (1 - mat_props.transparency) * multiplier * (0.65 * diffuse + mat_props.shine * specular) * mat_props.color;
-        }
-        RaycastResultLayer ao_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, mat_props.normal, push_constants.ao_ray_dist, false);
-        if (ao_check.dist == 0 || ao_check.voxel_data >> 24 == MAT_OOB) {
-            float diffuse = max(dot(mat_props.normal, primary_ray.layers[i].normal), 0.0);
-            color += (1 - mat_props.transparency) * multiplier * 0.13 * diffuse * mat_props.color;
+            color += shade_transparency * (1 - mat_props.transparency) * multiplier * get_light(-light_dir, -ray, vec3(1.0), 1.0, mat_props);
         }
 
-        RaycastResultLayer ao_check2 = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, normalize(primary_ray.layers[i].normal + mat_props.normal), push_constants.ao_ray_dist, false);
-        if (ao_check2.dist == 0 || ao_check2.voxel_data >> 24 == MAT_OOB) {
-            float diffuse = max(dot(mat_props.normal, normalize(primary_ray.layers[i].normal + mat_props.normal)), 0.0);
-            color += (1 - mat_props.transparency) * multiplier * 0.13 * diffuse * mat_props.color;
+        //todo add reflection_ray_dist setting
+        vec3 reflection = reflect(ray, mat_props.normal);
+        RaycastResultLayer reflection_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, reflection, 20, false);
+        MaterialRenderProps reflection_props = material_render_props[reflection_check.voxel_data >> 24];
+        vec3 light = (1.0 - reflection_props.transparency) * reflection_props.color * 0.1;
+        if (reflection_check.dist == 0 || reflection_props.transparency == 1.0) {
+            light += vec3(pow(dot(reflection, -light_dir), 3.0));
+        }
+        color += (1 - mat_props.transparency) * multiplier * get_light(reflection, -ray, light, 1.0, mat_props);
+
+        vec3 ao_dir = mat_props.normal;
+        RaycastResultLayer ao_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, ao_dir, push_constants.ao_ray_dist, false);
+        if (ao_check.dist == 0 || ao_check.voxel_data >> 24 == MAT_OOB) {
+            float light_power = pow(dot(ao_dir, -light_dir), 3.0);
+            color += (1 - mat_props.transparency) * multiplier * get_light(ao_dir, -ray, vec3(1.0), light_power, mat_props);
+        }
+
+        ao_dir = normalize(primary_ray.layers[i].normal + mat_props.normal);
+        ao_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, ao_dir, push_constants.ao_ray_dist, false);
+        if (ao_check.dist == 0 || ao_check.voxel_data >> 24 == MAT_OOB) {
+            float light_power = pow(dot(ao_dir, -light_dir), 3.0);
+            color += (1 - mat_props.transparency) * multiplier * get_light(ao_dir, -ray, vec3(1.0), light_power, mat_props);
         }
 
         multiplier *= mat_props.transparency;
