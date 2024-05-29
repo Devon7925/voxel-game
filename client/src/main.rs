@@ -59,14 +59,16 @@ pub struct WindowProperties {
 pub const PLAYER_HITBOX_OFFSET: Vector3<f32> = Vector3::new(0.0, -2.0, 0.0);
 pub const PLAYER_HITBOX_SIZE: Vector3<f32> = Vector3::new(1.8, 4.8, 1.8);
 
+const SETTINGS_FILE: &str = "settings.yaml";
+
 fn main() {
     // Create event loop.
     let mut event_loop = EventLoop::new();
 
-    let settings = Settings::from_string(fs::read_to_string("settings.yaml").unwrap().as_str());
+    let settings = Settings::from_string(fs::read_to_string(SETTINGS_FILE).unwrap().as_str());
 
     panic::set_hook(Box::new(|panic_info| {
-        let settings = Settings::from_string(fs::read_to_string("settings.yaml").unwrap().as_str());
+        let settings = Settings::from_string(fs::read_to_string(SETTINGS_FILE).unwrap().as_str());
         let mut crash_log = std::fs::File::create(settings.crash_log).unwrap();
         if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
             eprintln!(

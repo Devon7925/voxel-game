@@ -4,6 +4,8 @@ Chunk Updates
     Always load chunks in a radius around the player
     Allow for all air chunks to be unloaded
     Convert voxel writing to compute shader
+    Added priority queue for chunk updates
+    Chunks that try to worldgen but fail due to borders are remembered and tried again when the border is moved
 
 Card Editor
     Multicast modifier hovers

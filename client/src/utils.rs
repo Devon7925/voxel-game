@@ -1,6 +1,6 @@
 use std::{
     array::from_fn,
-    collections::{HashSet, VecDeque},
+    collections::{BinaryHeap, HashSet, VecDeque},
     hash::Hash,
 };
 
@@ -117,15 +117,94 @@ impl<T: Clone + Eq + PartialEq + Hash> QueueSet<T> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct UpdateWithPriority(pub [u32; 3], pub i32);
+
+impl Ord for UpdateWithPriority {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.1.cmp(&other.1)
+    }
+}
+
+impl PartialOrd for UpdateWithPriority {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+pub struct PriorityUpdateQueue {
+    queue: BinaryHeap<UpdateWithPriority>,
+    set: HashSet<[u32;3]>,
+}
+
+impl PriorityUpdateQueue {
+    pub fn new() -> PriorityUpdateQueue {
+        PriorityUpdateQueue {
+            queue: BinaryHeap::new(),
+            set: HashSet::new(),
+        }
+    }
+
+    pub fn with_capacity(capacity: usize) -> PriorityUpdateQueue {
+        PriorityUpdateQueue {
+            queue: BinaryHeap::with_capacity(capacity),
+            set: HashSet::with_capacity(capacity),
+        }
+    }
+
+    pub fn push(&mut self, item: UpdateWithPriority) {
+        if self.set.insert(item.0.clone()) {
+            self.queue.push(item);
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<UpdateWithPriority> {
+        let item = self.queue.pop();
+        if let Some(item) = item {
+            self.set.remove(&item.0);
+            Some(item)
+        } else {
+            None
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub fn into_iter(self) -> std::collections::binary_heap::IntoIter<UpdateWithPriority> {
+        self.queue.into_iter()
+    }
+
+    pub fn keep_if<F>(&mut self, f: F)
+    where
+        F: Fn(&UpdateWithPriority) -> bool,
+    {
+        let mut new_queue = BinaryHeap::new();
+        for item in self.queue.iter() {
+            if f(item) {
+                new_queue.push(item.clone());
+            } else {
+                self.set.remove(&item.0);
+            }
+        }
+        self.queue = new_queue;
+    }
+}
+
 pub struct VoxelUpdateQueue {
-    queue_sets: [[[QueueSet<[u32; 3]>; 2]; 2]; 2],
+    queue_sets: [[[PriorityUpdateQueue; 2]; 2]; 2],
     active_queue_set: [u32; 3],
 }
 
 impl VoxelUpdateQueue {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            queue_sets: from_fn(|_| from_fn(|_| from_fn(|_| QueueSet::with_capacity(capacity)))),
+            queue_sets: from_fn(|_| from_fn(|_| from_fn(|_| PriorityUpdateQueue::with_capacity(capacity)))),
             active_queue_set: [0, 0, 0],
         }
     }
@@ -134,7 +213,17 @@ impl VoxelUpdateQueue {
         for x in 0..2 {
             for y in 0..2 {
                 for z in 0..2 {
-                    self.queue_sets[x][y][z].push(item);
+                    self.queue_sets[x][y][z].push(UpdateWithPriority(item, 0));
+                }
+            }
+        }
+    }
+
+    pub fn push_with_priority(&mut self, item: UpdateWithPriority) {
+        for x in 0..2 {
+            for y in 0..2 {
+                for z in 0..2 {
+                    self.queue_sets[x][y][z].push(item.clone());
                 }
             }
         }
@@ -150,7 +239,7 @@ impl VoxelUpdateQueue {
         }
     }
 
-    fn active_queue_set(&mut self) -> &mut QueueSet<[u32; 3]> {
+    fn active_queue_set(&mut self) -> &mut PriorityUpdateQueue {
         &mut self.queue_sets[self.active_queue_set[0] as usize][self.active_queue_set[1] as usize]
             [self.active_queue_set[2] as usize]
     }
@@ -168,7 +257,7 @@ impl VoxelUpdateQueue {
         }
     }
 
-    pub fn pop(&mut self) -> Option<[u32; 3]> {
+    pub fn pop(&mut self) -> Option<UpdateWithPriority> {
         self.active_queue_set().pop()
     }
 
@@ -191,7 +280,7 @@ impl VoxelUpdateQueue {
 
     pub fn keep_if<F>(&mut self, f: F)
     where
-        F: Fn(&[u32; 3]) -> bool,
+        F: Fn(&UpdateWithPriority) -> bool,
     {
         for x in 0..2 {
             for y in 0..2 {

@@ -1,6 +1,6 @@
 [package]
 name = "voxel-game"
-version = "0.0.7"
+version = "0.0.8"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -14,7 +14,7 @@ vulkano-util = "0.34.1"
 vulkano-shaders = "0.34.0"
 rand = "0.8.4"
 bytemuck = "1.13.1"
-matchbox_socket = "0.8.0"
+matchbox_socket = "0.9.0"
 futures = "0.3"
 tokio = "1.29"
 futures-timer = { version = "3" }

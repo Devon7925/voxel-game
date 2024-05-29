@@ -1,3 +1,0 @@
-Chunk Updates
-    Update priority system
-    Check if newly loaded chunks are visible for chunk loading
