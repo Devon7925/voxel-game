@@ -2,6 +2,8 @@ Experiment with moving voxel storage to 3D texture
 
 Card Editor
     Basic keybind editing
+    Add/Remove cooldown
+    Remove Ability
     Add cooldown for cooldown update to prevent spamming causing lag
     Update all cooldowns when neccessary
 

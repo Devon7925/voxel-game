@@ -1,0 +1,11 @@
+Water Update
+Water
+    Add water material
+    Add water player physics
+    Add water flowing physics
+    Add depth based transparency for water
+    Add air like depth properties to water
+Worldgen
+    Add temperature
+    Add water to high temperature biomes
+    Remove grass from low temperature biomes

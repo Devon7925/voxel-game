@@ -1,7 +1,5 @@
 SOON
 Card Editor
-    Add/Remove cooldown
-    Remove Ability
     Keybinds
         Editor
         Keybind Chords
@@ -20,7 +18,6 @@ Rendering
     FXAA https://en.wikipedia.org/wiki/Fast_approximate_anti-aliasing
 
 EVENTUALLY
-Settings editor
 Card Editor
     Modifier icons
 Player Step sounds
