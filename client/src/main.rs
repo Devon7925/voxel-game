@@ -32,9 +32,8 @@ use vulkano::{
 };
 use winit::{
     dpi::PhysicalPosition,
-    event::{ElementState, Event, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
     window::Window,
 };
 
@@ -63,7 +62,7 @@ const SETTINGS_FILE: &str = "settings.yaml";
 
 fn main() {
     // Create event loop.
-    let mut event_loop = EventLoop::new();
+    let event_loop = EventLoop::new();
 
     let settings = Settings::from_string(fs::read_to_string(SETTINGS_FILE).unwrap().as_str());
 
@@ -131,91 +130,99 @@ fn main() {
 
     let mut next_frame_time = Instant::now();
     let mut last_frame_time = Instant::now();
-    loop {
+
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Poll;
         let should_continue = handle_events(
-            &mut event_loop,
+            &event,
             &mut app,
             &mut window_props,
             &mut gui_state,
             &mut recreate_swapchain,
         );
+
         // Event handling.
         if !should_continue {
-            break;
+            *control_flow = ControlFlow::Exit;
+            return;
         }
-
-        // Compute voxels & render 60fps.
-        if (Instant::now() - next_frame_time).as_secs_f32() > 0.0 {
-            puffin::GlobalProfiler::lock().new_frame();
-            previous_frame_end.as_mut().unwrap().cleanup_finished();
-            next_frame_time += std::time::Duration::from_secs_f32(
-                app.game
-                    .as_ref()
-                    .map(|game| game.rollback_data.get_delta_time())
-                    .unwrap_or(DEFAULT_DELTA_TIME),
-            );
-            let skip_render = if app.game.is_some() && !gui_state.game_just_started {
-                if (Instant::now() - last_frame_time).as_secs_f32() > 2.0 {
-                    // enforce minimum frame rate of 0.5fps
-                    false
-                } else {
-                    (Instant::now() - next_frame_time).as_secs_f32() > 0.0
-                }
-            } else {
-                next_frame_time = Instant::now();
-                false
-            };
-            if !skip_render {
-                last_frame_time = Instant::now();
-            }
-            gui_state.game_just_started = false;
-            if let Some(game) = app.game.as_mut() {
-                game.rollback_data
-                    .network_update(&game.game_settings, &mut game.card_manager);
-                if !game.has_started
-                    && game.rollback_data.player_count() >= game.game_settings.player_count as usize
-                {
-                    game.has_started = true;
-                    if gui_state.menu_stack.last() == Some(&GuiElement::LobbyQueue) {
-                        gui_state.menu_stack.clear();
+        match event {
+            Event::RedrawEventsCleared => {
+                // Compute voxels & render
+                if (Instant::now() - next_frame_time).as_secs_f32() > 0.0 {
+                    puffin::GlobalProfiler::lock().new_frame();
+                    previous_frame_end.as_mut().unwrap().cleanup_finished();
+                    next_frame_time += std::time::Duration::from_secs_f32(
+                        app.game
+                            .as_ref()
+                            .map(|game| game.rollback_data.get_delta_time())
+                            .unwrap_or(DEFAULT_DELTA_TIME),
+                    );
+                    let skip_render = if app.game.is_some() && !gui_state.game_just_started {
+                        if (Instant::now() - last_frame_time).as_secs_f32() > 2.0 {
+                            // enforce minimum frame rate of 0.5fps
+                            false
+                        } else {
+                            (Instant::now() - next_frame_time).as_secs_f32() > 0.0
+                        }
+                    } else {
+                        next_frame_time = Instant::now();
+                        false
+                    };
+                    if !skip_render {
+                        last_frame_time = Instant::now();
+                    }
+                    gui_state.game_just_started = false;
+                    if let Some(game) = app.game.as_mut() {
+                        game.rollback_data
+                            .network_update(&game.game_settings, &mut game.card_manager);
+                        if !game.has_started
+                            && game.rollback_data.player_count() >= game.game_settings.player_count as usize
+                        {
+                            game.has_started = true;
+                            if gui_state.menu_stack.last() == Some(&GuiElement::LobbyQueue) {
+                                gui_state.menu_stack.clear();
+                            }
+                        }
+                        if game.rollback_data.is_render_behind_other_players() {
+                            next_frame_time -=
+                                std::time::Duration::from_secs_f32(game.rollback_data.get_delta_time());
+                        }
+                    }
+                    if skip_render {
+                        println!(
+                            "skipping render: behind by {}s",
+                            (Instant::now() - next_frame_time).as_secs_f32()
+                        );
+                    }
+                    compute_then_render(
+                        &mut app,
+                        &mut recreate_swapchain,
+                        &mut previous_frame_end,
+                        &mut gui_state,
+                        skip_render,
+                    );
+                    let window = app
+                        .vulkano_interface
+                        .surface
+                        .object()
+                        .unwrap()
+                        .downcast_ref::<Window>()
+                        .unwrap();
+                    window.set_cursor_visible(gui_state.menu_stack.len() > 0 || !window.has_focus());
+                    if let Some(game) = app.game.as_mut() {
+                        game.rollback_data.end_frame();
                     }
                 }
-                if game.rollback_data.is_render_behind_other_players() {
-                    next_frame_time -=
-                        std::time::Duration::from_secs_f32(game.rollback_data.get_delta_time());
-                }
             }
-            if skip_render {
-                println!(
-                    "skipping render: behind by {}s",
-                    (Instant::now() - next_frame_time).as_secs_f32()
-                );
-            }
-            compute_then_render(
-                &mut app,
-                &mut recreate_swapchain,
-                &mut previous_frame_end,
-                &mut gui_state,
-                skip_render,
-            );
-            let window = app
-                .vulkano_interface
-                .surface
-                .object()
-                .unwrap()
-                .downcast_ref::<Window>()
-                .unwrap();
-            window.set_cursor_visible(gui_state.menu_stack.len() > 0 || !window.has_focus());
-            if let Some(game) = app.game.as_mut() {
-                game.rollback_data.end_frame();
-            }
+            _ => {}
         }
-    }
+    });
 }
 
 /// Handles events and returns a `bool` indicating if we should quit.
 fn handle_events(
-    event_loop: &mut EventLoop<()>,
+    event: &Event<()>,
     app: &mut RenderPipeline,
     window_props: &mut WindowProperties,
     gui_state: &mut GuiState,
@@ -223,136 +230,136 @@ fn handle_events(
 ) -> bool {
     let mut is_running = true;
 
-    event_loop.run_return(|event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
-        match &event {
-            Event::WindowEvent { event, .. } => {
-                let gui_event = app.vulkano_interface.frame_system.gui.update(&event);
-                if gui_state.should_exit {
+    match &event {
+        Event::WindowEvent { event, .. } => {
+            let gui_event = app.vulkano_interface.frame_system.gui.update(&event);
+            if gui_state.should_exit {
+                is_running = false;
+            }
+            if gui_event {
+                return is_running;
+            }
+            if let Some(game) = app.game.as_mut() {
+                game.rollback_data.process_event(
+                    event,
+                    &app.settings,
+                    gui_state,
+                    &window_props,
+                );
+            }
+            match event {
+                WindowEvent::CloseRequested => {
                     is_running = false;
                 }
-                if gui_event {
-                    return;
+                // Resize window and its images.
+                WindowEvent::Resized(new_size) => {
+                    window_props.width = new_size.width;
+                    window_props.height = new_size.height;
+                    *recreate_swapchain = true;
                 }
-                if let Some(game) = app.game.as_mut() {
-                    game.rollback_data.process_event(
-                        event,
-                        &app.settings,
-                        gui_state,
-                        &window_props,
-                    );
-                }
-                match event {
-                    WindowEvent::CloseRequested => {
-                        is_running = false;
-                    }
-                    // Resize window and its images.
-                    WindowEvent::Resized(new_size) => {
-                        window_props.width = new_size.width;
-                        window_props.height = new_size.height;
-                        *recreate_swapchain = true;
-                    }
-                    // Handle mouse position events.
-                    WindowEvent::CursorMoved { .. } => {
-                        if gui_state.menu_stack.len() == 0 {
-                            let window = app
-                                .vulkano_interface
-                                .surface
-                                .object()
-                                .unwrap()
-                                .downcast_ref::<Window>()
-                                .unwrap();
-                            if window.has_focus() {
-                                window
-                                    .set_cursor_position(PhysicalPosition::new(
-                                        (window_props.width / 2) as f64,
-                                        (window_props.height / 2) as f64,
-                                    ))
-                                    .unwrap_or_else(|_| println!("Failed to set cursor position"));
-                            }
+                // Handle mouse position events.
+                WindowEvent::CursorMoved { .. } => {
+                    if gui_state.menu_stack.len() == 0 {
+                        let window = app
+                            .vulkano_interface
+                            .surface
+                            .object()
+                            .unwrap()
+                            .downcast_ref::<Window>()
+                            .unwrap();
+                        if window.has_focus() {
+                            window
+                                .set_cursor_position(PhysicalPosition::new(
+                                    (window_props.width / 2) as f64,
+                                    (window_props.height / 2) as f64,
+                                ))
+                                .unwrap_or_else(|_| println!("Failed to set cursor position"));
                         }
                     }
-                    // Handle mouse button events.
-                    WindowEvent::MouseInput { .. } => {}
-                    WindowEvent::KeyboardInput { input, .. } => {
-                        input.virtual_keycode.map(|key| {
-                            let window = app
-                                .vulkano_interface
-                                .surface
-                                .object()
-                                .unwrap()
-                                .downcast_ref::<Window>()
-                                .unwrap();
-                            if key == app.settings.fullscreen_toggle
-                                && input.state == ElementState::Pressed
-                            {
-                                window_props.fullscreen = !window_props.fullscreen;
-                                if window_props.fullscreen {
-                                    window.set_fullscreen(Some(
-                                        winit::window::Fullscreen::Borderless(None),
-                                    ));
-                                } else {
-                                    window.set_fullscreen(None);
-                                }
-                            }
-                            match key {
-                                winit::event::VirtualKeyCode::Escape => {
-                                    if input.state == ElementState::Released {
-                                        if gui_state.menu_stack.len() > 0
-                                            && !gui_state
-                                                .menu_stack
-                                                .last()
-                                                .is_some_and(|gui| *gui == GuiElement::MainMenu)
-                                        {
-                                            let _exited_ui = gui_state.menu_stack.pop().unwrap();
-                                        } else {
-                                            gui_state.menu_stack.push(GuiElement::EscMenu);
-                                        }
-                                    }
-                                }
-                                winit::event::VirtualKeyCode::F1 => {
-                                    if input.state == ElementState::Released {
-                                        if let Some(game) = app.game.as_ref() {
-                                            println!(
-                                                "Chunk update count: {}",
-                                                game.voxel_compute.update_count()
-                                            );
-                                            println!(
-                                                "Chunk worldgen count: {}",
-                                                game.voxel_compute.worldgen_count()
-                                            );
-                                            println!(
-                                                "Chunk capacity: {}",
-                                                game.voxel_compute.worldgen_capacity()
-                                            );
-                                        }
-                                    }
-                                }
-                                winit::event::VirtualKeyCode::F2 => {
-                                    if input.state == ElementState::Released {
-                                        if let Some(game) = app.game.as_ref() {
-                                            println!(
-                                                "Player decks: {:?}",
-                                                game.rollback_data
-                                                    .get_players()
-                                                    .iter()
-                                                    .map(|p| p.abilities.clone())
-                                                    .collect::<Vec<_>>()
-                                            );
-                                        }
-                                    }
-                                }
-                                _ => (),
-                            }
-                        });
-                    }
-                    _ => (),
                 }
+                // Handle mouse button events.
+                WindowEvent::MouseInput { .. } => {}
+                WindowEvent::KeyboardInput {
+                    input: KeyboardInput {
+                        state,
+                        virtual_keycode: Some(key),
+                        ..
+                    }, .. 
+                } => {
+                    let window = app
+                        .vulkano_interface
+                        .surface
+                        .object()
+                        .unwrap()
+                        .downcast_ref::<Window>()
+                        .unwrap();
+                    if *key == app.settings.fullscreen_toggle
+                        && *state == ElementState::Pressed
+                    {
+                        window_props.fullscreen = !window_props.fullscreen;
+                        if window_props.fullscreen {
+                            window.set_fullscreen(Some(
+                                winit::window::Fullscreen::Borderless(None),
+                            ));
+                        } else {
+                            window.set_fullscreen(None);
+                        }
+                    }
+                    match key {
+                        winit::event::VirtualKeyCode::Escape => {
+                            if *state == ElementState::Released {
+                                if gui_state.menu_stack.len() > 0
+                                    && !gui_state
+                                        .menu_stack
+                                        .last()
+                                        .is_some_and(|gui| *gui == GuiElement::MainMenu)
+                                {
+                                    let _exited_ui = gui_state.menu_stack.pop().unwrap();
+                                } else {
+                                    gui_state.menu_stack.push(GuiElement::EscMenu);
+                                }
+                            }
+                        }
+                        winit::event::VirtualKeyCode::F1 => {
+                            if *state == ElementState::Released {
+                                if let Some(game) = app.game.as_ref() {
+                                    println!(
+                                        "Chunk update count: {}",
+                                        game.voxel_compute.update_count()
+                                    );
+                                    println!(
+                                        "Chunk worldgen count: {}",
+                                        game.voxel_compute.worldgen_count()
+                                    );
+                                    println!(
+                                        "Chunk capacity: {}",
+                                        game.voxel_compute.worldgen_capacity()
+                                    );
+                                }
+                            }
+                        }
+                        winit::event::VirtualKeyCode::F2 => {
+                            if *state == ElementState::Released {
+                                if let Some(game) = app.game.as_ref() {
+                                    println!(
+                                        "Player decks: {:?}",
+                                        game.rollback_data
+                                            .get_players()
+                                            .iter()
+                                            .map(|p| p.abilities.clone())
+                                            .collect::<Vec<_>>()
+                                    );
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                _ => (),
             }
-            Event::MainEventsCleared => *control_flow = ControlFlow::Exit,
-            _ => (),
         }
-    });
+        _ => (),
+    }
 
     is_running
 }

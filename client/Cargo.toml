@@ -30,4 +30,5 @@ clippers = "0.1.2"
 chrono = "0.4.31"
 rfd = "0.14.1"
 reqwest = { version = "0.12.4", features = ["json", "blocking"] }
+priority-queue = "2.0.3"
 voxel-shared = { path = ".." }

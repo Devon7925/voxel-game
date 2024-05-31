@@ -11,14 +11,13 @@ use crate::{
     app::CreationInterface,
     card_system::{CardManager, VoxelMaterial},
     game_manager::GameState,
-    rollback_manager::is_inbounds,
-    utils::{Direction, PriorityUpdateQueue, QueueSet, UpdateWithPriority, VoxelUpdateQueue},
+    utils::{Direction, QueueSet, VoxelUpdateQueue},
     CHUNK_SIZE, MAX_CHUNK_UPDATE_RATE, MAX_VOXEL_UPDATE_RATE, MAX_WORLDGEN_RATE, SUB_CHUNK_COUNT,
     WORLDGEN_CHUNK_COUNT,
 };
 use bytemuck::{Pod, Zeroable};
-use cgmath::{num_traits::Float, Point3, Quaternion};
-use std::{collections::HashSet, hash::Hash, iter, sync::Arc};
+use cgmath::{Point3, Quaternion};
+use std::{collections::HashSet, iter, sync::Arc};
 use voxel_shared::GameSettings;
 use vulkano::{
     buffer::{
@@ -478,7 +477,7 @@ impl VoxelComputePipeline {
                         self.worldgen_update_queue
                             .push([chunk[0], chunk[1], chunk[2]]);
                     } else if chunk_idx != 1 {
-                        self.chunk_update_queue.push_all(chunk_location);
+                        self.chunk_update_queue.push_with_priority(chunk_location, 1);
                     }
                 };
                 for card_ref in card_manager
@@ -605,17 +604,6 @@ impl VoxelComputePipeline {
         }
 
         self.slice_to_unload = Some(direction);
-
-        //remove queued updates that are now out of bounds
-        self.worldgen_update_queue
-            .keep_if(|loc| is_inbounds!(loc, game_state, game_settings));
-        self.chunk_update_queue.keep_if(|loc| {
-            is_inbounds!(
-                loc.0.map(|c| c / SUB_CHUNK_COUNT as u32),
-                game_state,
-                game_settings
-            )
-        });
     }
 
     // chunks are represented as u32 with a 1 representing a changed chunk
@@ -662,7 +650,6 @@ impl VoxelComputePipeline {
             }
         }
         // last component of 1 means the chunk was changed and therefore means it and surrounding chunks need to be updated
-        let mut updates_todo = PriorityUpdateQueue::new();
         {
             puffin::profile_scope!("count updates");
             let reader = self.chunk_updates.read().unwrap();
@@ -678,34 +665,18 @@ impl VoxelComputePipeline {
                     for x_offset in min_x..=max_x {
                         for y_offset in min_y..=max_y {
                             for z_offset in min_z..=max_z {
-                                updates_todo.push(UpdateWithPriority(
+                                self.chunk_update_queue.push_with_priority(
                                     [
                                         read_update[0].wrapping_add_signed(x_offset),
                                         read_update[1].wrapping_add_signed(y_offset),
                                         read_update[2].wrapping_add_signed(z_offset),
                                     ],
                                     self.last_update_priorities[i] - 1,
-                                ));
+                                );
                             }
                         }
                     }
                 }
-            }
-        }
-        for update in updates_todo.into_iter() {
-            let chunk = update.0.map(|e| e / SUB_CHUNK_COUNT as u32);
-            let is_chunk_loaded = {
-                let is_chunk_loaded = self.get_chunk(chunk, game_settings) != 0;
-                is_chunk_loaded
-            };
-            if !is_chunk_loaded {
-                //check if chunk is inbounds
-                if is_inbounds!(chunk, game_state, game_settings) {
-                    self.worldgen_update_queue
-                        .push([chunk[0], chunk[1], chunk[2]]);
-                }
-            } else {
-                self.chunk_update_queue.push_with_priority(update);
             }
         }
     }
@@ -1096,11 +1067,14 @@ impl VoxelComputePipeline {
                                     0
                                 })
                             {
-                                self.chunk_update_queue.push_all([
-                                    chunk[0].wrapping_add_signed(offset_x),
-                                    chunk[1].wrapping_add_signed(offset_y),
-                                    chunk[2].wrapping_add_signed(offset_z),
-                                ]);
+                                self.chunk_update_queue.push_with_priority(
+                                    [
+                                        chunk[0].wrapping_add_signed(offset_x),
+                                        chunk[1].wrapping_add_signed(offset_y),
+                                        chunk[2].wrapping_add_signed(offset_z),
+                                    ],
+                                    1,
+                                );
                             }
                         }
                     }
@@ -1163,21 +1137,28 @@ impl VoxelComputePipeline {
             let mut chunk_updates_buffer = self.chunk_updates.write().unwrap();
             self.chunk_update_queue.swap_queue_set();
             while let Some(loc) = self.chunk_update_queue.pop() {
-                if is_inbounds!(loc.0.map(|c| c / SUB_CHUNK_COUNT as u32), game_state, game_settings)
-                    && self.get_chunk(
+                if is_inbounds!(loc.0.map(|c| c / SUB_CHUNK_COUNT as u32), game_state, game_settings) {
+                    let chunk = self.get_chunk(
                         [
                             loc.0[0] / SUB_CHUNK_COUNT as u32,
                             loc.0[1] / SUB_CHUNK_COUNT as u32,
                             loc.0[2] / SUB_CHUNK_COUNT as u32,
                         ],
                         game_settings,
-                    ) != 1
-                {
-                    chunk_updates_buffer[chunk_update_count] = [loc.0[0], loc.0[1], loc.0[2], 0];
-                    self.last_update_priorities.push(loc.1);
-                    chunk_update_count += 1;
-                    if chunk_update_count as u32 >= game_settings.max_update_rate {
-                        break;
+                    );
+                    if chunk == 0 {
+                        self.worldgen_update_queue.push([
+                            loc.0[0] / SUB_CHUNK_COUNT as u32,
+                            loc.0[1] / SUB_CHUNK_COUNT as u32,
+                            loc.0[2] / SUB_CHUNK_COUNT as u32,
+                        ]);
+                    } else if chunk != 1 {
+                        chunk_updates_buffer[chunk_update_count] = [loc.0[0], loc.0[1], loc.0[2], 0];
+                        self.last_update_priorities.push(loc.1);
+                        chunk_update_count += 1;
+                        if chunk_update_count as u32 >= game_settings.max_update_rate {
+                            break;
+                        }
                     }
                 }
             }
