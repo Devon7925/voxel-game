@@ -256,6 +256,7 @@ pub enum DropableType {
     BaseNone,
     BaseProjectile,
     Cooldown,
+    Palette,
 }
 
 #[derive(Debug)]
@@ -272,6 +273,7 @@ pub fn is_valid_drag(from: &DragableType, to: &DropableType) -> bool {
         (DragableType::BaseCard, DropableType::BaseNone) => true,
         (DragableType::CooldownModifier, DropableType::Cooldown) => true,
         (DragableType::BaseCard, DropableType::Cooldown) => true,
+        (_, DropableType::Palette) => true,
         _ => false,
     }
 }
@@ -888,30 +890,40 @@ pub fn draw_base_card(
             }
         }
         BaseCard::Palette(palette_cards, is_vertical) => {
-            ui.add_space(CARD_UI_SPACING);
-            let layout = if *is_vertical {
-                egui::Layout::top_down(egui::Align::LEFT)
-            } else {
-                egui::Layout::left_to_right(egui::Align::LEFT).with_main_wrap(true)
-            };
-            ui.with_layout(layout, |ui| {
+            let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
+                ui.add_space(CARD_UI_SPACING);
+                let layout = if *is_vertical {
+                    egui::Layout::top_down(egui::Align::LEFT)
+                } else {
+                    egui::Layout::left_to_right(egui::Align::LEFT).with_main_wrap(true)
+                };
+                ui.with_layout(layout, |ui| {
+                    for (card_idx, card) in palette_cards.iter().enumerate() {
+                        path.push_back(card_idx as u32);
+                        card.draw_draggable(ui, path, source_path, dest_path, modify_path);
+                        path.pop_back();
+                    }
+                });
+
                 for (card_idx, card) in palette_cards.iter().enumerate() {
                     path.push_back(card_idx as u32);
-                    card.draw_draggable(ui, path, source_path, dest_path, modify_path);
+                    let item_id = egui::Id::new(id_source).with(path.clone());
+                    if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                        *source_path = Some((path.clone(), card.get_type()));
+                    }
                     path.pop_back();
                 }
-            });
+                ui.add_space(CARD_UI_SPACING);
+                is_draggable = false;
+            })
+            .response;
 
-            for (card_idx, card) in palette_cards.iter().enumerate() {
-                path.push_back(card_idx as u32);
-                let item_id = egui::Id::new(id_source).with(path.clone());
-                if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
-                    *source_path = Some((path.clone(), card.get_type()));
+            if dest_path.is_none() {
+                let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
+                if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
+                    *dest_path = Some((path.clone(), DropableType::Palette));
                 }
-                path.pop_back();
             }
-            ui.add_space(CARD_UI_SPACING);
-            is_draggable = false;
         }
     });
     if is_draggable && source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
