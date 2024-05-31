@@ -7,9 +7,7 @@ Card Editor
     Add cooldown for cooldown update to prevent spamming causing lag
     Update all cooldowns when neccessary
 
-Settings
-    editor
-    add reflection distance setting
+Fix alternate ways to exit game not properly triggering leave game
 
 Check how trying to put voxels in AIR_OOB chunks is handled and fix if necessary
 

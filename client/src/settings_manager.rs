@@ -63,8 +63,8 @@ pub struct ControlSettings {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GraphicsSettings {
     pub primary_ray_dist: u32,
-    pub transparency_ray_dist: u32,
     pub shadow_ray_dist: u32,
+    pub reflection_ray_dist: u32,
     pub transparent_shadow_ray_dist: u32,
     pub ao_ray_dist: u32,
 }

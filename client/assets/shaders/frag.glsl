@@ -31,8 +31,8 @@ layout(push_constant) uniform PushConstants {
     mat4 screen_to_world;
     float aspect_ratio;
     uint primary_ray_dist;
-    uint transparency_ray_dist;
     uint shadow_ray_dist;
+    uint reflection_ray_dist;
     uint transparent_shadow_ray_dist;
     uint ao_ray_dist;
     uint vertical_resolution;
@@ -614,7 +614,7 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
 
         //todo add reflection_ray_dist setting
         vec3 reflection = reflect(ray, mat_props.normal);
-        RaycastResultLayer reflection_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, reflection, 20, false);
+        RaycastResultLayer reflection_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, reflection, push_constants.reflection_ray_dist, false);
         MaterialRenderProps reflection_props = material_render_props[reflection_check.voxel_data >> 24];
         vec3 light = (1.0 - reflection_props.transparency) * reflection_props.color * 0.1;
         if (reflection_check.dist == 0 || reflection_props.transparency == 1.0) {
