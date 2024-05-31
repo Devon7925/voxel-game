@@ -72,6 +72,21 @@ impl Keybind {
 }
 
 impl Cooldown {
+    pub fn from_total_impact(total_impact: f32) -> Self {
+        let mut result = Cooldown {
+            modifiers: vec![],
+            abilities: vec![
+                Ability {
+                    card: BaseCard::None,
+                    keybind: Keybind::Not(Box::new(Keybind::True)),
+                },
+            ],
+            cached_cooldown: None,
+        };
+        result.get_and_cache_cooldown(total_impact + 1.0);
+        result
+    }
+    
     pub fn vec_from_string(ron_string: &str) -> Vec<Self> {
         ron::from_str(ron_string).unwrap()
     }

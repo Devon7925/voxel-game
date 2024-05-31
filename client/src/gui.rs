@@ -1439,6 +1439,10 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                 });
                             }
 
+                            if ui.button("Add Cooldown").on_hover_text("Add a new cooldown").clicked() {
+                                gui_state.gui_cards.push(Cooldown::from_total_impact(total_impact));
+                            }
+
                             if let Some((modify_path, modify_type)) = modify_path.as_mut() {
                                 let modify_action_idx = modify_path.pop_front().unwrap() as usize;
                                 gui_state.gui_cards[modify_action_idx - 1]
