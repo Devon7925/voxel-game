@@ -143,6 +143,9 @@ fn main() {
 
         // Event handling.
         if !should_continue {
+            if let Some(game) = app.game.as_mut() {
+                game.rollback_data.leave_game();
+            }
             *control_flow = ControlFlow::Exit;
             return;
         }

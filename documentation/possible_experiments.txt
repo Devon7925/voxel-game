@@ -1,3 +1,3 @@
 Use sdfs within a voxel for non cube shapes and better depth
 Experiment with using a simple voxel as a light source, relying on simply ambient occlusion to give light
-Experiment with moving more projectile operations to the GPU to prevent having to reupload every frame
+Experiment with moving voxel storage to 3D texture

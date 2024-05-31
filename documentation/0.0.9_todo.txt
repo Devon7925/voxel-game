@@ -1,4 +1,4 @@
-Experiment with moving voxel storage to 3D texture
+Experiment with moving more projectile operations to the GPU to prevent having to reupload every frame
 
 Card Editor
     Basic keybind editing
@@ -6,8 +6,6 @@ Card Editor
     Remove Ability
     Add cooldown for cooldown update to prevent spamming causing lag
     Update all cooldowns when neccessary
-
-Fix alternate ways to exit game not properly triggering leave game
 
 Check how trying to put voxels in AIR_OOB chunks is handled and fix if necessary
 
