@@ -159,17 +159,19 @@ pub fn cooldown<'a>(ability: &'a PlayerAbility, ability_idx: usize) -> impl egui
     move |ui: &mut egui::Ui| cooldown_ui(ui, ability, ability_idx)
 }
 
-pub fn drag_source(ui: &mut Ui, id: Id, body: impl FnOnce(&mut Ui)) {
+pub fn drag_source(ui: &mut Ui, id: Id, dragable: bool, body: impl FnOnce(&mut Ui)) {
     let is_being_dragged = ui.memory(|mem| mem.is_being_dragged(id));
 
-    if !is_being_dragged {
+    if !is_being_dragged || !dragable {
         //load from previous frame
         let prev_frame_area: Option<Rect> = ui.data(|d| d.get_temp(id));
         if let Some(area) = prev_frame_area {
-            // Check for drags:
-            let response = ui.interact(area, id, Sense::drag());
-            if response.hovered() {
-                ui.ctx().set_cursor_icon(CursorIcon::Grab);
+            if dragable {
+                // Check for drags:
+                let response = ui.interact(area, id, Sense::drag());
+                if response.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::Grab);
+                }
             }
         }
         let response = ui.scope(body).response;
@@ -544,7 +546,7 @@ impl DraggableCard {
                         ui.add_space(CARD_UI_SPACING);
                         match modifier {
                             ProjectileModifier::OnHit(base_card) => {
-                                drag_source(ui, item_id, |ui| {
+                                drag_source(ui, item_id, true, |ui| {
                                     ui.label("On Hit");
                                     path.push_back(0);
                                     draw_base_card(
@@ -559,7 +561,7 @@ impl DraggableCard {
                                 });
                             }
                             ProjectileModifier::OnHeadshot(base_card) => {
-                                drag_source(ui, item_id, |ui| {
+                                drag_source(ui, item_id, true, |ui| {
                                     ui.label("On Headshot");
                                     path.push_back(0);
                                     draw_base_card(
@@ -574,7 +576,7 @@ impl DraggableCard {
                                 });
                             }
                             ProjectileModifier::OnExpiry(base_card) => {
-                                drag_source(ui, item_id, |ui| {
+                                drag_source(ui, item_id, true, |ui| {
                                     ui.label("On Expiry");
                                     path.push_back(0);
                                     draw_base_card(
@@ -589,7 +591,7 @@ impl DraggableCard {
                                 });
                             }
                             ProjectileModifier::OnTrigger(id, base_card) => {
-                                drag_source(ui, item_id, |ui| {
+                                drag_source(ui, item_id, true, |ui| {
                                     add_basic_modifer(ui, "On Trigger", *id, modify_path, path);
                                     path.push_back(0);
                                     draw_base_card(
@@ -604,7 +606,7 @@ impl DraggableCard {
                                 });
                             }
                             ProjectileModifier::Trail(frequency, base_card) => {
-                                drag_source(ui, item_id, |ui| {
+                                drag_source(ui, item_id, true, |ui| {
                                     add_basic_modifer(ui, "Trail", *frequency, modify_path, path);
                                     path.push_back(0);
                                     draw_base_card(
@@ -638,9 +640,9 @@ pub fn draw_base_card(
     let id_source = "my_drag_and_drop_demo";
 
     let item_id = egui::Id::new(id_source).with(path.clone());
-    let mut is_draggable = true;
+    let is_draggable = !matches!(card, BaseCard::None | BaseCard::Palette(_, _));
     let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
-    drag_source(ui, item_id, |ui| match card {
+    drag_source(ui, item_id, is_draggable, |ui| match card {
         BaseCard::Projectile(modifiers) => {
             ui.vertical(|ui| {
                 ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(0.5, Color32::WHITE);
@@ -914,7 +916,6 @@ pub fn draw_base_card(
                     path.pop_back();
                 }
                 ui.add_space(CARD_UI_SPACING);
-                is_draggable = false;
             })
             .response;
 
@@ -1084,6 +1085,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                     .scroll_bar_visibility(
                         egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
                     )
+                    .drag_to_scroll(false)
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                             ui.set_clip_rect(menu_size);
@@ -1439,8 +1441,14 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                 });
                             }
 
-                            if ui.button("Add Cooldown").on_hover_text("Add a new cooldown").clicked() {
-                                gui_state.gui_cards.push(Cooldown::from_total_impact(total_impact));
+                            if ui
+                                .button("Add Cooldown")
+                                .on_hover_text("Add a new cooldown")
+                                .clicked()
+                            {
+                                gui_state
+                                    .gui_cards
+                                    .push(Cooldown::from_total_impact(total_impact));
                             }
 
                             if let Some((modify_path, modify_type)) = modify_path.as_mut() {

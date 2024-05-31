@@ -3,7 +3,6 @@ Experiment with moving more projectile operations to the GPU to prevent having t
 Card Editor
     Basic keybind editing
     Remove cooldown
-    Remove Ability
     Add cooldown for cooldown update to prevent spamming causing lag
     Update all cooldowns when neccessary
 

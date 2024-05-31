@@ -1,5 +1,6 @@
 SOON
 Card Editor
+    Dock for storing complex cards for later
     Keybinds
         Editor
         Keybind Chords

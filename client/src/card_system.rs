@@ -285,7 +285,9 @@ impl Cooldown {
         } else if idx_type == 1 {
             let idx = path.pop_front().unwrap() as usize;
             if path.is_empty() {
-                // do nothing
+                if matches!(self.abilities[idx].card, BaseCard::None) && self.abilities.len() > 1 {
+                    self.abilities.remove(idx);
+                }
             } else {
                 self.abilities[idx].card.cleanup(path);
             }

@@ -1,3 +1,4 @@
 Card Editor
     Can now drop cards in palette to remove them
     Add Cooldown button
+    Remove ability
