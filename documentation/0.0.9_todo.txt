@@ -4,7 +4,6 @@ Card Editor
     Basic keybind editing
     Remove cooldown
     Add cooldown for cooldown update to prevent spamming causing lag
-    Update all cooldowns when neccessary
 
 Check how trying to put voxels in AIR_OOB chunks is handled and fix if necessary
 

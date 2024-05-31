@@ -8,6 +8,7 @@ use egui_winit_vulkano::egui::{
     Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse, Label, LayerId, Order, Rect,
     Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke, TextFormat, Ui, Vec2,
 };
+use itertools::Itertools;
 
 use crate::{
     card_system::{
@@ -291,11 +292,10 @@ pub fn draw_cooldown(
 ) {
     let can_accept_what_is_being_dragged = true;
     let id_source = "my_drag_and_drop_demo";
-    let cooldown_value = cooldown.get_and_cache_cooldown(total_impact);
+    let cooldown_value = cooldown.get_cooldown_recovery(total_impact);
     let Cooldown {
         abilities,
         modifiers,
-        cached_cooldown: _,
     } = cooldown;
     ui.visuals_mut().widgets.active.rounding = Rounding::from(CARD_UI_ROUNDING);
     ui.visuals_mut().widgets.inactive.rounding = Rounding::from(CARD_UI_ROUNDING);
@@ -306,7 +306,7 @@ pub fn draw_cooldown(
             ui.horizontal(|ui| {
                 ui.add_space(CARD_UI_SPACING);
                 ui.label("Ability");
-                ui.label(format!("{:.2}s", cooldown_value));
+                ui.label(format!("{:.2}s", cooldown_value.0)).on_hover_text(format!("Recoveries: {}", cooldown_value.1.iter().map(|v| format!("{:.2}s", v)).join(", ")));
                 path.push_back(0);
                 for (mod_idx, modifier) in modifiers.iter().enumerate() {
                     path.push_back(mod_idx as u32);
@@ -1448,7 +1448,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             {
                                 gui_state
                                     .gui_cards
-                                    .push(Cooldown::from_total_impact(total_impact));
+                                    .push(Cooldown::empty());
                             }
 
                             if let Some((modify_path, modify_type)) = modify_path.as_mut() {

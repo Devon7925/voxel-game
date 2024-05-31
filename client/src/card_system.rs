@@ -9,7 +9,6 @@ use crate::{gui::ModificationType, voxel_sim_manager::Projectile, settings_manag
 pub struct Cooldown {
     pub modifiers: Vec<CooldownModifier>,
     pub abilities: Vec<Ability>,
-    pub cached_cooldown: Option<f32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -42,6 +41,20 @@ impl SimpleCooldownModifier {
 pub struct Ability {
     pub card: BaseCard,
     pub keybind: Keybind,
+    pub cached_cooldown: Option<f32>,
+}
+
+impl Ability {
+    pub fn cache_cooldown(&mut self) {
+        self.cached_cooldown = Some(self.card.get_cooldown());
+    }
+
+    pub fn get_cooldown(&self) -> f32 {
+        if let Some(cooldown) = self.cached_cooldown {
+            return cooldown;
+        }
+        self.card.get_cooldown()
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -72,19 +85,17 @@ impl Keybind {
 }
 
 impl Cooldown {
-    pub fn from_total_impact(total_impact: f32) -> Self {
-        let mut result = Cooldown {
+    pub fn empty() -> Self {
+        Cooldown {
             modifiers: vec![],
             abilities: vec![
                 Ability {
                     card: BaseCard::None,
                     keybind: Keybind::Not(Box::new(Keybind::True)),
+                    cached_cooldown: None,
                 },
             ],
-            cached_cooldown: None,
-        };
-        result.get_and_cache_cooldown(total_impact + 1.0);
-        result
+        }
     }
     
     pub fn vec_from_string(ron_string: &str) -> Vec<Self> {
@@ -97,21 +108,12 @@ impl Cooldown {
             .all(|ability| ability.card.is_reasonable())
     }
 
-    pub fn get_and_cache_cooldown(&mut self, total_impact: f32) -> f32 {
-        if let Some(cooldown) = self.cached_cooldown {
-            return cooldown;
-        }
-        let cooldown = self.get_cooldown_recovery(total_impact).0;
-        self.cached_cooldown = Some(cooldown);
-        cooldown
-    }
-
     const GLOBAL_COOLDOWN_MULTIPLIER: f32 = 0.3;
     pub fn get_cooldown_recovery(&self, total_impact: f32) -> (f32, Vec<f32>) {
         let ability_values: Vec<f32> = self
             .abilities
             .iter()
-            .map(|ability| ability.card.get_cooldown())
+            .map(|ability| ability.get_cooldown())
             .collect();
         let sum: f32 = ability_values.iter().sum();
         let max: f32 = ability_values
@@ -177,7 +179,6 @@ impl Cooldown {
         path: &mut VecDeque<u32>,
         modification_type: &ModificationType,
     ) {
-        self.cached_cooldown = None;
         let type_idx = path.pop_front().unwrap() as usize;
         if type_idx == 0 {
             let idx = path.pop_front().unwrap() as usize;
@@ -196,14 +197,14 @@ impl Cooldown {
             let idx = path.pop_front().unwrap() as usize;
             self.abilities[idx]
                 .card
-                .modify_from_path(path, modification_type)
+                .modify_from_path(path, modification_type);
+            self.abilities[idx].cache_cooldown();
         } else {
             panic!("Invalid state");
         }
     }
 
     pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {
-        self.cached_cooldown = None;
         let type_idx = path.pop_front().unwrap() as usize;
         if type_idx == 0 {
             let idx = path.pop_front().unwrap() as usize;
@@ -217,9 +218,12 @@ impl Cooldown {
             if path.is_empty() {
                 let ability_card = self.abilities[idx].card.clone();
                 self.abilities[idx].card = BaseCard::None;
+                self.abilities[idx].cache_cooldown();
                 DraggableCard::BaseCard(ability_card)
             } else {
-                self.abilities[idx].card.take_from_path(path)
+                let result = self.abilities[idx].card.take_from_path(path);
+                self.abilities[idx].cache_cooldown();
+                result
             }
         } else {
             panic!("Invalid state");
@@ -227,13 +231,14 @@ impl Cooldown {
     }
 
     pub fn insert_to_path(&mut self, path: &mut VecDeque<u32>, item: DraggableCard) {
-        self.cached_cooldown = None;
         if path.is_empty() {
             if let DraggableCard::BaseCard(item) = item {
                 self.abilities.push(Ability {
                     card: item,
                     keybind: Keybind::Not(Box::new(Keybind::True)),
+                    cached_cooldown: None,
                 });
+                self.abilities.last_mut().unwrap().cache_cooldown();
             } else if let DraggableCard::CooldownModifier(modifier_item) = item {
                 let mut combined = false;
                 match modifier_item.clone() {
@@ -262,12 +267,12 @@ impl Cooldown {
         } else {
             assert!(path.pop_front().unwrap() == 1);
             let idx = path.pop_front().unwrap() as usize;
-            self.abilities[idx].card.insert_to_path(path, item)
+            self.abilities[idx].card.insert_to_path(path, item);
+            self.abilities[idx].cache_cooldown();
         }
     }
 
     pub fn cleanup(&mut self, path: &mut VecDeque<u32>) {
-        self.cached_cooldown = None;
         if path.is_empty() {
             return;
         }
@@ -290,6 +295,7 @@ impl Cooldown {
                 }
             } else {
                 self.abilities[idx].card.cleanup(path);
+                self.abilities[idx].cache_cooldown();
             }
         } else {
             panic!("Invalid state");
@@ -1107,7 +1113,14 @@ impl BaseCard {
                                 }
                             }
                         },
-                        _ => panic!("Invalid State"),
+                        ProjectileModifier::FriendlyFire
+                        | ProjectileModifier::LockToOwner
+                        | ProjectileModifier::NoEnemyFire
+                        | ProjectileModifier::PiercePlayers
+                        | ProjectileModifier::OnHeadshot(_)
+                        | ProjectileModifier::OnHit(_)
+                        | ProjectileModifier::OnExpiry(_)
+                        | ProjectileModifier::WallBounce => {}
                     }
                 } else {
                     assert!(path.pop_front().unwrap() == 0);
