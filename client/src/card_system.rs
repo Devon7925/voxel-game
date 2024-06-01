@@ -45,8 +45,8 @@ pub struct Ability {
 }
 
 impl Ability {
-    pub fn cache_cooldown(&mut self) {
-        self.cached_cooldown = Some(self.card.get_cooldown());
+    pub fn invalidate_cooldown_cache(&mut self) {
+        self.cached_cooldown = None;
     }
 
     pub fn get_cooldown(&self) -> f32 {
@@ -106,6 +106,12 @@ impl Cooldown {
         self.abilities
             .iter()
             .all(|ability| ability.card.is_reasonable())
+    }
+
+    pub fn generate_cooldown_cache(&mut self) {
+        for ability in self.abilities.iter_mut().filter(|ability| ability.cached_cooldown.is_none()) {
+            ability.cached_cooldown = Some(ability.get_cooldown());
+        }
     }
 
     const GLOBAL_COOLDOWN_MULTIPLIER: f32 = 0.3;
@@ -198,7 +204,7 @@ impl Cooldown {
             self.abilities[idx]
                 .card
                 .modify_from_path(path, modification_type);
-            self.abilities[idx].cache_cooldown();
+            self.abilities[idx].invalidate_cooldown_cache();
         } else {
             panic!("Invalid state");
         }
@@ -218,11 +224,11 @@ impl Cooldown {
             if path.is_empty() {
                 let ability_card = self.abilities[idx].card.clone();
                 self.abilities[idx].card = BaseCard::None;
-                self.abilities[idx].cache_cooldown();
+                self.abilities[idx].invalidate_cooldown_cache();
                 DraggableCard::BaseCard(ability_card)
             } else {
                 let result = self.abilities[idx].card.take_from_path(path);
-                self.abilities[idx].cache_cooldown();
+                self.abilities[idx].invalidate_cooldown_cache();
                 result
             }
         } else {
@@ -238,7 +244,7 @@ impl Cooldown {
                     keybind: Keybind::Not(Box::new(Keybind::True)),
                     cached_cooldown: None,
                 });
-                self.abilities.last_mut().unwrap().cache_cooldown();
+                self.abilities.last_mut().unwrap().invalidate_cooldown_cache();
             } else if let DraggableCard::CooldownModifier(modifier_item) = item {
                 let mut combined = false;
                 match modifier_item.clone() {
@@ -268,7 +274,7 @@ impl Cooldown {
             assert!(path.pop_front().unwrap() == 1);
             let idx = path.pop_front().unwrap() as usize;
             self.abilities[idx].card.insert_to_path(path, item);
-            self.abilities[idx].cache_cooldown();
+            self.abilities[idx].invalidate_cooldown_cache();
         }
     }
 
@@ -295,7 +301,7 @@ impl Cooldown {
                 }
             } else {
                 self.abilities[idx].card.cleanup(path);
-                self.abilities[idx].cache_cooldown();
+                self.abilities[idx].invalidate_cooldown_cache();
             }
         } else {
             panic!("Invalid state");

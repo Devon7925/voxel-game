@@ -292,6 +292,7 @@ pub fn draw_cooldown(
 ) {
     let can_accept_what_is_being_dragged = true;
     let id_source = "my_drag_and_drop_demo";
+    cooldown.generate_cooldown_cache();
     let cooldown_value = cooldown.get_cooldown_recovery(total_impact);
     let Cooldown {
         abilities,
@@ -305,7 +306,7 @@ pub fn draw_cooldown(
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.add_space(CARD_UI_SPACING);
-                ui.label("Ability");
+                ui.label("Cooldown");
                 ui.label(format!("{:.2}s", cooldown_value.0)).on_hover_text(format!("Recoveries: {}", cooldown_value.1.iter().map(|v| format!("{:.2}s", v)).join(", ")));
                 path.push_back(0);
                 for (mod_idx, modifier) in modifiers.iter().enumerate() {
@@ -320,7 +321,12 @@ pub fn draw_cooldown(
                     path.pop_back();
                 }
                 path.pop_back();
-                ui.add_space(CARD_UI_SPACING);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                    if ui.button("X").clicked() {
+                        *modify_path = Some((path.clone(), ModificationType::Remove));
+                    }
+                    ui.add_space(CARD_UI_SPACING);
+                });
             });
             path.push_back(1);
             for (ability_idx, ability) in abilities.iter().enumerate() {
@@ -1453,8 +1459,13 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
 
                             if let Some((modify_path, modify_type)) = modify_path.as_mut() {
                                 let modify_action_idx = modify_path.pop_front().unwrap() as usize;
-                                gui_state.gui_cards[modify_action_idx - 1]
-                                    .modify_from_path(&mut modify_path.clone(), modify_type);
+                                if modify_path.is_empty() {
+                                    assert!(matches!(modify_type, ModificationType::Remove));
+                                    gui_state.gui_cards.remove(modify_action_idx - 1);
+                                } else {
+                                    gui_state.gui_cards[modify_action_idx - 1]
+                                        .modify_from_path(&mut modify_path.clone(), modify_type);
+                                }
                             }
                             if let Some((source_path, source_type)) = source_path.as_mut() {
                                 if let Some((drop_path, drop_type)) = drop_path.as_mut() {
