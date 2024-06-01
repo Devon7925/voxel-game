@@ -4,3 +4,4 @@ Card Editor
     Empty abilities are now removed
     Cooldown display is now properly updated when necessary
     Recoveries are now shown as a hover for cooldowns
+Fix trying to put voxels in AIR_OOB chunks

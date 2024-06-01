@@ -54,8 +54,9 @@ void main() {
     uvec3 pos = gl_WorkGroupSize * chunk_loads[gl_WorkGroupID.x].xyz + gl_LocalInvocationID;
     uvec4 indicies = get_indicies(pos, sim_data.render_size);
     uint data = get_worldgen(pos);
-    set_data_in_chunk(pos, chunk_loads[gl_WorkGroupID.x].w, data);
-    if (data >> 24 != MAT_AIR) {
-        load_results[gl_WorkGroupID.x / 8] = chunk_loads[gl_WorkGroupID.x].w;
+    int chunk_idx = chunk_loads[gl_WorkGroupID.x].w;
+    set_data_in_chunk(pos, abs(chunk_idx), data);
+    if (data >> 24 != MAT_AIR || chunk_idx < 0) {
+        load_results[gl_WorkGroupID.x / 8] = abs(chunk_idx);
     }
 }

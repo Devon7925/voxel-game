@@ -1,6 +1,6 @@
 use std::{
     array::from_fn,
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     hash::Hash,
 };
 
@@ -51,6 +51,99 @@ impl Direction {
         match self {
             Direction::PosX | Direction::PosY | Direction::PosZ => true,
             Direction::NegX | Direction::NegY | Direction::NegZ => false,
+        }
+    }
+}
+
+pub struct QueueMap<K, V>
+where
+    K: Clone + Eq + PartialEq + Hash,
+    V: Clone,
+{
+    queue: VecDeque<K>,
+    map: HashMap<K, V>,
+    keep_value: Box<dyn Fn(V, V) -> V>,
+}
+
+impl<K, V> QueueMap<K, V>
+where
+    K: Clone + Eq + PartialEq + Hash,
+    V: Clone,
+{
+    pub fn new<F>(keep_value: F) -> QueueMap<K, V>
+    where
+        F: 'static + Fn(V, V) -> V,
+    {
+        QueueMap {
+            queue: VecDeque::new(),
+            map: HashMap::new(),
+            keep_value: Box::new(keep_value),
+        }
+    }
+
+    pub fn with_capacity<F>(capacity: usize, keep_value: F) -> QueueMap<K, V>
+    where
+        F: 'static + Fn(V, V) -> V,
+    {
+        QueueMap {
+            queue: VecDeque::with_capacity(capacity),
+            map: HashMap::with_capacity(capacity),
+            keep_value: Box::new(keep_value),
+        }
+    }
+
+    pub fn push(&mut self, key: K, value: V) -> bool {
+        if let Some(existing_value) = self.map.get_mut(&key) {
+            *existing_value = (self.keep_value)(existing_value.clone(), value);
+            false // Key already exists, updated with the chosen value
+        } else {
+            self.queue.push_back(key.clone());
+            self.map.insert(key, value);
+            true // Key did not exist, added to queue and map
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<(K, V)> {
+        if let Some(key) = self.queue.pop_front() {
+            if let Some(value) = self.map.remove(&key) {
+                return Some((key, value));
+            }
+        }
+        None
+    }
+
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub fn into_iter(self) -> std::collections::vec_deque::IntoIter<K> {
+        self.queue.into_iter()
+    }
+
+    pub fn keep_if<P>(&mut self, predicate: P)
+    where
+        P: Fn(&K, &V) -> bool,
+    {
+        let mut new_queue = VecDeque::new();
+        for key in self.queue.iter() {
+            if let Some(value) = self.map.get(key) {
+                if predicate(key, value) {
+                    new_queue.push_back(key.clone());
+                } else {
+                    self.map.remove(key);
+                }
+            }
+        }
+        self.queue = new_queue;
+    }
+
+    pub fn extend(&mut self, delayed_writes: Vec<(K, V)>) {
+        for (key, value) in delayed_writes {
+            self.push(key, value);
         }
     }
 }
@@ -116,6 +209,12 @@ impl<T: Clone + Eq + PartialEq + Hash> QueueSet<T> {
             }
         }
         self.queue = new_queue;
+    }
+
+    pub fn extend(&mut self, delayed_writes: Vec<T>) {
+        for item in delayed_writes {
+            self.push(item);
+        }
     }
 }
 

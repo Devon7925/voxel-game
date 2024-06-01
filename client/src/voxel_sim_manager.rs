@@ -11,12 +11,13 @@ use crate::{
     app::CreationInterface,
     card_system::{CardManager, VoxelMaterial},
     game_manager::GameState,
-    utils::{Direction, QueueSet, VoxelUpdateQueue},
+    utils::{Direction, QueueMap, QueueSet, VoxelUpdateQueue},
     CHUNK_SIZE, MAX_CHUNK_UPDATE_RATE, MAX_VOXEL_UPDATE_RATE, MAX_WORLDGEN_RATE, SUB_CHUNK_COUNT,
     WORLDGEN_CHUNK_COUNT,
 };
 use bytemuck::{Pod, Zeroable};
 use cgmath::{Point3, Quaternion};
+use priority_queue::PriorityQueue;
 use std::{collections::HashSet, iter, sync::Arc};
 use voxel_shared::GameSettings;
 use vulkano::{
@@ -85,9 +86,9 @@ pub struct VoxelComputePipeline {
     chunk_updates: Subbuffer<[[u32; 4]; MAX_CHUNK_UPDATE_RATE]>,
     voxel_write_queue: QueueSet<[u32; 4]>,
     voxel_writes: Subbuffer<[[u32; 4]; MAX_VOXEL_UPDATE_RATE]>,
-    worldgen_update_queue: QueueSet<[u32; 3]>,
+    worldgen_update_queue: QueueMap<[u32; 3], bool>,
     oob_worldgens: HashSet<[u32; 3]>,
-    worldgen_updates: Subbuffer<[[u32; 4]; MAX_WORLDGEN_RATE]>,
+    worldgen_updates: Subbuffer<[[i32; 4]; MAX_WORLDGEN_RATE]>,
     worldgen_results: Subbuffer<
         [u32; MAX_WORLDGEN_RATE
             / WORLDGEN_CHUNK_COUNT
@@ -423,8 +424,9 @@ impl VoxelComputePipeline {
             voxel_write_queue: QueueSet::with_capacity(MAX_VOXEL_UPDATE_RATE),
             voxel_writes,
             slice_to_unload: None,
-            worldgen_update_queue: QueueSet::with_capacity(
+            worldgen_update_queue: QueueMap::with_capacity(
                 game_settings.max_worldgen_rate as usize,
+                Box::new(|a, b| a || b),
             ),
             oob_worldgens: HashSet::new(),
             worldgen_updates,
@@ -475,7 +477,7 @@ impl VoxelComputePipeline {
                     let chunk_idx = self.get_chunk(chunk, game_settings);
                     if chunk_idx == 0 {
                         self.worldgen_update_queue
-                            .push([chunk[0], chunk[1], chunk[2]]);
+                            .push([chunk[0], chunk[1], chunk[2]], false);
                     } else if chunk_idx != 1 {
                         self.chunk_update_queue.push_with_priority(chunk_location, 1);
                     }
@@ -534,7 +536,7 @@ impl VoxelComputePipeline {
         let chunk_idx = self.get_chunk(chunk, game_settings);
         if chunk_idx == 0 {
             self.worldgen_update_queue
-                .push([chunk[0], chunk[1], chunk[2]]);
+                .push([chunk[0], chunk[1], chunk[2]], false);
         } else if chunk_idx != 1 {
             self.chunk_update_queue.push_all(queued);
         }
@@ -598,7 +600,7 @@ impl VoxelComputePipeline {
                 self.set_chunk(chunk_location, game_settings, 0);
                 if self.oob_worldgens.contains(&chunk_location) {
                     self.oob_worldgens.remove(&chunk_location);
-                    self.worldgen_update_queue.push(chunk_location);
+                    self.worldgen_update_queue.push(chunk_location, false);
                 }
             }
         }
@@ -620,26 +622,26 @@ impl VoxelComputePipeline {
             for i in 0..self.last_worldgen_count {
                 if worldgen_results[i] == 1 {
                     let last_worldgen_chunk = last_worldgen[8 * i];
-                    self.available_chunks.push(last_worldgen_chunk[3]);
+                    self.available_chunks.push(last_worldgen_chunk[3].abs() as u32);
                     self.cpu_chunks_copy
-                        [((last_worldgen_chunk[0] / 2) % game_settings.render_size[0]) as usize]
-                        [((last_worldgen_chunk[1] / 2) % game_settings.render_size[1]) as usize]
-                        [((last_worldgen_chunk[2] / 2) % game_settings.render_size[2]) as usize] =
+                        [((last_worldgen_chunk[0] as u32 / 2) % game_settings.render_size[0]) as usize]
+                        [((last_worldgen_chunk[1] as u32 / 2) % game_settings.render_size[1]) as usize]
+                        [((last_worldgen_chunk[2] as u32 / 2) % game_settings.render_size[2]) as usize] =
                         1;
                     //update neighbors
                     for x in -1..=1 {
                         for y in -1..=1 {
                             for z in -1..=1 {
                                 let queued = [
-                                    (last_worldgen_chunk[0] / 2).wrapping_add_signed(x),
-                                    (last_worldgen_chunk[1] / 2).wrapping_add_signed(y),
-                                    (last_worldgen_chunk[2] / 2).wrapping_add_signed(z),
+                                    (last_worldgen_chunk[0] / 2 + x) as u32,
+                                    (last_worldgen_chunk[1] / 2 + y) as u32,
+                                    (last_worldgen_chunk[2] / 2 + z) as u32,
                                 ];
                                 let chunk = queued.map(|e| e / SUB_CHUNK_COUNT as u32);
                                 let chunk_idx = self.get_chunk(chunk, game_settings);
                                 if chunk_idx == 0 {
                                     self.worldgen_update_queue
-                                        .push([chunk[0], chunk[1], chunk[2]]);
+                                        .push([chunk[0], chunk[1], chunk[2]], false);
                                 } else if chunk_idx != 1 {
                                     self.chunk_update_queue.push_all(queued);
                                 }
@@ -870,9 +872,10 @@ impl VoxelComputePipeline {
         {
             let mut worldgen_updates_buffer = self.worldgen_updates.write().unwrap();
             let mut worldgen_results_buffer = self.worldgen_results.write().unwrap();
-            while let Some(loc) = self.worldgen_update_queue.pop() {
+            while let Some((loc, forced)) = self.worldgen_update_queue.pop() {
                 if is_inbounds!(loc, game_state, game_settings) {
                     let Some(available_chunk_idx) = self.available_chunks.pop() else {
+                        self.worldgen_update_queue.push(loc, forced);
                         break;
                     };
                     worldgen_results_buffer[worldgen_update_count
@@ -883,10 +886,10 @@ impl VoxelComputePipeline {
                         for j in 0..WORLDGEN_CHUNK_COUNT {
                             for k in 0..WORLDGEN_CHUNK_COUNT {
                                 worldgen_updates_buffer[worldgen_update_count] = [
-                                    (WORLDGEN_CHUNK_COUNT * loc[0] as usize + i) as u32,
-                                    (WORLDGEN_CHUNK_COUNT * loc[1] as usize + j) as u32,
-                                    (WORLDGEN_CHUNK_COUNT * loc[2] as usize + k) as u32,
-                                    available_chunk_idx,
+                                    (WORLDGEN_CHUNK_COUNT * loc[0] as usize + i) as i32,
+                                    (WORLDGEN_CHUNK_COUNT * loc[1] as usize + j) as i32,
+                                    (WORLDGEN_CHUNK_COUNT * loc[2] as usize + k) as i32,
+                                    available_chunk_idx as i32 * if forced { -1 } else { 1 },
                                 ];
                                 worldgen_update_count += 1;
                             }
@@ -1019,70 +1022,81 @@ impl VoxelComputePipeline {
         //send chunk updates
         let mut voxel_write_count = 0;
         {
+            let mut delayed_writes = vec![];
             let mut voxel_write_buffer = self.voxel_writes.write().unwrap();
             while let Some(voxel_write) = self.voxel_write_queue.pop() {
                 if is_inbounds!(
                     voxel_write.map(|c| c / CHUNK_SIZE as u32),
                     game_state,
                     game_settings
-                ) && self.get_chunk(
-                    [
-                        voxel_write[0] / CHUNK_SIZE as u32,
-                        voxel_write[1] / CHUNK_SIZE as u32,
-                        voxel_write[2] / CHUNK_SIZE as u32,
-                    ],
-                    game_settings,
-                ) > 1
-                {
-                    voxel_write_buffer[voxel_write_count] = voxel_write;
-                    voxel_write_count += 1;
-                    let pos_in_chunk = [
-                        voxel_write[0] % CHUNK_SIZE as u32,
-                        voxel_write[1] % CHUNK_SIZE as u32,
-                        voxel_write[2] % CHUNK_SIZE as u32,
-                    ];
-                    let chunk = [
-                        voxel_write[0] / CHUNK_SIZE as u32,
-                        voxel_write[1] / CHUNK_SIZE as u32,
-                        voxel_write[2] / CHUNK_SIZE as u32,
-                    ];
-                    for offset_x in (if pos_in_chunk[0] == 0 { -1 } else { 0 })
-                        ..=(if pos_in_chunk[0] + 1 == CHUNK_SIZE as u32 {
-                            1
-                        } else {
-                            0
-                        })
-                    {
-                        for offset_y in (if pos_in_chunk[1] == 0 { -1 } else { 0 })
-                            ..=(if pos_in_chunk[1] + 1 == CHUNK_SIZE as u32 {
+                ) {
+                    let voxel_chunk = self.get_chunk(
+                        [
+                            voxel_write[0] / CHUNK_SIZE as u32,
+                            voxel_write[1] / CHUNK_SIZE as u32,
+                            voxel_write[2] / CHUNK_SIZE as u32,
+                        ],
+                        game_settings,
+                    );
+                    if voxel_chunk > 1 {
+                        voxel_write_buffer[voxel_write_count] = voxel_write;
+                        voxel_write_count += 1;
+                        let pos_in_chunk = [
+                            voxel_write[0] % CHUNK_SIZE as u32,
+                            voxel_write[1] % CHUNK_SIZE as u32,
+                            voxel_write[2] % CHUNK_SIZE as u32,
+                        ];
+                        let chunk = [
+                            voxel_write[0] / CHUNK_SIZE as u32,
+                            voxel_write[1] / CHUNK_SIZE as u32,
+                            voxel_write[2] / CHUNK_SIZE as u32,
+                        ];
+                        for offset_x in (if pos_in_chunk[0] == 0 { -1 } else { 0 })
+                            ..=(if pos_in_chunk[0] + 1 == CHUNK_SIZE as u32 {
                                 1
                             } else {
                                 0
                             })
                         {
-                            for offset_z in (if pos_in_chunk[2] == 0 { -1 } else { 0 })
-                                ..=(if pos_in_chunk[2] + 1 == CHUNK_SIZE as u32 {
+                            for offset_y in (if pos_in_chunk[1] == 0 { -1 } else { 0 })
+                                ..=(if pos_in_chunk[1] + 1 == CHUNK_SIZE as u32 {
                                     1
                                 } else {
                                     0
                                 })
                             {
-                                self.chunk_update_queue.push_with_priority(
-                                    [
-                                        chunk[0].wrapping_add_signed(offset_x),
-                                        chunk[1].wrapping_add_signed(offset_y),
-                                        chunk[2].wrapping_add_signed(offset_z),
-                                    ],
-                                    1,
-                                );
+                                for offset_z in (if pos_in_chunk[2] == 0 { -1 } else { 0 })
+                                    ..=(if pos_in_chunk[2] + 1 == CHUNK_SIZE as u32 {
+                                        1
+                                    } else {
+                                        0
+                                    })
+                                {
+                                    self.chunk_update_queue.push_with_priority(
+                                        [
+                                            chunk[0].wrapping_add_signed(offset_x),
+                                            chunk[1].wrapping_add_signed(offset_y),
+                                            chunk[2].wrapping_add_signed(offset_z),
+                                        ],
+                                        1,
+                                    );
+                                }
                             }
                         }
-                    }
-                    if voxel_write_count >= MAX_VOXEL_UPDATE_RATE {
-                        break;
+                        if voxel_write_count >= MAX_VOXEL_UPDATE_RATE {
+                            break;
+                        }
+                    } else if voxel_chunk == 1 {
+                        self.worldgen_update_queue.push([
+                            voxel_write[0] * SUB_CHUNK_COUNT as u32 / CHUNK_SIZE as u32,
+                            voxel_write[1] * SUB_CHUNK_COUNT as u32 / CHUNK_SIZE as u32,
+                            voxel_write[2] * SUB_CHUNK_COUNT as u32 / CHUNK_SIZE as u32,
+                        ], true);
+                        delayed_writes.push(voxel_write);
                     }
                 }
             }
+            self.voxel_write_queue.extend(delayed_writes);
         }
 
         let uniform_buffer_subbuffer = {
@@ -1151,7 +1165,7 @@ impl VoxelComputePipeline {
                             loc.0[0] / SUB_CHUNK_COUNT as u32,
                             loc.0[1] / SUB_CHUNK_COUNT as u32,
                             loc.0[2] / SUB_CHUNK_COUNT as u32,
-                        ]);
+                        ], false);
                     } else if chunk != 1 {
                         chunk_updates_buffer[chunk_update_count] = [loc.0[0], loc.0[1], loc.0[2], 0];
                         self.last_update_priorities.push(loc.1);
@@ -1202,7 +1216,7 @@ impl VoxelComputePipeline {
     pub fn ensure_chunk_loaded(&mut self, chunk: Point3<u32>, game_settings: &GameSettings) {
         if self.get_chunk(chunk.into(), game_settings) == 0 {
             self.worldgen_update_queue
-                .push([chunk[0], chunk[1], chunk[2]]);
+                .push([chunk[0], chunk[1], chunk[2]], false);
         }
     }
 }
