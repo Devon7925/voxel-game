@@ -42,11 +42,24 @@ pub struct Ability {
     pub card: BaseCard,
     pub keybind: Keybind,
     pub cached_cooldown: Option<f32>,
+    #[serde(default)]
+    pub is_cache_valid: bool,
+}
+
+impl Default for Ability {
+    fn default() -> Self {
+        Ability {
+            card: BaseCard::None,
+            keybind: Keybind::Not(Box::new(Keybind::True)),
+            cached_cooldown: None,
+            is_cache_valid: false,
+        }
+    }
 }
 
 impl Ability {
     pub fn invalidate_cooldown_cache(&mut self) {
-        self.cached_cooldown = None;
+        self.is_cache_valid = false;
     }
 
     pub fn get_cooldown(&self) -> f32 {
@@ -93,6 +106,7 @@ impl Cooldown {
                     card: BaseCard::None,
                     keybind: Keybind::Not(Box::new(Keybind::True)),
                     cached_cooldown: None,
+                    is_cache_valid: false,
                 },
             ],
         }
@@ -108,10 +122,14 @@ impl Cooldown {
             .all(|ability| ability.card.is_reasonable())
     }
 
-    pub fn generate_cooldown_cache(&mut self) {
-        for ability in self.abilities.iter_mut().filter(|ability| ability.cached_cooldown.is_none()) {
-            ability.cached_cooldown = Some(ability.get_cooldown());
+    pub fn generate_cooldown_cache(&mut self) -> bool {
+        let mut has_anything_changed = false;
+        for ability in self.abilities.iter_mut().filter(|ability| !ability.is_cache_valid) {
+            ability.cached_cooldown = Some(ability.card.get_cooldown());
+            ability.is_cache_valid = true;
+            has_anything_changed = true;
         }
+        has_anything_changed
     }
 
     const GLOBAL_COOLDOWN_MULTIPLIER: f32 = 0.3;
@@ -243,8 +261,8 @@ impl Cooldown {
                     card: item,
                     keybind: Keybind::Not(Box::new(Keybind::True)),
                     cached_cooldown: None,
+                    is_cache_valid: false,
                 });
-                self.abilities.last_mut().unwrap().invalidate_cooldown_cache();
             } else if let DraggableCard::CooldownModifier(modifier_item) = item {
                 let mut combined = false;
                 match modifier_item.clone() {

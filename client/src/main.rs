@@ -122,6 +122,7 @@ fn main() {
         menu_stack: vec![GuiElement::MainMenu],
         errors: Vec::new(),
         gui_cards: player_deck.clone(),
+        cooldown_cache_refresh_delay: 0.0,
         palette_state: PaletteState::ProjectileModifiers,
         should_exit: false,
         game_just_started: false,
@@ -155,12 +156,12 @@ fn main() {
                 if (Instant::now() - next_frame_time).as_secs_f32() > 0.0 {
                     puffin::GlobalProfiler::lock().new_frame();
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
-                    next_frame_time += std::time::Duration::from_secs_f32(
-                        app.game
-                            .as_ref()
-                            .map(|game| game.rollback_data.get_delta_time())
-                            .unwrap_or(DEFAULT_DELTA_TIME),
-                    );
+                    let delta_time = app.game
+                        .as_ref()
+                        .map(|game| game.rollback_data.get_delta_time())
+                        .unwrap_or(DEFAULT_DELTA_TIME);
+                    next_frame_time += std::time::Duration::from_secs_f32(delta_time);
+                    gui_state.cooldown_cache_refresh_delay -= delta_time;
                     let skip_render = if app.game.is_some() && !gui_state.game_just_started {
                         if (Instant::now() - last_frame_time).as_secs_f32() > 2.0 {
                             // enforce minimum frame rate of 0.5fps

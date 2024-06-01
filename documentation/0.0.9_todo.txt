@@ -2,7 +2,6 @@ Experiment with moving more projectile operations to the GPU to prevent having t
 
 Card Editor
     Basic keybind editing
-    Add cooldown for cooldown update to prevent spamming causing lag
 
 Check how trying to put voxels in AIR_OOB chunks is handled and fix if necessary
 

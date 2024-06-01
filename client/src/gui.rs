@@ -46,6 +46,7 @@ pub struct GuiState {
     pub menu_stack: Vec<GuiElement>,
     pub errors: Vec<String>,
     pub gui_cards: Vec<Cooldown>,
+    pub cooldown_cache_refresh_delay: f32,
     pub palette_state: PaletteState,
     pub lobby_browser: LobbyBrowser,
     pub should_exit: bool,
@@ -292,7 +293,6 @@ pub fn draw_cooldown(
 ) {
     let can_accept_what_is_being_dragged = true;
     let id_source = "my_drag_and_drop_demo";
-    cooldown.generate_cooldown_cache();
     let cooldown_value = cooldown.get_cooldown_recovery(total_impact);
     let Cooldown {
         abilities,
@@ -307,7 +307,15 @@ pub fn draw_cooldown(
             ui.horizontal(|ui| {
                 ui.add_space(CARD_UI_SPACING);
                 ui.label("Cooldown");
-                ui.label(format!("{:.2}s", cooldown_value.0)).on_hover_text(format!("Recoveries: {}", cooldown_value.1.iter().map(|v| format!("{:.2}s", v)).join(", ")));
+                ui.label(format!("{:.2}s", cooldown_value.0))
+                    .on_hover_text(format!(
+                        "Recoveries: {}",
+                        cooldown_value
+                            .1
+                            .iter()
+                            .map(|v| format!("{:.2}s", v))
+                            .join(", ")
+                    ));
                 path.push_back(0);
                 for (mod_idx, modifier) in modifiers.iter().enumerate() {
                     path.push_back(mod_idx as u32);
@@ -1431,6 +1439,14 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                 .map(|card| card.get_impact_multiplier())
                                 .sum::<f32>();
 
+                            if gui_state.cooldown_cache_refresh_delay <= 0.0 {
+                                for cooldown in gui_state.gui_cards.iter_mut() {
+                                    if cooldown.generate_cooldown_cache() {
+                                        gui_state.cooldown_cache_refresh_delay = 0.5;
+                                    }
+                                }
+                            }
+
                             for (ability_idx, mut cooldown) in
                                 gui_state.gui_cards.iter_mut().enumerate()
                             {
@@ -1452,9 +1468,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                 .on_hover_text("Add a new cooldown")
                                 .clicked()
                             {
-                                gui_state
-                                    .gui_cards
-                                    .push(Cooldown::empty());
+                                gui_state.gui_cards.push(Cooldown::empty());
                             }
 
                             if let Some((modify_path, modify_type)) = modify_path.as_mut() {
