@@ -4,7 +4,9 @@ use std::{
     hash::Hash,
 };
 
+use egui_winit_vulkano::egui;
 use priority_queue::PriorityQueue;
+use winit::event::VirtualKeyCode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -300,5 +302,101 @@ impl VoxelUpdateQueue {
         self.queue_sets
             .iter()
             .all(|x| x.iter().all(|y| y.iter().all(|z| z.is_empty())))
+    }
+}
+
+pub fn translate_egui_key_code(key: egui::Key) -> VirtualKeyCode {
+    match key {
+        egui::Key::ArrowDown => VirtualKeyCode::Down,
+        egui::Key::ArrowLeft => VirtualKeyCode::Left,
+        egui::Key::ArrowRight => VirtualKeyCode::Right,
+        egui::Key::ArrowUp => VirtualKeyCode::Up,
+
+        egui::Key::Escape => VirtualKeyCode::Escape,
+        egui::Key::Tab => VirtualKeyCode::Tab,
+        egui::Key::Backspace => VirtualKeyCode::Back,
+        egui::Key::Enter => VirtualKeyCode::Return,
+        egui::Key::Space => VirtualKeyCode::Space,
+
+        egui::Key::Insert => VirtualKeyCode::Insert,
+        egui::Key::Delete => VirtualKeyCode::Delete,
+        egui::Key::Home => VirtualKeyCode::Home,
+        egui::Key::End => VirtualKeyCode::End,
+        egui::Key::PageUp => VirtualKeyCode::PageUp,
+        egui::Key::PageDown => VirtualKeyCode::PageDown,
+
+        egui::Key::Minus => VirtualKeyCode::Minus,
+        // Using Mac the key with the Plus sign on it is reported as the Equals key
+        // (with both English and Swedish keyboard).
+        egui::Key::PlusEquals => VirtualKeyCode::Equals,
+
+        egui::Key::Num0 => VirtualKeyCode::Key0,
+        egui::Key::Num1 => VirtualKeyCode::Key1,
+        egui::Key::Num2 => VirtualKeyCode::Key2,
+        egui::Key::Num3 => VirtualKeyCode::Key3,
+        egui::Key::Num4 => VirtualKeyCode::Key4,
+        egui::Key::Num5 => VirtualKeyCode::Key5,
+        egui::Key::Num6 => VirtualKeyCode::Key6,
+        egui::Key::Num7 => VirtualKeyCode::Key7,
+        egui::Key::Num8 => VirtualKeyCode::Key8,
+        egui::Key::Num9 => VirtualKeyCode::Key9,
+
+        egui::Key::A => VirtualKeyCode::A,
+        egui::Key::B => VirtualKeyCode::B,
+        egui::Key::C => VirtualKeyCode::C,
+        egui::Key::D => VirtualKeyCode::D,
+        egui::Key::E => VirtualKeyCode::E,
+        egui::Key::F => VirtualKeyCode::F,
+        egui::Key::G => VirtualKeyCode::G,
+        egui::Key::H => VirtualKeyCode::H,
+        egui::Key::I => VirtualKeyCode::I,
+        egui::Key::J => VirtualKeyCode::J,
+        egui::Key::K => VirtualKeyCode::K,
+        egui::Key::L => VirtualKeyCode::L,
+        egui::Key::M => VirtualKeyCode::M,
+        egui::Key::N => VirtualKeyCode::N,
+        egui::Key::O => VirtualKeyCode::O,
+        egui::Key::P => VirtualKeyCode::P,
+        egui::Key::Q => VirtualKeyCode::Q,
+        egui::Key::R => VirtualKeyCode::R,
+        egui::Key::S => VirtualKeyCode::S,
+        egui::Key::T => VirtualKeyCode::T,
+        egui::Key::U => VirtualKeyCode::U,
+        egui::Key::V => VirtualKeyCode::V,
+        egui::Key::W => VirtualKeyCode::W,
+        egui::Key::X => VirtualKeyCode::X,
+        egui::Key::Y => VirtualKeyCode::Y,
+        egui::Key::Z => VirtualKeyCode::Z,
+
+        egui::Key::F1 => VirtualKeyCode::F1,
+        egui::Key::F2 => VirtualKeyCode::F2,
+        egui::Key::F3 => VirtualKeyCode::F3,
+        egui::Key::F4 => VirtualKeyCode::F4,
+        egui::Key::F5 => VirtualKeyCode::F5,
+        egui::Key::F6 => VirtualKeyCode::F6,
+        egui::Key::F7 => VirtualKeyCode::F7,
+        egui::Key::F8 => VirtualKeyCode::F8,
+        egui::Key::F9 => VirtualKeyCode::F9,
+        egui::Key::F10 => VirtualKeyCode::F10,
+        egui::Key::F11 => VirtualKeyCode::F11,
+        egui::Key::F12 => VirtualKeyCode::F12,
+        egui::Key::F13 => VirtualKeyCode::F13,
+        egui::Key::F14 => VirtualKeyCode::F14,
+        egui::Key::F15 => VirtualKeyCode::F15,
+        egui::Key::F16 => VirtualKeyCode::F16,
+        egui::Key::F17 => VirtualKeyCode::F17,
+        egui::Key::F18 => VirtualKeyCode::F18,
+        egui::Key::F19 => VirtualKeyCode::F19,
+        egui::Key::F20 => VirtualKeyCode::F20,
+    }
+}
+
+pub fn translate_egui_pointer_button(button: egui::PointerButton) -> winit::event::MouseButton {
+    match button {
+        egui::PointerButton::Primary => winit::event::MouseButton::Left,
+        egui::PointerButton::Secondary => winit::event::MouseButton::Right,
+        egui::PointerButton::Middle => winit::event::MouseButton::Middle,
+        egui::PointerButton::Extra1 => winit::event::MouseButton::Other(1),
+        egui::PointerButton::Extra2 => winit::event::MouseButton::Other(2),
     }
 }

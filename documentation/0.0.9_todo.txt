@@ -1,8 +1,5 @@
 Experiment with moving more projectile operations to the GPU to prevent having to reupload every frame
 
-Card Editor
-    Basic keybind editing
-
 Clean up voxel_sim_manager
     Shared descriptor sets
     General cleaning

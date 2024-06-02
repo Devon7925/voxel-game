@@ -44,6 +44,8 @@ pub struct Ability {
     pub cached_cooldown: Option<f32>,
     #[serde(default)]
     pub is_cache_valid: bool,
+    #[serde(default)]
+    pub is_keybind_selected: bool,
 }
 
 impl Default for Ability {
@@ -53,6 +55,7 @@ impl Default for Ability {
             keybind: Keybind::Not(Box::new(Keybind::True)),
             cached_cooldown: None,
             is_cache_valid: false,
+            is_keybind_selected: false,
         }
     }
 }
@@ -102,12 +105,7 @@ impl Cooldown {
         Cooldown {
             modifiers: vec![],
             abilities: vec![
-                Ability {
-                    card: BaseCard::None,
-                    keybind: Keybind::Not(Box::new(Keybind::True)),
-                    cached_cooldown: None,
-                    is_cache_valid: false,
-                },
+                Ability::default(),
             ],
         }
     }
@@ -259,9 +257,7 @@ impl Cooldown {
             if let DraggableCard::BaseCard(item) = item {
                 self.abilities.push(Ability {
                     card: item,
-                    keybind: Keybind::Not(Box::new(Keybind::True)),
-                    cached_cooldown: None,
-                    is_cache_valid: false,
+                    ..Default::default()
                 });
             } else if let DraggableCard::CooldownModifier(modifier_item) = item {
                 let mut combined = false;

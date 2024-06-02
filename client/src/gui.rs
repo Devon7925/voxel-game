@@ -12,12 +12,14 @@ use itertools::Itertools;
 
 use crate::{
     card_system::{
-        BaseCard, Cooldown, CooldownModifier, DraggableCard, Effect, Keybind, MultiCastModifier,
-        ProjectileModifier, ProjectileModifierType, ReferencedStatusEffect, SimpleCooldownModifier,
-        StatusEffect, VoxelMaterial,
+        Ability, BaseCard, Cooldown, CooldownModifier, DraggableCard, Effect, Keybind,
+        MultiCastModifier, ProjectileModifier, ProjectileModifierType, ReferencedStatusEffect,
+        SimpleCooldownModifier, StatusEffect, VoxelMaterial,
     },
     lobby_browser::LobbyBrowser,
     rollback_manager::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
+    settings_manager::Control,
+    utils::{translate_egui_key_code, translate_egui_pointer_button},
 };
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
@@ -337,10 +339,10 @@ pub fn draw_cooldown(
                 });
             });
             path.push_back(1);
-            for (ability_idx, ability) in abilities.iter().enumerate() {
+            for (ability_idx, mut ability) in abilities.iter_mut().enumerate() {
                 path.push_back(ability_idx as u32);
                 ui.horizontal(|ui| {
-                    draw_keybind(ui, &ability.keybind);
+                    draw_keybind(ui, &mut ability);
                     draw_base_card(ui, &ability.card, path, source_path, drop_path, modify_path);
                 });
                 path.pop_back();
@@ -369,15 +371,48 @@ pub fn draw_cooldown(
     }
 }
 
-fn draw_keybind(ui: &mut Ui, keybind: &Keybind) {
+fn draw_keybind(ui: &mut Ui, ability: &mut Ability) {
     let desired_size = ui.spacing().interact_size.y * egui::vec2(3.0, 3.0);
-    let (rect, _response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+
+    if ability.is_keybind_selected {
+        ui.ctx().input(|input| {
+            for key in input.events.iter() {
+                if let egui::Event::Key { key, pressed, .. } = key {
+                    if *pressed {
+                        ability.keybind =
+                            Keybind::Pressed(Control::Key(translate_egui_key_code(*key)));
+                        ability.is_keybind_selected = false;
+                    }
+                }
+                if let egui::Event::PointerButton {
+                    button, pressed, ..
+                } = key
+                {
+                    if *pressed {
+                        ability.keybind = Keybind::Pressed(Control::Mouse(
+                            translate_egui_pointer_button(*button),
+                        ));
+                        ability.is_keybind_selected = false;
+                    }
+                }
+            }
+        });
+    } else if response.clicked() {
+        ability.is_keybind_selected = true;
+    }
 
     if ui.is_rect_visible(rect) {
         let font = egui::FontId::proportional(24.0);
-        ui.painter().rect_filled(rect, 0.0, Color32::LIGHT_GRAY);
+
+        let fill_color = if ability.is_keybind_selected {
+            Color32::DARK_GRAY
+        } else {
+            Color32::LIGHT_GRAY
+        };
+        ui.painter().rect_filled(rect, 0.0, fill_color);
         {
-            if let Some(key) = keybind.get_simple_representation() {
+            if let Some(key) = ability.keybind.get_simple_representation() {
                 ui.painter().text(
                     rect.center(),
                     Align2::CENTER_CENTER,
