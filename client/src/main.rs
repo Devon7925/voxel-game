@@ -156,7 +156,8 @@ fn main() {
                 if (Instant::now() - next_frame_time).as_secs_f32() > 0.0 {
                     puffin::GlobalProfiler::lock().new_frame();
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
-                    let delta_time = app.game
+                    let delta_time = app
+                        .game
                         .as_ref()
                         .map(|game| game.rollback_data.get_delta_time())
                         .unwrap_or(DEFAULT_DELTA_TIME);
@@ -181,7 +182,8 @@ fn main() {
                         game.rollback_data
                             .network_update(&game.game_settings, &mut game.card_manager);
                         if !game.has_started
-                            && game.rollback_data.player_count() >= game.game_settings.player_count as usize
+                            && game.rollback_data.player_count()
+                                >= game.game_settings.player_count as usize
                         {
                             game.has_started = true;
                             if gui_state.menu_stack.last() == Some(&GuiElement::LobbyQueue) {
@@ -189,8 +191,9 @@ fn main() {
                             }
                         }
                         if game.rollback_data.is_render_behind_other_players() {
-                            next_frame_time -=
-                                std::time::Duration::from_secs_f32(game.rollback_data.get_delta_time());
+                            next_frame_time -= std::time::Duration::from_secs_f32(
+                                game.rollback_data.get_delta_time(),
+                            );
                         }
                     }
                     if skip_render {
@@ -213,7 +216,8 @@ fn main() {
                         .unwrap()
                         .downcast_ref::<Window>()
                         .unwrap();
-                    window.set_cursor_visible(gui_state.menu_stack.len() > 0 || !window.has_focus());
+                    window
+                        .set_cursor_visible(gui_state.menu_stack.len() > 0 || !window.has_focus());
                     if let Some(game) = app.game.as_mut() {
                         game.rollback_data.end_frame();
                     }
@@ -244,12 +248,8 @@ fn handle_events(
                 return is_running;
             }
             if let Some(game) = app.game.as_mut() {
-                game.rollback_data.process_event(
-                    event,
-                    &app.settings,
-                    gui_state,
-                    &window_props,
-                );
+                game.rollback_data
+                    .process_event(event, &app.settings, gui_state, &window_props);
             }
             match event {
                 WindowEvent::CloseRequested => {
@@ -284,11 +284,13 @@ fn handle_events(
                 // Handle mouse button events.
                 WindowEvent::MouseInput { .. } => {}
                 WindowEvent::KeyboardInput {
-                    input: KeyboardInput {
-                        state,
-                        virtual_keycode: Some(key),
-                        ..
-                    }, .. 
+                    input:
+                        KeyboardInput {
+                            state,
+                            virtual_keycode: Some(key),
+                            ..
+                        },
+                    ..
                 } => {
                     let window = app
                         .vulkano_interface
@@ -297,14 +299,11 @@ fn handle_events(
                         .unwrap()
                         .downcast_ref::<Window>()
                         .unwrap();
-                    if *key == app.settings.fullscreen_toggle
-                        && *state == ElementState::Pressed
-                    {
+                    if *key == app.settings.fullscreen_toggle && *state == ElementState::Pressed {
                         window_props.fullscreen = !window_props.fullscreen;
                         if window_props.fullscreen {
-                            window.set_fullscreen(Some(
-                                winit::window::Fullscreen::Borderless(None),
-                            ));
+                            window
+                                .set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
                         } else {
                             window.set_fullscreen(None);
                         }
@@ -521,11 +520,8 @@ fn compute_then_render(
 
                 game.voxel_compute
                     .upload(game.rollback_data.get_rollback_projectiles());
-                game.voxel_compute.compute(
-                    future,
-                    &mut game.game_state,
-                    &game.game_settings,
-                )
+                game.voxel_compute
+                    .compute(future, &mut game.game_state, &game.game_settings)
             } else {
                 game.rollback_data.step_visuals(
                     &mut game.card_manager,

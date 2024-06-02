@@ -376,7 +376,7 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(2.0, 0.35, 0.1, 0.0, vec3(0.5), vec3(0.0)),
             MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-        ), 0.04, 0.35, 0.0, vec3(0.2)),
+        ), 0.04, 0.35, 0.0, vec3(0.3)),
     // OOB
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
@@ -394,7 +394,7 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(20.0, 0.5, 0.2, 0.0, vec3(0.15, 0.5, 0.15), vec3(0.0)),
             MaterialNoiseLayer(50.0, 0.1, 0.1, 0.0, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-        ), 0.02, 0.7, 0.0, vec3(0.1, 0.3, 0.1)),
+        ), 0.02, 0.7, 0.0, vec3(0.1, 0.4, 0.1)),
     // PROJECTILE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
@@ -406,7 +406,7 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(1.7, 0.2, 0.1, 0.1, vec3(0.1, 0.1, 0.35), vec3(0.0)),
             MaterialNoiseLayer(21.0, 0.1, 0.1, 0.05, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.05, vec3(0.1), vec3(-0.1))
-        ), 0.05, 0.35, 0.3, vec3(0.65)),
+        ), 0.05, 0.35, 0.3, vec3(0.65, 0.65, 0.75)),
     // GLASS
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(1.0, 0.35, 0.0, 0.0, vec3(0.0), vec3(0.0)),

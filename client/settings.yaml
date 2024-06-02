@@ -24,7 +24,7 @@ do_profiling: false
 crash_log: crash_log.txt
 singleplayer_settings:
     name: "Singleplayer"
-    delta_time: 0.03
+    delta_time: 0.02
     is_remote: false
     player_count: 1
     render_size:
@@ -36,13 +36,13 @@ singleplayer_settings:
       y: 1810.0
       z: 10000.0
     max_loaded_chunks: 8192
-    max_worldgen_rate: 256
-    max_update_rate: 256
+    max_worldgen_rate: 128
+    max_update_rate: 128
     world_gen: Normal
     fixed_center: false
 practice_range_settings:
     name: "Practice Range"
-    delta_time: 0.03
+    delta_time: 0.02
     is_remote: false
     player_count: 1
     render_size:
