@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
 use serde::{Deserialize, Serialize};
 
-use crate::{gui::ModificationType, voxel_sim_manager::Projectile, settings_manager::Control};
+use crate::{gui::ModificationType, settings_manager::Control, voxel_sim_manager::Projectile};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Cooldown {
@@ -104,12 +104,10 @@ impl Cooldown {
     pub fn empty() -> Self {
         Cooldown {
             modifiers: vec![],
-            abilities: vec![
-                Ability::default(),
-            ],
+            abilities: vec![Ability::default()],
         }
     }
-    
+
     pub fn vec_from_string(ron_string: &str) -> Vec<Self> {
         ron::from_str(ron_string).unwrap()
     }
@@ -122,7 +120,11 @@ impl Cooldown {
 
     pub fn generate_cooldown_cache(&mut self) -> bool {
         let mut has_anything_changed = false;
-        for ability in self.abilities.iter_mut().filter(|ability| !ability.is_cache_valid) {
+        for ability in self
+            .abilities
+            .iter_mut()
+            .filter(|ability| !ability.is_cache_valid)
+        {
             ability.cached_cooldown = Some(ability.card.get_cooldown());
             ability.is_cache_valid = true;
             has_anything_changed = true;
@@ -403,7 +405,7 @@ pub enum VoxelMaterial {
     Grass,
     Projectile,
     Ice,
-    Glass,
+    Water,
     Player,
     UnloadedAir,
 }
@@ -436,19 +438,43 @@ pub enum StatusEffect {
 
 impl VoxelMaterial {
     pub const FRICTION_COEFFICIENTS: [f32; 10] = [0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 0.1, 1.0, 0.0, 0.0];
-    pub fn to_memory(&self) -> u32 {
-        match self {
-            VoxelMaterial::Air => 0 << 24,
-            VoxelMaterial::Stone => 1 << 24,
-            VoxelMaterial::Unloaded => 2 << 24,
-            VoxelMaterial::Dirt => 3 << 24,
-            VoxelMaterial::Grass => 4 << 24,
-            VoxelMaterial::Projectile => 5 << 24,
-            VoxelMaterial::Ice => 6 << 24,
-            VoxelMaterial::Glass => 7 << 24,
-            VoxelMaterial::Player => 8 << 24,
-            VoxelMaterial::UnloadedAir => 9 << 24,
+    pub fn from_memory(memory: u32) -> Self {
+        match memory >> 24 {
+            0 => VoxelMaterial::Air,
+            1 => VoxelMaterial::Stone,
+            2 => VoxelMaterial::Unloaded,
+            3 => VoxelMaterial::Dirt,
+            4 => VoxelMaterial::Grass,
+            5 => VoxelMaterial::Projectile,
+            6 => VoxelMaterial::Ice,
+            7 => VoxelMaterial::Water,
+            8 => VoxelMaterial::Player,
+            9 => VoxelMaterial::UnloadedAir,
+            _ => panic!("Invalid state"),
         }
+    }
+
+    pub fn get_material_idx(&self) -> u32 {
+        match self {
+            VoxelMaterial::Air => 0,
+            VoxelMaterial::Stone => 1,
+            VoxelMaterial::Unloaded => 2,
+            VoxelMaterial::Dirt => 3,
+            VoxelMaterial::Grass => 4,
+            VoxelMaterial::Projectile => 5,
+            VoxelMaterial::Ice => 6,
+            VoxelMaterial::Water => 7,
+            VoxelMaterial::Player => 8,
+            VoxelMaterial::UnloadedAir => 9,
+        }
+    }
+
+    pub fn to_memory(&self) -> u32 {
+        self.get_material_idx() << 24
+    }
+
+    pub fn is_passthrough(&self) -> bool {
+        matches!(self, VoxelMaterial::Air | VoxelMaterial::Water | VoxelMaterial::UnloadedAir)
     }
 }
 
@@ -805,7 +831,7 @@ impl BaseCard {
                     VoxelMaterial::Grass => 0.5,
                     VoxelMaterial::Projectile => panic!("Invalid state"),
                     VoxelMaterial::Ice => 2.0,
-                    VoxelMaterial::Glass => 1.5,
+                    VoxelMaterial::Water => 1.5,
                     VoxelMaterial::Player => panic!("Invalid state"),
                     VoxelMaterial::UnloadedAir => panic!("Invalid state"),
                 };

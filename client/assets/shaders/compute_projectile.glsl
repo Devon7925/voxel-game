@@ -75,7 +75,7 @@ void main() {
                 ivec3 voxel_pos = ivec3(pos);
                 uint data = get_data(voxel_pos);
                 uint voxel_mat = data >> 24;
-                if (voxel_mat == MAT_AIR || voxel_mat == MAT_AIR_OOB) {
+                if (voxel_mat == MAT_AIR || voxel_mat == MAT_AIR_OOB || voxel_mat == MAT_WATER) {
                     continue;
                 } else if (voxel_mat == MAT_OOB) {
                     projectile.health = 0.0;

@@ -1440,7 +1440,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                             VoxelMaterial::Ice,
                                         )),
                                         DraggableCard::BaseCard(BaseCard::CreateMaterial(
-                                            VoxelMaterial::Glass,
+                                            VoxelMaterial::Water,
                                         )),
                                     ],
                                 },

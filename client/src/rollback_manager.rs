@@ -2265,7 +2265,8 @@ impl Entity {
                             } else {
                                 VoxelMaterial::Unloaded.to_memory()
                             };
-                            if voxel >> 24 != 0 && voxel >> 24 != 9 {
+                            let voxel_material = VoxelMaterial::from_memory(voxel);
+                            if !voxel_material.is_passthrough() {
                                 if component != 1
                                     && prev_collision_vec[1] == 1
                                     && (pos - start_pos).y < 1.0
@@ -2350,7 +2351,8 @@ impl Entity {
                 } else {
                     VoxelMaterial::Unloaded.to_memory()
                 };
-                if voxel >> 24 != 0 && voxel >> 24 != 9 {
+                let voxel_material = VoxelMaterial::from_memory(voxel);
+                if !voxel_material.is_passthrough() {
                     return false;
                 }
             }

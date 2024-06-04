@@ -57,7 +57,6 @@ uint get_data(uvec3 global_pos) {
 }
 
 uint get_dist(uint voxel_data, uint offset) {
-    if (voxel_data >> 24 != MAT_AIR) return 0;
     return (voxel_data >> (offset * 3)) & 0x7;
 }
 
@@ -102,6 +101,7 @@ RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool 
     vec3 normal = vec3(0);
     float depth = 0;
     uint voxel_data = MAT_OOB << 24;
+    uint medium = get_data(uvec3(floor(ray_pos))) >> 24;
     bool did_hit = false;
 
     float max_dist = 1000000.0;
@@ -158,18 +158,26 @@ RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool 
         vec3 v_min;
         vec3 v_max;
         uint voxel_material = voxel_data >> 24;
-        if (voxel_material == MAT_AIR) {
-            uint dist = get_dist(voxel_data, offset);
-            v_min = floor_pos - vec3(dist);
-            v_max = floor_pos + vec3(dist + 1);
-        } else if (voxel_material == MAT_AIR_OOB) {
+        if (voxel_material == MAT_AIR_OOB) {
             v_min = floor(ray_pos / CHUNK_SIZE) * CHUNK_SIZE;
             v_max = v_min + vec3(CHUNK_SIZE);
+        } else if (voxel_material == medium) {
+            uint dist = 0;
+            if (voxel_material == MAT_AIR || voxel_material == MAT_WATER) {
+                dist = get_dist(voxel_data, offset);
+            }
+            v_min = floor_pos - vec3(dist);
+            v_max = floor_pos + vec3(dist + 1);
         } else {
             did_hit = true;
             end_ray_pos = ray_pos;
             end_depth = depth;
             end_normal = normal;
+            if (medium != MAT_AIR) {
+                end_voxel_data = medium << 24;
+            } else {
+                end_voxel_data = voxel_data;
+            }
             end_voxel_data = voxel_data;
             end_depth = depth;
             break;
@@ -224,6 +232,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
     vec3 normal = vec3(0);
     float depth = 0;
     uint voxel_data = MAT_OOB << 24;
+    uint medium = MAT_AIR;
     uint layer_idx = 0;
     for (uint i = 0; i < max_iterations; i++) {
         vec3 floor_pos = floor(ray_pos);
@@ -231,19 +240,35 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         uint voxel_material = voxel_data >> 24;
         vec3 v_min;
         vec3 v_max;
+        if (voxel_material == MAT_AIR || voxel_material == MAT_AIR_OOB) {
+            if (medium != MAT_AIR) {
+                layers[layer_idx] = RaycastResultLayer(ray_pos, normal, medium << 24, depth);
+                layer_idx++;
+                if (layer_idx >= LAYER_COUNT) break;
+            }
+        }
         if (voxel_material == MAT_AIR) {
             uint dist = get_dist(voxel_data, offset);
             v_min = floor_pos - vec3(dist);
             v_max = floor_pos + vec3(dist + 1);
+            medium = MAT_AIR;
         } else if (voxel_material == MAT_AIR_OOB) {
             v_min = floor(ray_pos / CHUNK_SIZE) * CHUNK_SIZE;
             v_max = v_min + vec3(CHUNK_SIZE);
+            medium = MAT_AIR;
         } else if (is_transparent[voxel_material]) {
-            layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
-            layer_idx++;
-            if (layer_idx >= LAYER_COUNT) break;
+            uint dist = 0;
+            if (voxel_material == MAT_WATER) {
+                dist = get_dist(voxel_data, offset);
+            }
             v_min = floor_pos;
             v_max = floor_pos + vec3(1);
+            if (medium != voxel_material) {
+                layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
+                layer_idx++;
+                if (layer_idx >= LAYER_COUNT) break;
+            }
+            medium = voxel_material;
         } else {
             layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
             layer_idx++;
@@ -407,12 +432,12 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(21.0, 0.1, 0.1, 0.05, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.05, vec3(0.1), vec3(-0.1))
         ), 0.05, 0.35, 0.3, vec3(0.65, 0.65, 0.75)),
-    // GLASS
+    // WATER
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(1.0, 0.35, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.05, 0.35, 0.7, vec3(0.7)),
+        ), 0.05, 0.35, 0.7, vec3(0.5, 0.5, 1.0)),
     // PLAYER
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
@@ -447,15 +472,18 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
     for (int layer_idx = 0; layer_idx < 3; layer_idx++) {
         MaterialNoiseLayer layer = mat_render_props.layers[layer_idx];
         vec4 noise = grad_noise(layer.scale * resultLayer.pos);
-        float distance_noise_factor = clamp(-0.1 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (resultLayer.dist * layer.scale), 0.0, 1.0);
+        float distance_noise_factor = clamp(-0.1 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (max(resultLayer.dist, 0.1) * layer.scale), 0.0, 1.0);
         normal += distance_noise_factor * layer.normal_impact * noise.xyz * (vec3(1) - abs(resultLayer.normal));
         color += mix(layer.light_color, layer.dark_color, mix(0.5, (noise.w + 1.0) / 2.0, distance_noise_factor));
         roughness += distance_noise_factor * layer.roughness_impact * noise.w;
         transparency += distance_noise_factor * layer.transparency_impact * noise.w;
     }
     normal = normalize(normal);
+    if (material != MAT_WATER) {
+        color *= (1.0 - float(data) / material_damage_threshhold[material]);
+    }
     return MaterialProperties(
-        color * (1.0 - float(data) / material_damage_threshhold[material]),
+        color,
         normal,
         mat_render_props.ior,
         roughness,
@@ -479,7 +507,7 @@ const HeightData height_data[] = {
     HeightData(0.6, 20.0, 0.5),
     HeightData(0.0, 0.0, 0.0),
     HeightData(0.8, 1.7, 0.3),
-    HeightData(0.1, 1.0, 0.35),
+    HeightData(0.7, 1.0, 0.35),
     HeightData(0.0, 0.0, 0.0),
     HeightData(0.0, 0.0, 0.0),
     };
@@ -494,7 +522,9 @@ MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_di
     HeightData voxel_height_data = height_data[result_vox >> 24];
     float result_height = (voxel_height_data.offset + voxel_height_data.impact * grad_noise(voxel_height_data.scale * resultLayer.pos).w) * (1.0 - weights.x) * (1.0 - weights.y) * (1.0 - weights.z);
     for (int i = 1; i < 8; i++) {
-        uint voxel = get_data(uvec3(floor(resultLayer.pos) + vec3(float(i & 1), float((i & 2) >> 1), float((i & 4) >> 2)) * sign(relative_pos)));
+        vec3 voxel_direction = vec3(float(i & 1), float((i & 2) >> 1), float((i & 4) >> 2)) * sign(relative_pos);
+        if (dot(voxel_direction, resultLayer.normal) > 0.0) continue;
+        uint voxel = get_data(uvec3(floor(resultLayer.pos) + voxel_direction));
         if (
             voxel >> 24 == MAT_OOB
                 || voxel >> 24 == MAT_AIR
@@ -508,7 +538,7 @@ MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_di
         if ((i & 4) == 0) weight *= 1.0 - weights.z;
         else weight *= weights.z;
         voxel_height_data = height_data[voxel >> 24];
-        float distance_noise_factor = clamp(-0.1 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (resultLayer.dist * voxel_height_data.scale), 0.0, 1.0);
+        float distance_noise_factor = clamp(-0.1 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (max(resultLayer.dist, 0.1) * voxel_height_data.scale), 0.0, 1.0);
         float height = (voxel_height_data.offset - voxel_height_data.impact * distance_noise_factor * grad_noise(voxel_height_data.scale * resultLayer.pos).w) * weight;
         if (height > result_height) {
             result_height = height;
@@ -608,7 +638,7 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
             shade_check = simple_raycast(shade_check.pos - dist_diff * light_dir, -light_dir, push_constants.transparent_shadow_ray_dist, false);
         }
-        if (shade_check.dist == 0.0 || shade_check.voxel_data >> 24 == MAT_OOB) {
+        if (shade_check.voxel_data >> 24 == MAT_OOB) {
             color += shade_transparency * (1 - mat_props.transparency) * multiplier * get_light(-light_dir, -ray, vec3(1.0), 1.0, mat_props);
         }
 
@@ -617,21 +647,21 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
         RaycastResultLayer reflection_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, reflection, push_constants.reflection_ray_dist, false);
         MaterialRenderProps reflection_props = material_render_props[reflection_check.voxel_data >> 24];
         vec3 light = (1.0 - reflection_props.transparency) * reflection_props.color * 0.1;
-        if (reflection_check.dist == 0 || reflection_props.transparency == 1.0) {
+        if (reflection_check.voxel_data >> 24 == MAT_OOB || reflection_props.transparency == 1.0) {
             light += vec3(pow(dot(reflection, -light_dir), 3.0));
         }
         color += (1 - mat_props.transparency) * multiplier * get_light(reflection, -ray, light, 1.0, mat_props);
 
         vec3 ao_dir = mat_props.normal;
         RaycastResultLayer ao_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, ao_dir, push_constants.ao_ray_dist, false);
-        if (ao_check.dist == 0 || ao_check.voxel_data >> 24 == MAT_OOB) {
+        if (ao_check.voxel_data >> 24 == MAT_OOB) {
             float light_power = pow(dot(ao_dir, -light_dir), 3.0);
             color += (1 - mat_props.transparency) * multiplier * get_light(ao_dir, -ray, vec3(1.0), light_power, mat_props);
         }
 
         ao_dir = normalize(primary_ray.layers[i].normal + mat_props.normal);
         ao_check = simple_raycast(primary_ray.layers[i].pos + 0.015 * primary_ray.layers[i].normal, ao_dir, push_constants.ao_ray_dist, false);
-        if (ao_check.dist == 0 || ao_check.voxel_data >> 24 == MAT_OOB) {
+        if (ao_check.voxel_data >> 24 == MAT_OOB) {
             float light_power = pow(dot(ao_dir, -light_dir), 3.0);
             color += (1 - mat_props.transparency) * multiplier * get_light(ao_dir, -ray, vec3(1.0), light_power, mat_props);
         }
@@ -659,7 +689,7 @@ void main() {
     }
     vec3 ray = normalize(cam_data.dir.xyz + scaled_screen_coords.x * cam_data.right.xyz - scaled_screen_coords.y * cam_data.up.xyz);
 
-    vec3 pos = cam_data.pos.xyz;
+    vec3 pos = cam_data.pos.xyz + ray * 0.1;
 
     RaycastResult primary_ray = raycast(pos, ray, push_constants.primary_ray_dist, true, max_depth);
 

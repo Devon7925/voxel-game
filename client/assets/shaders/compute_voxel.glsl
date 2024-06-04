@@ -98,7 +98,7 @@ void main() {
     for (uint i = 0; i < 2; i++) {
         for (uint j = 0; j < 2; j++) {
             for (uint k = 0; k < 2; k++) {
-                if (pos_data[i][j][k].x != MAT_AIR) {
+                if (pos_data[i][j][k].x != MAT_AIR && pos_data[i][j][k].x != MAT_WATER) {
                     if (pos_data[i][j][k].y >= material_damage_threshhold[pos_data[i][j][k].x]) {
                         pos_data[i][j][k] = uvec2(MAT_AIR, 0);
                     }
@@ -123,6 +123,23 @@ void main() {
                             direction_dist = min(direction_dist, bitfieldExtract(pos_data[dir.x][dir.y][dir.z].y, offset, 3) + 1);
                             continue;
                         } else if (pos_data[dir.x][dir.y][dir.z].x == MAT_AIR_OOB) {
+                            continue;
+                        }
+                        direction_dist = 0;
+                        break;
+                    }
+                    pos_data[i][j][k].y = bitfieldInsert(pos_data[i][j][k].y, direction_dist, offset, 3);
+                } else if (pos_data[i][j][k].x == MAT_WATER) {
+                    int offset = 3 * int(((k << 2) | (j << 1) | i));
+                    ivec3 d = ivec3(1) - ivec3(i, j, k) * ivec3(2);
+                    uint direction_dist = 7;
+                    for (uint m = 1; m < 8; m++) {
+                        ivec3 dir = d * ivec3(m % 2, (m / 2) % 2, m / 4) + ivec3(i, j, k);
+                        if (pos_data[dir.x][dir.y][dir.z].x == MAT_OOB) {
+                            direction_dist = min(direction_dist, bitfieldExtract(pos_data[i][j][k].y, offset, 3));
+                            continue;
+                        } else if (pos_data[dir.x][dir.y][dir.z].x == MAT_WATER) {
+                            direction_dist = min(direction_dist, bitfieldExtract(pos_data[dir.x][dir.y][dir.z].y, offset, 3) + 1);
                             continue;
                         }
                         direction_dist = 0;
