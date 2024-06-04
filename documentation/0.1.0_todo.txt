@@ -2,7 +2,8 @@ Water Update
 Water
     Add water player physics
     Add water flowing physics
-    Add depth based transparency for water
     Animated texture
 Worldgen
     Improve border between temperatures
+
+Disable activating abilities while in card editor

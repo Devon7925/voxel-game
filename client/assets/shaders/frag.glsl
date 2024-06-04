@@ -71,6 +71,7 @@ struct RaycastResultLayer {
     vec3 normal;
     uint voxel_data;
     float dist;
+    bool is_leaving_medium;
 };
 
 struct RaycastResult {
@@ -214,10 +215,10 @@ RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool 
     }
 
     if (!did_hit) {
-        return RaycastResultLayer(pos, vec3(0.0), MAT_OOB << 24, 0.0);
+        return RaycastResultLayer(pos, vec3(0.0), MAT_OOB << 24, 0.0, false);
     }
 
-    return RaycastResultLayer(end_ray_pos, end_normal, end_voxel_data, end_depth);
+    return RaycastResultLayer(end_ray_pos, end_normal, end_voxel_data, end_depth, false);
 }
 
 const uint LAYER_COUNT = 5;
@@ -229,7 +230,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
     if (ray.z < 0) offset += 4;
 
     vec3 ray_pos = pos;
-    vec3 normal = vec3(0);
+    vec3 normal = -ray;
     float depth = 0;
     uint voxel_data = MAT_OOB << 24;
     uint medium = MAT_AIR;
@@ -242,7 +243,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         vec3 v_max;
         if (voxel_material == MAT_AIR || voxel_material == MAT_AIR_OOB) {
             if (medium != MAT_AIR) {
-                layers[layer_idx] = RaycastResultLayer(ray_pos, normal, medium << 24, depth);
+                layers[layer_idx] = RaycastResultLayer(ray_pos, normal, medium << 24, depth, true);
                 layer_idx++;
                 if (layer_idx >= LAYER_COUNT) break;
             }
@@ -264,13 +265,13 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             v_min = floor_pos;
             v_max = floor_pos + vec3(1);
             if (medium != voxel_material) {
-                layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
+                layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth, false);
                 layer_idx++;
                 if (layer_idx >= LAYER_COUNT) break;
             }
             medium = voxel_material;
         } else {
-            layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth);
+            layers[layer_idx] = RaycastResultLayer(ray_pos, normal, voxel_data, depth, false);
             layer_idx++;
             break;
         }
@@ -308,7 +309,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
         if (in_diffuse.x == 0.0) {
             raster_material = MAT_PROJECTILE;
         }
-        layers[layer_idx] = RaycastResultLayer(ray_pos, in_normal, raster_material << 24, raster_depth);
+        layers[layer_idx] = RaycastResultLayer(ray_pos, in_normal, raster_material << 24, raster_depth, false);
         layer_idx++;
     }
 
@@ -340,7 +341,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             }
             normal = quat_transform(projectiles[i].dir, normal);
 
-            RaycastResultLayer proj_layer = RaycastResultLayer(pos + dist * ray, normal, MAT_PROJECTILE << 24, dist);
+            RaycastResultLayer proj_layer = RaycastResultLayer(pos + dist * ray, normal, MAT_PROJECTILE << 24, dist, false);
             // insert layer
             if (layer_idx < LAYER_COUNT) {
                 layer_idx++;
@@ -369,6 +370,7 @@ struct MaterialProperties {
     float metallic;
     float emmision;
     float transparency;
+    float depth_transparency;
 };
 
 struct MaterialNoiseLayer {
@@ -385,71 +387,72 @@ struct MaterialRenderProps {
     float ior;
     float roughness;
     float transparency;
+    float depth_transparency;
     vec3 color;
 };
 
-// AIR, STONE, OOB, DIRT, GRASS, PROJECTILE, ICE, GLASS, PLAYER
+// AIR, STONE, OOB, DIRT, GRASS, PROJECTILE, ICE, WATER, PLAYER
 const MaterialRenderProps material_render_props[] = {
     // AIR
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 1.0, vec3(0.0)),
+        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
     // STONE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(2.0, 0.35, 0.1, 0.0, vec3(0.5), vec3(0.0)),
             MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-        ), 0.04, 0.35, 0.0, vec3(0.3)),
+        ), 0.04, 0.35, 0.0, 0.0, vec3(0.3)),
     // OOB
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 1.0, vec3(0.0)),
+        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
     // DIRT
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(7.0, 0.2, 0.0, 0.0, vec3(0.3, 0.05, -0.2), vec3(0.0)),
             MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-        ), 0.02, 0.75, 0.0, vec3(0.2)),
+        ), 0.02, 0.75, 0.0, 0.0, vec3(0.2)),
     // GRASS
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(20.0, 0.5, 0.2, 0.0, vec3(0.15, 0.5, 0.15), vec3(0.0)),
             MaterialNoiseLayer(50.0, 0.1, 0.1, 0.0, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
-        ), 0.02, 0.7, 0.0, vec3(0.1, 0.4, 0.1)),
+        ), 0.02, 0.7, 0.0, 0.0, vec3(0.1, 0.4, 0.1)),
     // PROJECTILE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 1.0, 0.5, vec3(1.0, 0.3, 0.3)),
+        ), 0.0, 1.0, 0.5, 0.5, vec3(1.0, 0.3, 0.3)),
     // ICE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(1.7, 0.2, 0.1, 0.1, vec3(0.1, 0.1, 0.35), vec3(0.0)),
             MaterialNoiseLayer(21.0, 0.1, 0.1, 0.05, vec3(0.1), vec3(-0.1)),
             MaterialNoiseLayer(0.5, 0.05, 0.0, 0.05, vec3(0.1), vec3(-0.1))
-        ), 0.05, 0.35, 0.3, vec3(0.65, 0.65, 0.75)),
+        ), 0.05, 0.35, 0.3, 0.3, vec3(0.65, 0.65, 0.75)),
     // WATER
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(1.0, 0.35, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.05, 0.35, 0.7, vec3(0.5, 0.5, 1.0)),
+        ), 0.05, 0.35, 0.7, 0.7, vec3(0.5, 0.5, 1.0)),
     // PLAYER
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.2, 0.0, vec3(0.8)),
+        ), 0.0, 0.2, 0.0, 0.0, vec3(0.8)),
     // AIR OOB
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 1.0, vec3(0.0)),
+        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
     };
 
 MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) {
@@ -458,12 +461,12 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
     MaterialRenderProps mat_render_props = material_render_props[material];
     if (material == MAT_AIR || material == MAT_AIR_OOB) {
         // air: invalid state
-        return MaterialProperties(vec3(1.0, 0.0, 0.0), resultLayer.normal, 0.0, 0.0, 0.0, 0.0, 0.0);
+        return MaterialProperties(vec3(1.0, 0.0, 0.0), resultLayer.normal, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     } else if (material == MAT_OOB) {
         // out of bounds: invalid state
-        return MaterialProperties(vec3(0.0, 0.0, 1.0), resultLayer.normal, 0.0, 0.0, 0.0, 0.0, 0.0);
+        return MaterialProperties(vec3(0.0, 0.0, 1.0), resultLayer.normal, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     } else if (material == MAT_PROJECTILE || material == MAT_PLAYER) {
-        return MaterialProperties(mat_render_props.color, resultLayer.normal, mat_render_props.ior, mat_render_props.roughness, 0.0, 0.1, mat_render_props.transparency);
+        return MaterialProperties(mat_render_props.color, resultLayer.normal, mat_render_props.ior, mat_render_props.roughness, 0.0, 0.1, mat_render_props.transparency, 0.0);
     }
     vec3 normal = resultLayer.normal;
     vec3 color = mat_render_props.color;
@@ -489,7 +492,8 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
         roughness,
         0.0,
         0.1,
-        transparency
+        transparency,
+        mat_render_props.depth_transparency
     );
 }
 
@@ -666,6 +670,13 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             color += (1 - mat_props.transparency) * multiplier * get_light(ao_dir, -ray, vec3(1.0), light_power, mat_props);
         }
 
+        if (i + 1 < primary_ray.layer_count && mat_props.depth_transparency > 0.0 && !primary_ray.layers[i].is_leaving_medium) {
+            float dist = primary_ray.layers[i + 1].dist - primary_ray.layers[i].dist;
+            float depth_transparency = pow(mat_props.depth_transparency, dist);
+            color += (1.0 - depth_transparency) * mat_props.transparency * multiplier * mat_props.albedo;
+            multiplier *= depth_transparency;
+        }
+
         multiplier *= mat_props.transparency;
         i++;
     }
@@ -689,7 +700,7 @@ void main() {
     }
     vec3 ray = normalize(cam_data.dir.xyz + scaled_screen_coords.x * cam_data.right.xyz - scaled_screen_coords.y * cam_data.up.xyz);
 
-    vec3 pos = cam_data.pos.xyz + ray * 0.1;
+    vec3 pos = cam_data.pos.xyz; // + ray * 0.1;
 
     RaycastResult primary_ray = raycast(pos, ray, push_constants.primary_ray_dist, true, max_depth);
 

@@ -1,6 +1,7 @@
 Water Update
 Water
     Add water material
+    Add depth based transparency for water
     Add air like depth properties to water
 Worldgen
     Add temperature
