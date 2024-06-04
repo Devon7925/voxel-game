@@ -1,1 +1,0 @@
-Experiment with moving more projectile operations to the GPU to prevent having to reupload every frame
