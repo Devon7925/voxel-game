@@ -3,22 +3,27 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-layout(set = 0, binding = 0) buffer VoxelBuffer {
+layout(set = 0, binding = 1) buffer VoxelBuffer {
     uint voxels[];
 };
-layout(set = 0, binding = 1) buffer ChunkLoads {
+layout(set = 0, binding = 3) buffer ChunkLoads {
     ivec4 chunk_loads[];
 };
-
-layout(set = 0, binding = 2) uniform SimData {
-    uvec3 render_size;
-    uvec3 start_pos;
-    uint count;
-} sim_data;
-
-layout(set = 0, binding = 3) buffer ChunkLoadResults {
+layout(set = 0, binding = 4) buffer ChunkLoadResults {
     uint load_results[];
 };
+
+layout(push_constant) uniform SimData {
+    uvec3 render_size;
+    uvec3 start_pos;
+    uvec3 voxel_update_offset;
+    float dt;
+    uint projectile_count;
+    uint worldgen_count;
+    int unload_index;
+    uint unload_component;
+    uint voxel_write_count;
+} sim_data;
 
 void set_data_in_chunk(uvec3 global_pos, uint chunk_idx, uint data) {
     uvec3 pos_in_chunk = global_pos & POS_IN_CHUNK_MASK;

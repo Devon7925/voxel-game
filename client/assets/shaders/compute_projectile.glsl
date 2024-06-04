@@ -7,16 +7,20 @@ layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks;
 layout(set = 0, binding = 1) buffer VoxelBuffer {
     uint voxels[];
 };
-
 layout(set = 0, binding = 2) buffer Projectiles {
     Projectile projectiles[];
 };
 
-layout(set = 0, binding = 3) uniform SimData {
+layout(push_constant) uniform SimData {
     uvec3 render_size;
     uvec3 start_pos;
+    uvec3 voxel_update_offset;
     float dt;
     uint projectile_count;
+    uint worldgen_count;
+    int unload_index;
+    uint unload_component;
+    uint voxel_write_count;
 } sim_data;
 
 uint get_index(uvec3 global_pos) {

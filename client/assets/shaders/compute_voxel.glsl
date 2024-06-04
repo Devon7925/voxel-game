@@ -7,19 +7,24 @@ layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks;
 layout(set = 0, binding = 1) buffer VoxelBuffer {
     uint voxels[];
 };
-layout(set = 0, binding = 2) buffer ChunkUpdates {
+layout(set = 0, binding = 2) buffer Projectiles {
+    Projectile projectiles[];
+};
+layout(set = 0, binding = 5) buffer ChunkUpdates {
     ivec4 chunk_updates[];
 };
 
-layout(set = 0, binding = 3) uniform SimData {
+layout(push_constant) uniform SimData {
     uvec3 render_size;
     uvec3 start_pos;
-    uvec3 update_offset;
+    uvec3 voxel_update_offset;
+    float dt;
+    uint projectile_count;
+    uint worldgen_count;
+    int unload_index;
+    uint unload_component;
+    uint voxel_write_count;
 } sim_data;
-
-layout(set = 0, binding = 4) buffer Projectiles {
-    Projectile projectiles[];
-};
 
 uint get_index(uvec3 global_pos) {
     uvec4 indicies = get_indicies(global_pos, sim_data.render_size);
@@ -45,15 +50,33 @@ void set_data(uvec3 global_pos, uint data) {
     if (og_voxel_data != data) {
         uvec3 pos_in_chunk = global_pos & 0xF;
         int modification_flags = 0x1;
-        if (pos_in_chunk.x == 0 && gl_LocalInvocationID.x < 7) { modification_flags |= 0x2; }
-        if (pos_in_chunk.y == 0 && gl_LocalInvocationID.y < 7) { modification_flags |= 0x4; }
-        if (pos_in_chunk.z == 0 && gl_LocalInvocationID.z < 7) { modification_flags |= 0x8; }
-        if (pos_in_chunk.x == 15) { modification_flags |= 0x10; }
-        if (pos_in_chunk.x == 0 && gl_LocalInvocationID.x == 7) { modification_flags |= 0x10; }
-        if (pos_in_chunk.y == 15) { modification_flags |= 0x20; }
-        if (pos_in_chunk.y == 0 && gl_LocalInvocationID.y == 7) { modification_flags |= 0x20; }
-        if (pos_in_chunk.z == 15) { modification_flags |= 0x40; }
-        if (pos_in_chunk.z == 0 && gl_LocalInvocationID.z == 7) { modification_flags |= 0x40; }
+        if (pos_in_chunk.x == 0 && gl_LocalInvocationID.x < 7) {
+            modification_flags |= 0x2;
+        }
+        if (pos_in_chunk.y == 0 && gl_LocalInvocationID.y < 7) {
+            modification_flags |= 0x4;
+        }
+        if (pos_in_chunk.z == 0 && gl_LocalInvocationID.z < 7) {
+            modification_flags |= 0x8;
+        }
+        if (pos_in_chunk.x == 15) {
+            modification_flags |= 0x10;
+        }
+        if (pos_in_chunk.x == 0 && gl_LocalInvocationID.x == 7) {
+            modification_flags |= 0x10;
+        }
+        if (pos_in_chunk.y == 15) {
+            modification_flags |= 0x20;
+        }
+        if (pos_in_chunk.y == 0 && gl_LocalInvocationID.y == 7) {
+            modification_flags |= 0x20;
+        }
+        if (pos_in_chunk.z == 15) {
+            modification_flags |= 0x40;
+        }
+        if (pos_in_chunk.z == 0 && gl_LocalInvocationID.z == 7) {
+            modification_flags |= 0x40;
+        }
         atomicOr(chunk_updates[gl_WorkGroupID.x].w, modification_flags);
     }
     uint index = get_index(global_pos);
@@ -61,7 +84,7 @@ void set_data(uvec3 global_pos, uint data) {
 }
 
 void main() {
-    ivec3 pos = 2 * ivec3(gl_WorkGroupSize) * chunk_updates[gl_WorkGroupID.x].xyz + 2 * ivec3(gl_LocalInvocationID) + ivec3(sim_data.update_offset);
+    ivec3 pos = 2 * ivec3(gl_WorkGroupSize) * chunk_updates[gl_WorkGroupID.x].xyz + 2 * ivec3(gl_LocalInvocationID) + ivec3(sim_data.voxel_update_offset);
     uvec2 pos_data[2][2][2];
     for (uint i = 0; i < 2; i++) {
         for (uint j = 0; j < 2; j++) {

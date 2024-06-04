@@ -439,7 +439,7 @@ fn compute_then_render(
             if game.rollback_data.can_step_rollback() {
                 puffin::profile_scope!("do compute");
                 game.voxel_compute
-                    .push_updates_from_changed(&game.game_state, &game.game_settings);
+                    .push_updates_from_changed(&game.game_settings);
                 // ensure chunks near players are loaded
                 const NEARBY_CHUNK_RANGE: i32 = 2;
                 for player in game.rollback_data.get_players() {
@@ -519,9 +519,7 @@ fn compute_then_render(
                 }
 
                 game.voxel_compute
-                    .upload(game.rollback_data.get_rollback_projectiles());
-                game.voxel_compute
-                    .compute(future, &mut game.game_state, &game.game_settings)
+                    .compute(future, &mut game.game_state, &game.game_settings, game.rollback_data.get_rollback_projectiles())
             } else {
                 game.rollback_data.step_visuals(
                     &mut game.card_manager,

@@ -20,7 +20,7 @@ graphics_settings:
 replay_settings:
     replay_folder: replays
     record_replay: false
-do_profiling: false
+do_profiling: true
 crash_log: crash_log.txt
 singleplayer_settings:
     name: "Singleplayer"
