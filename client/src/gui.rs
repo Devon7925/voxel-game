@@ -1,12 +1,9 @@
 use std::collections::VecDeque;
 
 use egui_winit_vulkano::egui::{
-    self, emath,
-    epaint::{self},
-    pos2,
-    text::LayoutJob,
-    Align, Align2, Color32, CursorIcon, FontId, Id, InnerResponse, Label, LayerId, Order, Rect,
-    Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke, TextFormat, Ui, Vec2,
+    self, emath, epaint, pos2, text::LayoutJob, vec2, Align, Align2, Color32, CursorIcon, FontId,
+    Id, InnerResponse, Label, LayerId, Order, Rect, Rgba, RichText, Rounding, ScrollArea, Sense,
+    Shape, Stroke, TextFormat, Ui, Vec2,
 };
 use itertools::Itertools;
 
@@ -42,12 +39,14 @@ pub enum PaletteState {
     Materials,
     Effects,
     StatusEffects,
+    Dock,
 }
 
 pub struct GuiState {
     pub menu_stack: Vec<GuiElement>,
     pub errors: Vec<String>,
     pub gui_cards: Vec<Cooldown>,
+    pub dock_cards: Vec<DraggableCard>,
     pub cooldown_cache_refresh_delay: f32,
     pub palette_state: PaletteState,
     pub lobby_browser: LobbyBrowser,
@@ -233,7 +232,7 @@ pub fn drop_target<R>(
         ui.visuals().widgets.inactive
     };
 
-    let mut fill_color = darken(style.bg_stroke.color, 0.25);
+    let mut fill_color = style.bg_fill;
     let mut stroke = style.bg_stroke;
     if is_being_dragged && !can_accept_what_is_being_dragged {
         fill_color = ui.visuals().gray_out(fill_color);
@@ -695,6 +694,9 @@ pub fn draw_base_card(
         BaseCard::Projectile(modifiers) => {
             ui.vertical(|ui| {
                 ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(0.5, Color32::WHITE);
+                ui.visuals_mut().widgets.inactive.bg_fill =
+                    darken(ui.visuals_mut().widgets.inactive.bg_stroke.color, 0.25);
+
                 let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
                     let mut advanced_modifiers = vec![];
                     ui.horizontal(|ui| {
@@ -758,6 +760,8 @@ pub fn draw_base_card(
         }
         BaseCard::MultiCast(cards, modifiers) => {
             ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(0.5, Color32::YELLOW);
+            ui.visuals_mut().widgets.inactive.bg_fill =
+                darken(ui.visuals_mut().widgets.inactive.bg_stroke.color, 0.25);
             let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
@@ -923,6 +927,8 @@ pub fn draw_base_card(
         }
         BaseCard::None => {
             ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, Color32::GREEN);
+            ui.visuals_mut().widgets.inactive.bg_fill =
+                darken(ui.visuals_mut().widgets.inactive.bg_stroke.color, 0.25);
             let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
                 ui.horizontal(|ui| {
                     ui.add_space(CARD_UI_SPACING);
@@ -941,7 +947,10 @@ pub fn draw_base_card(
             }
         }
         BaseCard::Palette(palette_cards, is_vertical) => {
+            ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, Color32::GRAY);
+            ui.visuals_mut().widgets.inactive.bg_fill = Color32::BLACK;
             let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
+                ui.set_min_size(vec2(200.0, 40.0));
                 ui.add_space(CARD_UI_SPACING);
                 let layout = if *is_vertical {
                     egui::Layout::top_down(egui::Align::LEFT)
@@ -1165,6 +1174,10 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                         gui_state.gui_cards = import;
                                     }
                                 }
+
+                                if ui.button("Clear Dock").clicked() {
+                                    gui_state.dock_cards = vec![];
+                                }
                             });
 
                             ui.horizontal_wrapped(|ui| {
@@ -1208,12 +1221,17 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                     PaletteState::Materials,
                                     "Materials",
                                 );
+                                ui.selectable_value(
+                                    &mut gui_state.palette_state,
+                                    PaletteState::Dock,
+                                    "Dock",
+                                );
                             });
 
                             let mut source_path = None;
                             let mut drop_path = None;
                             let mut modify_path = None;
-                            let mut dock_card = BaseCard::Palette(
+                            let mut palette_card = BaseCard::Palette(
                                 match gui_state.palette_state {
                                     PaletteState::ProjectileModifiers => vec![
                                         DraggableCard::ProjectileModifier(
@@ -1443,6 +1461,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                             VoxelMaterial::Water,
                                         )),
                                     ],
+                                    PaletteState::Dock => gui_state.dock_cards.clone(),
                                 },
                                 match gui_state.palette_state {
                                     PaletteState::ProjectileModifiers => false,
@@ -1453,6 +1472,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                     PaletteState::Effects => true,
                                     PaletteState::StatusEffects => true,
                                     PaletteState::Materials => true,
+                                    PaletteState::Dock => true,
                                 },
                             );
 
@@ -1460,7 +1480,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                 ui.visuals_mut().override_text_color = Some(Color32::WHITE);
                                 draw_base_card(
                                     ui,
-                                    &dock_card,
+                                    &palette_card,
                                     &mut vec![0].into(),
                                     &mut source_path,
                                     &mut drop_path,
@@ -1518,16 +1538,16 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             }
                             if let Some((source_path, source_type)) = source_path.as_mut() {
                                 if let Some((drop_path, drop_type)) = drop_path.as_mut() {
+                                    let source_action_idx =
+                                        source_path.pop_front().unwrap() as usize;
+                                    let drop_action_idx = drop_path.pop_front().unwrap() as usize;
                                     if ui.input(|i| i.pointer.any_released())
-                                        && is_valid_drag(source_type, drop_type)
+                                        && (is_valid_drag(source_type, drop_type)
+                                            || drop_action_idx == 0)
                                     {
-                                        let source_action_idx =
-                                            source_path.pop_front().unwrap() as usize;
-                                        let drop_action_idx =
-                                            drop_path.pop_front().unwrap() as usize;
                                         // do the drop:
                                         let item = if source_action_idx == 0 {
-                                            dock_card.take_from_path(source_path)
+                                            palette_card.take_from_path(source_path)
                                         } else {
                                             gui_state.gui_cards[source_action_idx - 1]
                                                 .take_from_path(&mut source_path.clone())
@@ -1535,6 +1555,11 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                         if drop_action_idx > 0 {
                                             gui_state.gui_cards[drop_action_idx - 1]
                                                 .insert_to_path(drop_path, item);
+                                        } else if matches!(
+                                            gui_state.palette_state,
+                                            PaletteState::Dock
+                                        ) {
+                                            gui_state.dock_cards.push(item);
                                         }
                                         if source_action_idx > 0 {
                                             gui_state.gui_cards[source_action_idx - 1]

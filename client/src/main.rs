@@ -123,6 +123,7 @@ fn main() {
         menu_stack: vec![GuiElement::MainMenu],
         errors: Vec::new(),
         gui_cards: player_deck.clone(),
+        dock_cards: vec![],
         cooldown_cache_refresh_delay: 0.0,
         palette_state: PaletteState::ProjectileModifiers,
         should_exit: false,

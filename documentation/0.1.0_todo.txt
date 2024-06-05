@@ -1,5 +1,3 @@
-Card Editor
-    Dock for storing complex cards for later
 Update game_design.md
 Update lore.md
 Cards
