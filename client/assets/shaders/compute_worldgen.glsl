@@ -32,6 +32,7 @@ void set_data_in_chunk(uvec3 global_pos, uint chunk_idx, uint data) {
 }
 
 uint get_worldgen(uvec3 global_pos) {
+    vec3 random = vec3(pcg3d(global_pos) & 0xFF) / 128.0;
     vec3 true_pos = vec3(global_pos);
     float macro_noise = voronoise(0.005 * true_pos, 1.0, 1.0).w;
     float density = voronoise(0.04 * true_pos, 1.0, 1.0).w;
@@ -48,18 +49,18 @@ uint get_worldgen(uvec3 global_pos) {
         } else {
             return MAT_AIR << 24;
         }
-    } else if (terrain_density > 0.3) {
+    } else if (terrain_density > 0.35) {
         return MAT_STONE << 24;
-    } else if (terrain_density > 0.1) {
+    } else if (terrain_density > 0.2) {
         return MAT_DIRT << 24;
     } else if (terrain_density > 0.0) {
-        if (temperature > 0.0 && true_pos[1] >= 1796.0) {
+        if (temperature + 0.125 * random.x > terrain_density && true_pos[1] >= 1796.0) {
             return MAT_GRASS << 24;
         } else {
             return MAT_DIRT << 24;
         }
     } else if (true_pos[1] <= 1796.0) {
-        if (temperature > 0.1) {
+        if (temperature + 0.075 * random.x > 0.1) {
             return MAT_WATER << 24;
         } else {
             return MAT_ICE << 24;
