@@ -10,3 +10,4 @@ Worldgen
     Add temperature
     Add water to high temperature biomes
     Remove grass from low temperature biomes
+Disabled activating abilities while in card editor

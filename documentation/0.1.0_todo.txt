@@ -1,2 +1,13 @@
-Disable activating abilities while in card editor
-Fix crash when removing an ability while in game
+Card Editor
+    Dock for storing complex cards for later
+Update game_design.md
+Update lore.md
+Cards
+    Character modifiers
+        Health
+        Size
+    Card shortcuts: cards that act like multiple other cards
+        Projectile Size
+        Pinpoint Projectile
+        Stun Effect
+    Move issue tracking to github

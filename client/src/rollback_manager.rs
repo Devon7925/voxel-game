@@ -25,7 +25,7 @@ use crate::{
         ReferencedStatusEffect, ReferencedTrigger, StateKeybind, VoxelMaterial,
     },
     game_manager::GameState,
-    gui::{GuiElement, GuiState},
+    gui::{self, GuiElement, GuiState},
     networking::{NetworkConnection, NetworkPacket},
     settings_manager::{Control, Settings},
     voxel_sim_manager::{Projectile, VoxelComputePipeline},
@@ -658,15 +658,17 @@ impl PlayerSim for RollbackData {
                         }
                     };
                 }
-                mouse_match!(jump);
-                mouse_match!(crouch);
-                mouse_match!(right);
-                mouse_match!(left);
-                mouse_match!(forward);
-                mouse_match!(backward);
-                for cooldown in self.controls.iter_mut() {
-                    for ability in cooldown.iter_mut() {
-                        ability.update(&Control::Mouse(*button), state == &ElementState::Pressed);
+                if gui_state.menu_stack.len() == 0 {
+                    mouse_match!(jump);
+                    mouse_match!(crouch);
+                    mouse_match!(right);
+                    mouse_match!(left);
+                    mouse_match!(forward);
+                    mouse_match!(backward);
+                    for cooldown in self.controls.iter_mut() {
+                        for ability in cooldown.iter_mut() {
+                            ability.update(&Control::Mouse(*button), state == &ElementState::Pressed);
+                        }
                     }
                 }
             }
@@ -682,16 +684,18 @@ impl PlayerSim for RollbackData {
                             }
                         };
                     }
-                    key_match!(jump);
-                    key_match!(crouch);
-                    key_match!(right);
-                    key_match!(left);
-                    key_match!(forward);
-                    key_match!(backward);
-                    for cooldown in self.controls.iter_mut() {
-                        for ability in cooldown.iter_mut() {
-                            ability
-                                .update(&Control::Key(key), input.state == ElementState::Pressed);
+                    if gui_state.menu_stack.len() == 0 {
+                        key_match!(jump);
+                        key_match!(crouch);
+                        key_match!(right);
+                        key_match!(left);
+                        key_match!(forward);
+                        key_match!(backward);
+                        for cooldown in self.controls.iter_mut() {
+                            for ability in cooldown.iter_mut() {
+                                ability
+                                    .update(&Control::Key(key), input.state == ElementState::Pressed);
+                            }
                         }
                     }
                     match key {
@@ -2107,7 +2111,7 @@ impl Entity {
                     && cooldown.recovery <= 0.0
                 {
                     for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
-                        if action.activate_ability[cooldown_idx][ability_idx]
+                        if *action.activate_ability.get(cooldown_idx).map(|cd| cd.get(ability_idx).unwrap_or(&false)).unwrap_or(&false)
                             && !player_stats[player_idx].lockout
                         {
                             cooldown.cooldown += cooldown.value.0;

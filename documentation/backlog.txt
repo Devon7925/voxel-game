@@ -1,20 +1,9 @@
 SOON
+Homing cards so turrets can exist
 Card Editor
-    Dock for storing complex cards for later
     Keybinds
         Editor
         Keybind Chords
-Update game_design.md
-Update lore.md
-Cards
-    Character modifiers
-        Health
-        Size
-    Card shortcuts: cards that act like multiple other cards
-        Projectile Size
-        Pinpoint Projectile
-        Stun Effect
-    Move issue tracking to github
 Rendering
     FXAA https://en.wikipedia.org/wiki/Fast_approximate_anti-aliasing
 
