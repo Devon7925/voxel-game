@@ -3,6 +3,7 @@ Water
     Add water material
     Add depth based transparency for water
     Add air like depth properties to water
+    Animated texture
 Worldgen
     Add temperature
     Add water to high temperature biomes

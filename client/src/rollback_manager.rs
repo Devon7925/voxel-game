@@ -96,6 +96,7 @@ pub trait PlayerSim {
 
     fn is_render_behind_other_players(&self) -> bool;
     fn get_rollback_time(&self) -> u64;
+    fn get_current_time(&self) -> u64;
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -787,6 +788,10 @@ impl PlayerSim for RollbackData {
     fn get_rollback_time(&self) -> u64 {
         self.rollback_time
     }
+
+    fn get_current_time(&self) -> u64 {
+        self.current_time
+    }
 }
 
 impl RollbackData {
@@ -1169,6 +1174,10 @@ impl PlayerSim for ReplayData {
     }
 
     fn get_rollback_time(&self) -> u64 {
+        self.current_time
+    }
+
+    fn get_current_time(&self) -> u64 {
         self.current_time
     }
 }

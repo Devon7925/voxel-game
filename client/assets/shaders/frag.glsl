@@ -30,6 +30,7 @@ layout(push_constant) uniform PushConstants {
     // The `screen_to_world` parameter of the `draw` method.
     mat4 screen_to_world;
     float aspect_ratio;
+    float time;
     uint primary_ray_dist;
     uint shadow_ray_dist;
     uint reflection_ray_dist;
@@ -378,6 +379,7 @@ struct MaterialNoiseLayer {
     float normal_impact;
     float roughness_impact;
     float transparency_impact;
+    vec3 movement;
     vec3 light_color;
     vec3 dark_color;
 };
@@ -395,63 +397,63 @@ struct MaterialRenderProps {
 const MaterialRenderProps material_render_props[] = {
     // AIR
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0))
         ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
     // STONE
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(2.0, 0.35, 0.1, 0.0, vec3(0.5), vec3(0.0)),
-            MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
-            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
+            MaterialNoiseLayer(2.0, 0.35, 0.1, 0.0, vec3(0.0), vec3(0.5), vec3(0.0)),
+            MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.0), vec3(0.1), vec3(-0.1)),
+            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.0), vec3(0.1), vec3(-0.1))
         ), 0.04, 0.35, 0.0, 0.0, vec3(0.3)),
     // OOB
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0))
         ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
     // DIRT
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(7.0, 0.2, 0.0, 0.0, vec3(0.3, 0.05, -0.2), vec3(0.0)),
-            MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.1), vec3(-0.1)),
-            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
+            MaterialNoiseLayer(7.0, 0.2, 0.0, 0.0, vec3(0.0), vec3(0.3, 0.05, -0.2), vec3(0.0)),
+            MaterialNoiseLayer(20.0, 0.2, 0.2, 0.0, vec3(0.0), vec3(0.1), vec3(-0.1)),
+            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.0), vec3(0.1), vec3(-0.1))
         ), 0.02, 0.75, 0.0, 0.0, vec3(0.2)),
     // GRASS
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(20.0, 0.5, 0.2, 0.0, vec3(0.15, 0.5, 0.15), vec3(0.0)),
-            MaterialNoiseLayer(50.0, 0.1, 0.1, 0.0, vec3(0.1), vec3(-0.1)),
-            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.1), vec3(-0.1))
+            MaterialNoiseLayer(20.0, 0.5, 0.2, 0.0, vec3(0.0), vec3(0.15, 0.5, 0.15), vec3(0.0)),
+            MaterialNoiseLayer(50.0, 0.1, 0.1, 0.0, vec3(0.0), vec3(0.1), vec3(-0.1)),
+            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.0, vec3(0.0), vec3(0.1), vec3(-0.1))
         ), 0.02, 0.7, 0.0, 0.0, vec3(0.1, 0.4, 0.1)),
     // PROJECTILE
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0))
         ), 0.0, 1.0, 0.5, 0.5, vec3(1.0, 0.3, 0.3)),
     // ICE
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(1.7, 0.2, 0.1, 0.1, vec3(0.1, 0.1, 0.35), vec3(0.0)),
-            MaterialNoiseLayer(21.0, 0.1, 0.1, 0.05, vec3(0.1), vec3(-0.1)),
-            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.05, vec3(0.1), vec3(-0.1))
+            MaterialNoiseLayer(1.7, 0.2, 0.1, 0.1, vec3(0.0), vec3(0.1, 0.1, 0.35), vec3(0.0)),
+            MaterialNoiseLayer(21.0, 0.1, 0.1, 0.05, vec3(0.0), vec3(0.1), vec3(-0.1)),
+            MaterialNoiseLayer(0.5, 0.05, 0.0, 0.05, vec3(0.0), vec3(0.1), vec3(-0.1))
         ), 0.05, 0.35, 0.3, 0.3, vec3(0.65, 0.65, 0.75)),
     // WATER
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(1.0, 0.35, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+            MaterialNoiseLayer(1.0, 0.30, 0.0, 0.0, vec3(0.5, 0.0, 0.5), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(2.0, 0.15, 0.0, 0.0, vec3(0.75, 0.0, 0.75), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(4.0, 0.07, 0.0, 0.0, vec3(1.0, 0.0, 1.0), vec3(0.0), vec3(0.0))
         ), 0.05, 0.35, 0.7, 0.7, vec3(0.5, 0.5, 1.0)),
     // PLAYER
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0))
         ), 0.0, 0.2, 0.0, 0.0, vec3(0.8)),
     // AIR OOB
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0), vec3(0.0))
         ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
     };
 
@@ -474,7 +476,7 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
     float transparency = mat_render_props.transparency;
     for (int layer_idx = 0; layer_idx < 3; layer_idx++) {
         MaterialNoiseLayer layer = mat_render_props.layers[layer_idx];
-        vec4 noise = grad_noise(layer.scale * resultLayer.pos);
+        vec4 noise = grad_noise(layer.scale * resultLayer.pos + layer.movement * push_constants.time);
         float distance_noise_factor = clamp(-0.1 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (max(resultLayer.dist, 0.1) * layer.scale), 0.0, 1.0);
         normal += distance_noise_factor * layer.normal_impact * noise.xyz * (vec3(1) - abs(resultLayer.normal));
         color += mix(layer.light_color, layer.dark_color, mix(0.5, (noise.w + 1.0) / 2.0, distance_noise_factor));
@@ -501,19 +503,20 @@ struct HeightData {
     float offset;
     float scale;
     float impact;
+    vec3 movement;
 };
 
 const HeightData height_data[] = {
-    HeightData(0.0, 0.0, 0.0),
-    HeightData(0.2, 2.0, 0.5),
-    HeightData(0.0, 0.0, 0.0),
-    HeightData(0.4, 7.0, 0.2),
-    HeightData(0.6, 20.0, 0.5),
-    HeightData(0.0, 0.0, 0.0),
-    HeightData(0.8, 1.7, 0.3),
-    HeightData(0.7, 1.0, 0.35),
-    HeightData(0.0, 0.0, 0.0),
-    HeightData(0.0, 0.0, 0.0),
+    HeightData(0.0, 0.0, 0.0, vec3(0.0)),
+    HeightData(0.2, 2.0, 0.5, vec3(0.0)),
+    HeightData(0.0, 0.0, 0.0, vec3(0.0)),
+    HeightData(0.4, 7.0, 0.2, vec3(0.0)),
+    HeightData(0.6, 20.0, 0.5, vec3(0.0)),
+    HeightData(0.0, 0.0, 0.0, vec3(0.0)),
+    HeightData(0.8, 1.7, 0.3, vec3(0.0)),
+    HeightData(0.7, 1.0, 0.35, vec3(0.5, 0.0, 0.5)),
+    HeightData(0.0, 0.0, 0.0, vec3(0.0)),
+    HeightData(0.0, 0.0, 0.0, vec3(0.0)),
     };
 
 MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_dir) {
@@ -524,7 +527,7 @@ MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_di
     vec3 weights = abs(relative_pos);
     uint result_vox = resultLayer.voxel_data;
     HeightData voxel_height_data = height_data[result_vox >> 24];
-    float result_height = (voxel_height_data.offset + voxel_height_data.impact * grad_noise(voxel_height_data.scale * resultLayer.pos).w) * (1.0 - weights.x) * (1.0 - weights.y) * (1.0 - weights.z);
+    float result_height = (voxel_height_data.offset + voxel_height_data.impact * grad_noise(voxel_height_data.scale * resultLayer.pos + voxel_height_data.movement * push_constants.time).w) * (1.0 - weights.x) * (1.0 - weights.y) * (1.0 - weights.z);
     for (int i = 1; i < 8; i++) {
         vec3 voxel_direction = vec3(float(i & 1), float((i & 2) >> 1), float((i & 4) >> 2)) * sign(relative_pos);
         if (dot(voxel_direction, resultLayer.normal) > 0.0) continue;

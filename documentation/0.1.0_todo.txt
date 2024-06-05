@@ -2,7 +2,6 @@ Water Update
 Water
     Add water player physics
     Add water flowing physics
-    Animated texture
 Worldgen
     Improve border between temperatures
 

@@ -244,6 +244,7 @@ impl PointLightingSystem {
         let push_constants = fs::PushConstants {
             screen_to_world: screen_to_world.into(),
             aspect_ratio: viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32,
+            time: game.rollback_data.get_current_time() as f32 * game.rollback_data.get_delta_time(),
             primary_ray_dist: graphics_settings.primary_ray_dist.into(),
             shadow_ray_dist: graphics_settings.shadow_ray_dist.into(),
             reflection_ray_dist: graphics_settings.reflection_ray_dist.into(),
