@@ -474,7 +474,25 @@ impl VoxelMaterial {
     }
 
     pub fn is_passthrough(&self) -> bool {
-        matches!(self, VoxelMaterial::Air | VoxelMaterial::Water | VoxelMaterial::UnloadedAir)
+        matches!(
+            self,
+            VoxelMaterial::Air | VoxelMaterial::Water | VoxelMaterial::UnloadedAir
+        )
+    }
+
+    pub fn density(&self) -> f32 {
+        match self {
+            VoxelMaterial::Air => 0.0,
+            VoxelMaterial::Stone => 0.0,
+            VoxelMaterial::Unloaded => 0.0,
+            VoxelMaterial::Dirt => 0.0,
+            VoxelMaterial::Grass => 0.0,
+            VoxelMaterial::Projectile => panic!("Invalid state"),
+            VoxelMaterial::Ice => 0.0,
+            VoxelMaterial::Water => 1.0,
+            VoxelMaterial::Player => panic!("Invalid state"),
+            VoxelMaterial::UnloadedAir => 0.0,
+        }
     }
 }
 

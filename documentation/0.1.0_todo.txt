@@ -1,5 +1,2 @@
-Water Update
-Water
-    Add water player physics
-
 Disable activating abilities while in card editor
+Fix crash when removing an ability while in game

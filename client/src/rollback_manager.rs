@@ -29,7 +29,7 @@ use crate::{
     networking::{NetworkConnection, NetworkPacket},
     settings_manager::{Control, Settings},
     voxel_sim_manager::{Projectile, VoxelComputePipeline},
-    WindowProperties, CHUNK_SIZE, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
+    WindowProperties, CHUNK_SIZE, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
 };
 use voxel_shared::{GameSettings, RoomId, WorldGenSettings};
 
@@ -491,10 +491,8 @@ impl PlayerSim for RollbackData {
         vox_compute: &mut VoxelComputePipeline,
         game_settings: &GameSettings,
     ) {
-        self.rollback_state.projectiles = vox_compute.download_projectiles(
-            card_manager,
-            game_settings,
-        );
+        self.rollback_state.projectiles =
+            vox_compute.download_projectiles(card_manager, game_settings);
     }
 
     fn get_camera(&self) -> Camera {
@@ -723,13 +721,15 @@ impl PlayerSim for RollbackData {
                                         GuiElement::CardEditor => {
                                             self.player_deck.clear();
                                             self.player_deck.extend(gui_state.gui_cards.clone());
-                                            self.controls = self.player_deck
+                                            self.controls = self
+                                                .player_deck
                                                 .iter()
                                                 .map(|a| {
-                                                    a
-                                                        .abilities
+                                                    a.abilities
                                                         .iter()
-                                                        .map(|a| StateKeybind::from(a.keybind.clone()))
+                                                        .map(|a| {
+                                                            StateKeybind::from(a.keybind.clone())
+                                                        })
                                                         .collect()
                                                 })
                                                 .collect();
@@ -1104,10 +1104,7 @@ impl PlayerSim for ReplayData {
         vox_compute: &mut VoxelComputePipeline,
         game_settings: &GameSettings,
     ) {
-        self.state.projectiles = vox_compute.download_projectiles(
-            card_manager,
-            game_settings,
-        );
+        self.state.projectiles = vox_compute.download_projectiles(card_manager, game_settings);
     }
 
     fn get_camera(&self) -> Camera {
@@ -1954,10 +1951,11 @@ pub fn is_inbounds(
 ) -> bool {
     (global_pos / CHUNK_SIZE as u32).zip(game_state.start_pos, |a, b| a >= b)
         == Point3::new(true, true, true)
-    &&
-    (global_pos / CHUNK_SIZE as u32).zip(game_state.start_pos + game_settings.render_size, |a, b| {
-        a < b
-    }) == Point3::new(true, true, true)
+        && (global_pos / CHUNK_SIZE as u32)
+            .zip(game_state.start_pos + game_settings.render_size, |a, b| {
+                a < b
+            })
+            == Point3::new(true, true, true)
 }
 
 pub fn get_index(
@@ -1969,12 +1967,13 @@ pub fn get_index(
     if !is_inbounds(global_pos, game_state, game_settings) {
         return None;
     }
-    let chunk_pos =
-        (global_pos / CHUNK_SIZE as u32).zip(Point3::from_vec(game_settings.render_size), |a, b| a % b);
+    let chunk_pos = (global_pos / CHUNK_SIZE as u32)
+        .zip(Point3::from_vec(game_settings.render_size), |a, b| a % b);
     let pos_in_chunk = global_pos % CHUNK_SIZE as u32;
     let chunk_idx = cpu_chunks[chunk_pos.x as usize][chunk_pos.y as usize][chunk_pos.z as usize];
-    let idx_in_chunk =
-        pos_in_chunk.x * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 + pos_in_chunk.y * CHUNK_SIZE as u32 + pos_in_chunk.z;
+    let idx_in_chunk = pos_in_chunk.x * CHUNK_SIZE as u32 * CHUNK_SIZE as u32
+        + pos_in_chunk.y * CHUNK_SIZE as u32
+        + pos_in_chunk.z;
     Some(chunk_idx * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 + idx_in_chunk)
 }
 
@@ -2088,7 +2087,8 @@ impl Entity {
             if move_vec.magnitude() > 0.0 {
                 move_vec = move_vec.normalize();
             }
-            let accel_speed = speed_multiplier * player_stats[player_idx].speed
+            let accel_speed = speed_multiplier
+                * player_stats[player_idx].speed
                 * if self.collision_vec != Vector3::new(0, 0, 0) {
                     80.0
                 } else {
@@ -2142,9 +2142,50 @@ impl Entity {
                 ability.recovery -= time_step;
             }
         }
-        self.vel.y -= player_stats[player_idx].gravity * 32.0 * time_step;
+
+        //volume effects
+        let x_iter_count = (self.size * PLAYER_HITBOX_SIZE[0]).ceil() + 1.0;
+        let y_iter_count = (self.size * PLAYER_HITBOX_SIZE[1]).ceil() + 1.0;
+        let z_iter_count = (self.size * PLAYER_HITBOX_SIZE[2]).ceil() + 1.0;
+        let x_dist = (self.size * PLAYER_HITBOX_SIZE[0]) / x_iter_count;
+        let y_dist = (self.size * PLAYER_HITBOX_SIZE[1]) / y_iter_count;
+        let z_dist = (self.size * PLAYER_HITBOX_SIZE[2]) / z_iter_count;
+        let start_pos = self.pos + PLAYER_HITBOX_OFFSET - 0.5 * self.size * PLAYER_HITBOX_SIZE;
+        let mut nearby_density = 0.0;
+        for x in 0..x_iter_count as u32 {
+            for y in 0..y_iter_count as u32 {
+                for z in 0..z_iter_count as u32 {
+                    let pos = start_pos
+                        + x_dist * x as f32 * Vector3::new(1.0, 0.0, 0.0)
+                        + y_dist * y as f32 * Vector3::new(0.0, 1.0, 0.0)
+                        + z_dist * z as f32 * Vector3::new(0.0, 0.0, 1.0);
+                    let voxel_pos = pos.map(|c| c.floor() as u32);
+                    let material = if is_inbounds(voxel_pos, game_state, game_settings) {
+                        let idx = get_index(voxel_pos, cpu_chunks, game_state, game_settings);
+                        if let Some(idx) = idx {
+                            VoxelMaterial::from_memory(voxel_reader[idx as usize])
+                        } else {
+                            VoxelMaterial::Unloaded
+                        }
+                    } else {
+                        VoxelMaterial::Unloaded
+                    };
+                    nearby_density += material.density();
+                }
+            }
+        }
+        nearby_density /= x_iter_count * y_iter_count * z_iter_count;
+
+        self.vel.y -= (PLAYER_DENSITY - nearby_density) / PLAYER_DENSITY
+            * player_stats[player_idx].gravity
+            * 32.0
+            * time_step;
         if self.vel.magnitude() > 0.0 {
-            self.vel -= 0.1 * self.vel * self.vel.magnitude() * time_step
+            self.vel -= (4.0 * nearby_density + 1.0) / 2.0
+                * 0.075
+                * self.vel
+                * self.vel.magnitude()
+                * time_step
                 + 0.2 * self.vel.normalize() * time_step;
         }
         let prev_collision_vec = self.collision_vec.clone();

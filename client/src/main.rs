@@ -57,6 +57,7 @@ pub struct WindowProperties {
 
 pub const PLAYER_HITBOX_OFFSET: Vector3<f32> = Vector3::new(0.0, -2.0, 0.0);
 pub const PLAYER_HITBOX_SIZE: Vector3<f32> = Vector3::new(1.8, 4.8, 1.8);
+pub const PLAYER_DENSITY: f32 = 0.7;
 
 const SETTINGS_FILE: &str = "settings.yaml";
 
@@ -518,8 +519,12 @@ fn compute_then_render(
                     }
                 }
 
-                game.voxel_compute
-                    .compute(future, &mut game.game_state, &game.game_settings, game.rollback_data.get_rollback_projectiles())
+                game.voxel_compute.compute(
+                    future,
+                    &mut game.game_state,
+                    &game.game_settings,
+                    game.rollback_data.get_rollback_projectiles(),
+                )
             } else {
                 game.rollback_data.step_visuals(
                     &mut game.card_manager,
