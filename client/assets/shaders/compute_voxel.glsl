@@ -108,6 +108,37 @@ void main() {
     }
 
     for (uint i = 0; i < 2; i++) {
+        for (uint k = 0; k < 2; k++) {
+            uint bottom_voxel = pos_data[i][0][k].x;
+            uint top_voxel = pos_data[i][1][k].x;
+            if (bottom_voxel == MAT_AIR && top_voxel == MAT_WATER) {
+                pos_data[i][0][k] = uvec2(top_voxel, 0);
+                pos_data[i][1][k] = uvec2(MAT_AIR, 0);
+            }
+        }
+    }
+
+    for (uint i = 0; i < 2; i++) {
+        uint to_voxel = pos_data[0][1][i].x;
+        uint from_voxel = pos_data[1][1][i].x;
+        uint below_voxel = pos_data[1][0][i].x;
+        if (to_voxel == MAT_AIR && from_voxel == MAT_WATER && below_voxel != MAT_AIR) {
+            pos_data[0][1][i] = uvec2(from_voxel, 0);
+            pos_data[1][1][i] = uvec2(MAT_AIR, 0);
+        }
+    }
+
+    for (uint i = 0; i < 2; i++) {
+        uint to_voxel = pos_data[i][1][0].x;
+        uint from_voxel = pos_data[i][1][1].x;
+        uint below_voxel = pos_data[i][0][1].x;
+        if (to_voxel == MAT_AIR && from_voxel == MAT_WATER && below_voxel != MAT_AIR) {
+            pos_data[i][1][0] = uvec2(from_voxel, 0);
+            pos_data[i][1][1] = uvec2(MAT_AIR, 0);
+        }
+    }
+
+    for (uint i = 0; i < 2; i++) {
         for (uint j = 0; j < 2; j++) {
             for (uint k = 0; k < 2; k++) {
                 if (pos_data[i][j][k].x == MAT_AIR) {

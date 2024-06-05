@@ -831,7 +831,7 @@ impl BaseCard {
                     VoxelMaterial::Grass => 0.5,
                     VoxelMaterial::Projectile => panic!("Invalid state"),
                     VoxelMaterial::Ice => 2.0,
-                    VoxelMaterial::Water => 1.5,
+                    VoxelMaterial::Water => 0.75,
                     VoxelMaterial::Player => panic!("Invalid state"),
                     VoxelMaterial::UnloadedAir => panic!("Invalid state"),
                 };

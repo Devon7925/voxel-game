@@ -1,6 +1,5 @@
 Water Update
 Water
     Add water player physics
-    Add water flowing physics
 
 Disable activating abilities while in card editor
