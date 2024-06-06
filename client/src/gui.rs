@@ -10,8 +10,8 @@ use itertools::Itertools;
 use crate::{
     card_system::{
         Ability, BaseCard, Cooldown, CooldownModifier, DraggableCard, Effect, Keybind,
-        MultiCastModifier, ProjectileModifier, ProjectileModifierType, ReferencedStatusEffect,
-        SimpleCooldownModifier, StatusEffect, VoxelMaterial,
+        MultiCastModifier, ProjectileModifier, ReferencedStatusEffect, SimpleCooldownModifier,
+        SimpleProjectileModifierType, StatusEffect, VoxelMaterial,
     },
     lobby_browser::LobbyBrowser,
     rollback_manager::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
@@ -521,13 +521,14 @@ impl DraggableCard {
                 match modifier {
                     ProjectileModifier::SimpleModify(ty, v) => {
                         let name = match ty {
-                            ProjectileModifierType::Gravity => "Gravity",
-                            ProjectileModifierType::Health => "Health",
-                            ProjectileModifierType::Height => "Height",
-                            ProjectileModifierType::Length => "Length",
-                            ProjectileModifierType::Lifetime => "Lifetime",
-                            ProjectileModifierType::Speed => "Speed",
-                            ProjectileModifierType::Width => "Width",
+                            SimpleProjectileModifierType::Gravity => "Gravity",
+                            SimpleProjectileModifierType::Health => "Health",
+                            SimpleProjectileModifierType::Length => "Length",
+                            SimpleProjectileModifierType::Width => "Width",
+                            SimpleProjectileModifierType::Height => "Height",
+                            SimpleProjectileModifierType::Size => "Size",
+                            SimpleProjectileModifierType::Lifetime => "Lifetime",
+                            SimpleProjectileModifierType::Speed => "Speed",
                         };
                         add_hoverable_basic_modifer(
                             ui,
@@ -878,6 +879,7 @@ pub fn draw_base_card(
                                     StatusEffect::Invincibility => "Invincibility",
                                     StatusEffect::Trapped => "Trapped",
                                     StatusEffect::Lockout => "Lockout",
+                                    StatusEffect::Stun => "Stun",
                                     StatusEffect::OnHit(_base_card) => {
                                         panic!("OnHit should be handled above")
                                     }
@@ -1236,85 +1238,97 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                     PaletteState::ProjectileModifiers => vec![
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Gravity,
+                                                SimpleProjectileModifierType::Gravity,
                                                 -1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Gravity,
+                                                SimpleProjectileModifierType::Gravity,
                                                 1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Health,
+                                                SimpleProjectileModifierType::Health,
                                                 -1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Health,
+                                                SimpleProjectileModifierType::Health,
                                                 1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Length,
+                                                SimpleProjectileModifierType::Length,
                                                 -1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Length,
+                                                SimpleProjectileModifierType::Length,
                                                 1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Width,
+                                                SimpleProjectileModifierType::Width,
                                                 -1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Width,
+                                                SimpleProjectileModifierType::Width,
                                                 1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Height,
+                                                SimpleProjectileModifierType::Height,
                                                 -1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Height,
+                                                SimpleProjectileModifierType::Height,
                                                 1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Speed,
+                                                SimpleProjectileModifierType::Size,
                                                 -1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Speed,
+                                                SimpleProjectileModifierType::Size,
                                                 1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Lifetime,
+                                                SimpleProjectileModifierType::Speed,
                                                 -1,
                                             ),
                                         ),
                                         DraggableCard::ProjectileModifier(
                                             ProjectileModifier::SimpleModify(
-                                                ProjectileModifierType::Lifetime,
+                                                SimpleProjectileModifierType::Speed,
+                                                1,
+                                            ),
+                                        ),
+                                        DraggableCard::ProjectileModifier(
+                                            ProjectileModifier::SimpleModify(
+                                                SimpleProjectileModifierType::Lifetime,
+                                                -1,
+                                            ),
+                                        ),
+                                        DraggableCard::ProjectileModifier(
+                                            ProjectileModifier::SimpleModify(
+                                                SimpleProjectileModifierType::Lifetime,
                                                 1,
                                             ),
                                         ),
@@ -1436,6 +1450,15 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                         )),
                                         DraggableCard::BaseCard(BaseCard::Effect(
                                             Effect::StatusEffect(StatusEffect::Invincibility, 1),
+                                        )),
+                                        DraggableCard::BaseCard(BaseCard::Effect(
+                                            Effect::StatusEffect(StatusEffect::Trapped, 1),
+                                        )),
+                                        DraggableCard::BaseCard(BaseCard::Effect(
+                                            Effect::StatusEffect(StatusEffect::Lockout, 1),
+                                        )),
+                                        DraggableCard::BaseCard(BaseCard::Effect(
+                                            Effect::StatusEffect(StatusEffect::Stun, 1),
                                         )),
                                         DraggableCard::BaseCard(BaseCard::Effect(
                                             Effect::StatusEffect(

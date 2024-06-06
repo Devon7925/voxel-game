@@ -667,7 +667,8 @@ impl PlayerSim for RollbackData {
                     mouse_match!(backward);
                     for cooldown in self.controls.iter_mut() {
                         for ability in cooldown.iter_mut() {
-                            ability.update(&Control::Mouse(*button), state == &ElementState::Pressed);
+                            ability
+                                .update(&Control::Mouse(*button), state == &ElementState::Pressed);
                         }
                     }
                 }
@@ -693,8 +694,10 @@ impl PlayerSim for RollbackData {
                         key_match!(backward);
                         for cooldown in self.controls.iter_mut() {
                             for ability in cooldown.iter_mut() {
-                                ability
-                                    .update(&Control::Key(key), input.state == ElementState::Pressed);
+                                ability.update(
+                                    &Control::Key(key),
+                                    input.state == ElementState::Pressed,
+                                );
                             }
                         }
                     }
@@ -2101,9 +2104,10 @@ impl Entity {
             self.vel += accel_speed * move_vec * time_step;
 
             if action.jump {
-                self.vel += self
-                    .collision_vec
-                    .zip(Vector3::new(0.3, 13.0, 0.3), |c, m| c as f32 * m);
+                self.vel += player_stats[player_idx].speed
+                    * self
+                        .collision_vec
+                        .zip(Vector3::new(0.3, 13.0, 0.3), |c, m| c as f32 * m);
             }
 
             for (cooldown_idx, cooldown) in self.abilities.iter_mut().enumerate() {
@@ -2111,7 +2115,11 @@ impl Entity {
                     && cooldown.recovery <= 0.0
                 {
                     for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
-                        if *action.activate_ability.get(cooldown_idx).map(|cd| cd.get(ability_idx).unwrap_or(&false)).unwrap_or(&false)
+                        if *action
+                            .activate_ability
+                            .get(cooldown_idx)
+                            .map(|cd| cd.get(ability_idx).unwrap_or(&false))
+                            .unwrap_or(&false)
                             && !player_stats[player_idx].lockout
                         {
                             cooldown.cooldown += cooldown.value.0;

@@ -338,7 +338,7 @@ pub enum BaseCard {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum ProjectileModifier {
-    SimpleModify(ProjectileModifierType, i32),
+    SimpleModify(SimpleProjectileModifierType, i32),
     FriendlyFire,
     NoEnemyFire,
     OnHit(BaseCard),
@@ -370,11 +370,12 @@ impl ProjectileModifier {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub enum ProjectileModifierType {
+pub enum SimpleProjectileModifierType {
     Speed,
     Length,
     Width,
     Height,
+    Size,
     Lifetime,
     Gravity,
     Health,
@@ -433,6 +434,7 @@ pub enum StatusEffect {
     Invincibility,
     Trapped,
     Lockout,
+    Stun,
     OnHit(Box<BaseCard>),
 }
 
@@ -636,27 +638,39 @@ impl BaseCard {
                 let mut wall_bounce = false;
                 for modifier in modifiers {
                     match modifier {
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, s) => {
-                            speed += s
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Speed,
+                            s,
+                        ) => speed += s,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Length,
+                            s,
+                        ) => length += s,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Width,
+                            s,
+                        ) => width += s,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Height,
+                            s,
+                        ) => height += s,
+                        ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Size, s) => {
+                            length += s;
+                            width += s;
+                            height += s;
                         }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Length, s) => {
-                            length += s
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Width, s) => {
-                            width += s
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Height, s) => {
-                            height += s
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Lifetime, l) => {
-                            lifetime += l
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Gravity, g) => {
-                            gravity += g
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Health, g) => {
-                            health += g
-                        }
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Lifetime,
+                            l,
+                        ) => lifetime += l,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Gravity,
+                            g,
+                        ) => gravity += g,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Health,
+                            g,
+                        ) => health += g,
                         ProjectileModifier::FriendlyFire => friendly_fire = true,
                         ProjectileModifier::NoEnemyFire => enemy_fire = false,
                         ProjectileModifier::WallBounce => wall_bounce = true,
@@ -683,24 +697,30 @@ impl BaseCard {
                         ProjectileModifier::PiercePlayers => pierce_players = true,
                     }
                 }
-                let speed = ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, speed)
-                    .get_effect_value();
+                let speed =
+                    ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Speed, speed)
+                        .get_effect_value();
                 let length =
-                    ProjectileModifier::SimpleModify(ProjectileModifierType::Length, length)
+                    ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Length, length)
                         .get_effect_value();
-                let width = ProjectileModifier::SimpleModify(ProjectileModifierType::Width, width)
-                    .get_effect_value();
+                let width =
+                    ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Width, width)
+                        .get_effect_value();
                 let height =
-                    ProjectileModifier::SimpleModify(ProjectileModifierType::Height, height)
+                    ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Height, height)
                         .get_effect_value();
-                let lifetime =
-                    ProjectileModifier::SimpleModify(ProjectileModifierType::Lifetime, lifetime)
-                        .get_effect_value();
-                let _gravity =
-                    ProjectileModifier::SimpleModify(ProjectileModifierType::Gravity, gravity)
-                        .get_effect_value();
+                let lifetime = ProjectileModifier::SimpleModify(
+                    SimpleProjectileModifierType::Lifetime,
+                    lifetime,
+                )
+                .get_effect_value();
+                let _gravity = ProjectileModifier::SimpleModify(
+                    SimpleProjectileModifierType::Gravity,
+                    gravity,
+                )
+                .get_effect_value();
                 let health =
-                    ProjectileModifier::SimpleModify(ProjectileModifierType::Health, health)
+                    ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Health, health)
                         .get_effect_value();
 
                 let range_probabilities = core::array::from_fn(|idx| {
@@ -1008,9 +1028,9 @@ impl BaseCard {
                     StatusEffect::Trapped => vec![CardValue {
                         damage: 0.0,
                         generic: Self::EFFECT_LENGTH_SCALE
-                            * (if is_direct { -1.0 } else { 1.0 })
-                            * 5.0
-                            * (*duration as f32),
+                            * (if is_direct { -0.5 } else { 1.0 })
+                            * 1.0
+                            * (*duration as f32).powi(2),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
                         ),
@@ -1018,8 +1038,18 @@ impl BaseCard {
                     StatusEffect::Lockout => vec![CardValue {
                         damage: 0.0,
                         generic: Self::EFFECT_LENGTH_SCALE
-                            * (if is_direct { -1.0 } else { 1.0 })
-                            * 5.0
+                            * (if is_direct { -0.5 } else { 1.0 })
+                            * 1.0
+                            * (*duration as f32).powi(2),
+                        range_probabilities: core::array::from_fn(
+                            |idx| if idx == 0 { 1.0 } else { 0.0 },
+                        ),
+                    }],
+                    StatusEffect::Stun => vec![CardValue {
+                        damage: 0.0,
+                        generic: Self::EFFECT_LENGTH_SCALE
+                            * (if is_direct { -0.5 } else { 1.0 })
+                            * 2.0
                             * (*duration as f32),
                         range_probabilities: core::array::from_fn(
                             |idx| if idx == 0 { 1.0 } else { 0.0 },
@@ -1057,7 +1087,10 @@ impl BaseCard {
             BaseCard::Projectile(modifiers) => {
                 for modifier in modifiers {
                     match modifier {
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, _) => {
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Speed,
+                            _,
+                        ) => {
                             if modifier.get_effect_value().abs() > 200.0 {
                                 return false;
                             }
@@ -1302,7 +1335,7 @@ impl BaseCard {
                 if path.is_empty() {
                     let value = modifiers[idx].clone();
                     modifiers[idx] =
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, 0);
+                        ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Speed, 0);
                     DraggableCard::ProjectileModifier(value)
                 } else {
                     assert!(path.pop_front().unwrap() == 0);
@@ -1579,25 +1612,28 @@ impl Default for BaseCard {
 impl ProjectileModifier {
     pub fn get_hover_text(&self) -> String {
         match self {
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, _) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Speed, _) => {
                 format!("Speed (+8 per) {}b/s", self.get_effect_value())
             }
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Length, _) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Length, _) => {
                 format!("Length (+25% per) {}", self.get_effect_value())
             }
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Width, _) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Width, _) => {
                 format!("Width (+25% per) {}", self.get_effect_value())
             }
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Height, _) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Height, _) => {
                 format!("Height (+25% per) {}", self.get_effect_value())
             }
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Lifetime, _) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Size, _) => {
+                format!("Size (+25% per) {}", self.get_effect_value())
+            }
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Lifetime, _) => {
                 format!("Lifetime (+50% per) {}s", self.get_effect_value())
             }
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Gravity, _) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Gravity, _) => {
                 format!("Gravity (+2 per) {}b/s/s", self.get_effect_value())
             }
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Health, _) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Health, _) => {
                 format!("Entity Health (+50% per) {}", self.get_effect_value())
             }
             ProjectileModifier::FriendlyFire => format!("Prevents hitting friendly entities"),
@@ -1627,19 +1663,28 @@ impl ProjectileModifier {
 
     pub fn get_effect_value(&self) -> f32 {
         match self {
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, s) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Speed, s) => {
                 8.0 * (*s as f32 + 3.0)
             }
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Length, s) => 1.25f32.powi(*s),
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Width, s) => 1.25f32.powi(*s),
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Height, s) => 1.25f32.powi(*s),
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Lifetime, s) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Length, s) => {
+                1.25f32.powi(*s)
+            }
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Width, s) => {
+                1.25f32.powi(*s)
+            }
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Height, s) => {
+                1.25f32.powi(*s)
+            }
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Size, s) => {
+                1.25f32.powi(*s)
+            }
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Lifetime, s) => {
                 3.0 * 1.5f32.powi(*s)
             }
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Gravity, s) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Gravity, s) => {
                 2.0 * (*s as f32)
             }
-            ProjectileModifier::SimpleModify(ProjectileModifierType::Health, s) => {
+            ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Health, s) => {
                 10.0 * 1.5f32.powi(*s)
             }
             ProjectileModifier::FriendlyFire => panic!(),
@@ -1951,27 +1996,39 @@ impl CardManager {
                 let mut wall_bounce = false;
                 for modifier in modifiers {
                     match modifier {
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, s) => {
-                            speed += s
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Speed,
+                            s,
+                        ) => speed += s,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Length,
+                            s,
+                        ) => length += s,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Width,
+                            s,
+                        ) => width += s,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Height,
+                            s,
+                        ) => height += s,
+                        ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Size, s) => {
+                            length += s;
+                            width += s;
+                            height += s;
                         }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Length, s) => {
-                            length += s
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Width, s) => {
-                            width += s
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Height, s) => {
-                            height += s
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Lifetime, l) => {
-                            lifetime += l
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Gravity, g) => {
-                            gravity += g
-                        }
-                        ProjectileModifier::SimpleModify(ProjectileModifierType::Health, g) => {
-                            health += g
-                        }
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Lifetime,
+                            l,
+                        ) => lifetime += l,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Gravity,
+                            g,
+                        ) => gravity += g,
+                        ProjectileModifier::SimpleModify(
+                            SimpleProjectileModifierType::Health,
+                            g,
+                        ) => health += g,
                         ProjectileModifier::FriendlyFire => friendly_fire = true,
                         ProjectileModifier::NoEnemyFire => no_enemy_fire = true,
                         ProjectileModifier::OnHit(card) => {
@@ -1999,32 +2056,38 @@ impl CardManager {
                 }
                 self.referenced_projs.push(ReferencedProjectile {
                     damage,
-                    speed: ProjectileModifier::SimpleModify(ProjectileModifierType::Speed, speed)
-                        .get_effect_value(),
+                    speed: ProjectileModifier::SimpleModify(
+                        SimpleProjectileModifierType::Speed,
+                        speed,
+                    )
+                    .get_effect_value(),
                     length: ProjectileModifier::SimpleModify(
-                        ProjectileModifierType::Length,
+                        SimpleProjectileModifierType::Length,
                         length,
                     )
                     .get_effect_value(),
-                    width: ProjectileModifier::SimpleModify(ProjectileModifierType::Width, width)
-                        .get_effect_value(),
+                    width: ProjectileModifier::SimpleModify(
+                        SimpleProjectileModifierType::Width,
+                        width,
+                    )
+                    .get_effect_value(),
                     height: ProjectileModifier::SimpleModify(
-                        ProjectileModifierType::Height,
+                        SimpleProjectileModifierType::Height,
                         height,
                     )
                     .get_effect_value(),
                     lifetime: ProjectileModifier::SimpleModify(
-                        ProjectileModifierType::Lifetime,
+                        SimpleProjectileModifierType::Lifetime,
                         lifetime,
                     )
                     .get_effect_value(),
                     gravity: ProjectileModifier::SimpleModify(
-                        ProjectileModifierType::Gravity,
+                        SimpleProjectileModifierType::Gravity,
                         gravity,
                     )
                     .get_effect_value(),
                     health: ProjectileModifier::SimpleModify(
-                        ProjectileModifierType::Health,
+                        SimpleProjectileModifierType::Health,
                         health,
                     )
                     .get_effect_value(),
@@ -2106,6 +2169,34 @@ impl CardManager {
                             StatusEffect::Invincibility => ReferencedStatusEffect::Invincibility,
                             StatusEffect::Trapped => ReferencedStatusEffect::Trapped,
                             StatusEffect::Lockout => ReferencedStatusEffect::Lockout,
+                            StatusEffect::Stun => {
+                                self.referenced_effects.push(ReferencedEffect::StatusEffect(
+                                    ReferencedStatusEffect::Trapped,
+                                    duration,
+                                ));
+                                self.referenced_effects.push(ReferencedEffect::StatusEffect(
+                                    ReferencedStatusEffect::Lockout,
+                                    duration,
+                                ));
+                                self.referenced_multicasts.push(ReferencedMulticast {
+                                    sub_cards: vec![
+                                        ReferencedBaseCard {
+                                            card_type: ReferencedBaseCardType::Effect,
+                                            card_idx: self.referenced_effects.len() - 2,
+                                        },
+                                        ReferencedBaseCard {
+                                            card_type: ReferencedBaseCardType::Effect,
+                                            card_idx: self.referenced_effects.len() - 1,
+                                        },
+                                    ],
+                                    spread: 0,
+                                    duplication: 0,
+                                });
+                                return ReferencedBaseCard {
+                                    card_type: ReferencedBaseCardType::MultiCast,
+                                    card_idx: self.referenced_multicasts.len() - 1,
+                                };
+                            }
                             StatusEffect::OnHit(card) => {
                                 ReferencedStatusEffect::OnHit(self.register_base_card(*card))
                             }

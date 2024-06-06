@@ -4,8 +4,8 @@ Cards
     Character modifiers
         Health
         Size
-    Card shortcuts: cards that act like multiple other cards
-        Projectile Size
-        Pinpoint Projectile
-        Stun Effect
     Move issue tracking to github
+Update characters
+    Use card shortcuts
+    Add lockout/trapped status effects
+Add importing from card files
