@@ -1,5 +1,4 @@
 Update game_design.md
-Update lore.md
 Cards
     Character modifiers
         Health
