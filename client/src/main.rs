@@ -126,7 +126,7 @@ fn main() {
         gui_cards: player_deck.clone(),
         dock_cards: vec![],
         cooldown_cache_refresh_delay: 0.0,
-        palette_state: PaletteState::ProjectileModifiers,
+        palette_state: PaletteState::BaseCards,
         should_exit: false,
         game_just_started: false,
         lobby_browser: LobbyBrowser::new(),

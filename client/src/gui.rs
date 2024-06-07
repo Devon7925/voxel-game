@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
 use egui_winit_vulkano::egui::{
-    self, emath, epaint, pos2, text::LayoutJob, vec2, Align, Align2, Color32, CursorIcon, FontId,
-    Id, InnerResponse, Label, LayerId, Order, Rect, Rgba, RichText, Rounding, ScrollArea, Sense,
-    Shape, Stroke, TextFormat, Ui, Vec2,
+    self, emath, epaint, pos2, scroll_area, text::LayoutJob, vec2, Align, Align2, Color32,
+    CursorIcon, FontId, Id, InnerResponse, Label, LayerId, Order, Rect, Rgba, RichText, Rounding,
+    ScrollArea, Sense, Shape, Stroke, TextFormat, Ui, Vec2,
 };
 use itertools::Itertools;
 
@@ -1144,6 +1144,339 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
             ui.allocate_ui_at_rect(menu_size, |ui| {
                 ui.painter()
                     .rect_filled(ui.available_rect_before_wrap(), 0.0, Color32::BLACK);
+
+                let selector_height = ui.scope(|ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new("Card Editor").color(Color32::WHITE));
+                        if ui.button("Export to Clipboard").clicked() {
+                            let export = ron::to_string(&gui_state.gui_cards).unwrap();
+                            ui.output_mut(|o| o.copied_text = export);
+                        }
+
+                        if ui.button("Import from Clipboard").clicked() {
+                            let mut clipboard = clippers::Clipboard::get();
+                            let import: Option<Vec<Cooldown>> = match clipboard.read() {
+                                Some(clippers::ClipperData::Text(text)) => {
+                                    let clipboard_parse = ron::from_str(text.as_str());
+                                    if let Err(e) = &clipboard_parse {
+                                        println!("Failed to parse clipboard: {}", e);
+                                    }
+                                    clipboard_parse.ok()
+                                }
+                                _ => {
+                                    println!("Failed to import from clipboard");
+                                    None
+                                }
+                            };
+                            if let Some(import) = import {
+                                gui_state.gui_cards = import;
+                            }
+                        }
+
+                        if ui.button("Clear Dock").clicked() {
+                            gui_state.dock_cards = vec![];
+                        }
+                    });
+
+                    ui
+                        .horizontal_wrapped(|ui| {
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::BaseCards,
+                                "Base Cards",
+                            );
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::Effects,
+                                "Effects",
+                            );
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::StatusEffects,
+                                "Status Effects",
+                            );
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::Materials,
+                                "Materials",
+                            );
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::ProjectileModifiers,
+                                "Projectile Modifiers",
+                            );
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::AdvancedProjectileModifiers,
+                                "Advanced Projectile Modifiers",
+                            );
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::MultiCastModifiers,
+                                "Multicast Modifiers",
+                            );
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::CooldownModifiers,
+                                "Cooldown Modifiers",
+                            );
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::Dock,
+                                "Dock",
+                            );
+                        })
+                    })
+                    .response
+                    .rect
+                    .height();
+
+                let mut source_path = None;
+                let mut drop_path = None;
+                let mut modify_path = None;
+                let mut palette_card = BaseCard::Palette(
+                    match gui_state.palette_state {
+                        PaletteState::ProjectileModifiers => vec![
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Gravity,
+                                -1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Gravity,
+                                1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Health,
+                                -1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Health,
+                                1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Length,
+                                -1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Length,
+                                1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Width,
+                                -1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Width,
+                                1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Height,
+                                -1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Height,
+                                1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Size,
+                                -1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Size,
+                                1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Speed,
+                                -1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Speed,
+                                1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Lifetime,
+                                -1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
+                                SimpleProjectileModifierType::Lifetime,
+                                1,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::NoEnemyFire),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::FriendlyFire),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::LockToOwner),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::PiercePlayers),
+                        ],
+                        PaletteState::BaseCards => vec![
+                            DraggableCard::BaseCard(BaseCard::Projectile(vec![])),
+                            DraggableCard::BaseCard(BaseCard::MultiCast(vec![], vec![])),
+                            DraggableCard::BaseCard(BaseCard::Trigger(0)),
+                        ],
+                        PaletteState::AdvancedProjectileModifiers => vec![
+                            DraggableCard::ProjectileModifier(ProjectileModifier::OnHit(
+                                BaseCard::None,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::OnHeadshot(
+                                BaseCard::None,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::OnExpiry(
+                                BaseCard::None,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::OnTrigger(
+                                0,
+                                BaseCard::None,
+                            )),
+                            DraggableCard::ProjectileModifier(ProjectileModifier::Trail(
+                                1,
+                                BaseCard::None,
+                            )),
+                        ],
+                        PaletteState::MultiCastModifiers => vec![
+                            DraggableCard::MultiCastModifier(MultiCastModifier::Spread(1)),
+                            DraggableCard::MultiCastModifier(MultiCastModifier::Duplication(1)),
+                        ],
+                        PaletteState::CooldownModifiers => vec![
+                            DraggableCard::CooldownModifier(
+                                CooldownModifier::SimpleCooldownModifier(
+                                    SimpleCooldownModifier::AddCharge,
+                                    1,
+                                ),
+                            ),
+                            DraggableCard::CooldownModifier(
+                                CooldownModifier::SimpleCooldownModifier(
+                                    SimpleCooldownModifier::AddCooldown,
+                                    1,
+                                ),
+                            ),
+                            DraggableCard::CooldownModifier(
+                                CooldownModifier::SimpleCooldownModifier(
+                                    SimpleCooldownModifier::MultiplyImpact,
+                                    1,
+                                ),
+                            ),
+                        ],
+                        PaletteState::Effects => vec![
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::Damage(1))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::Damage(-1))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::Knockback(1))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::Knockback(-1))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::Cleanse)),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::Teleport)),
+                        ],
+                        PaletteState::StatusEffects => vec![
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::DamageOverTime,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::HealOverTime,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::DecreaseDamageTaken,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::IncreaseDamageTaken,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::DecreaseGravity,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::IncreaseGravity,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::Speed,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::Slow,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::Overheal,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::Grow,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::Shrink,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::IncreaseMaxHealth,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::DecreaseMaxHealth,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::Invincibility,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::Trapped,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::Lockout,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::Stun,
+                                1,
+                            ))),
+                            DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
+                                StatusEffect::OnHit(Box::new(BaseCard::None)),
+                                1,
+                            ))),
+                        ],
+                        PaletteState::Materials => vec![
+                            DraggableCard::BaseCard(BaseCard::CreateMaterial(VoxelMaterial::Grass)),
+                            DraggableCard::BaseCard(BaseCard::CreateMaterial(VoxelMaterial::Dirt)),
+                            DraggableCard::BaseCard(BaseCard::CreateMaterial(VoxelMaterial::Stone)),
+                            DraggableCard::BaseCard(BaseCard::CreateMaterial(VoxelMaterial::Ice)),
+                            DraggableCard::BaseCard(BaseCard::CreateMaterial(VoxelMaterial::Water)),
+                        ],
+                        PaletteState::Dock => gui_state.dock_cards.clone(),
+                    },
+                    match gui_state.palette_state {
+                        PaletteState::ProjectileModifiers => false,
+                        PaletteState::BaseCards => false,
+                        PaletteState::AdvancedProjectileModifiers => true,
+                        PaletteState::MultiCastModifiers => false,
+                        PaletteState::CooldownModifiers => false,
+                        PaletteState::Effects => true,
+                        PaletteState::StatusEffects => true,
+                        PaletteState::Materials => true,
+                        PaletteState::Dock => true,
+                    },
+                );
+
+                let palette_height = ui
+                    .scope(|ui| {
+                        ui.visuals_mut().override_text_color = Some(Color32::WHITE);
+                        draw_base_card(
+                            ui,
+                            &palette_card,
+                            &mut vec![0].into(),
+                            &mut source_path,
+                            &mut drop_path,
+                            &mut modify_path,
+                        );
+                    })
+                    .response
+                    .rect
+                    .height();
+                let scroll_area = Rect::from_min_max(
+                    menu_size.min + vec2(0.0, palette_height + selector_height),
+                    menu_size.max,
+                );
                 ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .scroll_bar_visibility(
@@ -1152,387 +1485,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                     .drag_to_scroll(false)
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-                            ui.set_clip_rect(menu_size);
-
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(RichText::new("Card Editor").color(Color32::WHITE));
-                                if ui.button("Export to Clipboard").clicked() {
-                                    let export = ron::to_string(&gui_state.gui_cards).unwrap();
-                                    ui.output_mut(|o| o.copied_text = export);
-                                }
-
-                                if ui.button("Import from Clipboard").clicked() {
-                                    let mut clipboard = clippers::Clipboard::get();
-                                    let import: Option<Vec<Cooldown>> = match clipboard.read() {
-                                        Some(clippers::ClipperData::Text(text)) => {
-                                            let clipboard_parse = ron::from_str(text.as_str());
-                                            if let Err(e) = &clipboard_parse {
-                                                println!("Failed to parse clipboard: {}", e);
-                                            }
-                                            clipboard_parse.ok()
-                                        }
-                                        _ => {
-                                            println!("Failed to import from clipboard");
-                                            None
-                                        }
-                                    };
-                                    if let Some(import) = import {
-                                        gui_state.gui_cards = import;
-                                    }
-                                }
-
-                                if ui.button("Clear Dock").clicked() {
-                                    gui_state.dock_cards = vec![];
-                                }
-                            });
-
-                            ui.horizontal_wrapped(|ui| {
-                                ui.selectable_value(
-                                    &mut gui_state.palette_state,
-                                    PaletteState::ProjectileModifiers,
-                                    "Projectile Modifiers",
-                                );
-                                ui.selectable_value(
-                                    &mut gui_state.palette_state,
-                                    PaletteState::BaseCards,
-                                    "Base Cards",
-                                );
-                                ui.selectable_value(
-                                    &mut gui_state.palette_state,
-                                    PaletteState::AdvancedProjectileModifiers,
-                                    "Advanced Projectile Modifiers",
-                                );
-                                ui.selectable_value(
-                                    &mut gui_state.palette_state,
-                                    PaletteState::MultiCastModifiers,
-                                    "Multicast Modifiers",
-                                );
-                                ui.selectable_value(
-                                    &mut gui_state.palette_state,
-                                    PaletteState::CooldownModifiers,
-                                    "Cooldown Modifiers",
-                                );
-                                ui.selectable_value(
-                                    &mut gui_state.palette_state,
-                                    PaletteState::Effects,
-                                    "Effects",
-                                );
-                                ui.selectable_value(
-                                    &mut gui_state.palette_state,
-                                    PaletteState::StatusEffects,
-                                    "Status Effects",
-                                );
-                                ui.selectable_value(
-                                    &mut gui_state.palette_state,
-                                    PaletteState::Materials,
-                                    "Materials",
-                                );
-                                ui.selectable_value(
-                                    &mut gui_state.palette_state,
-                                    PaletteState::Dock,
-                                    "Dock",
-                                );
-                            });
-
-                            let mut source_path = None;
-                            let mut drop_path = None;
-                            let mut modify_path = None;
-                            let mut palette_card = BaseCard::Palette(
-                                match gui_state.palette_state {
-                                    PaletteState::ProjectileModifiers => vec![
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Gravity,
-                                                -1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Gravity,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Health,
-                                                -1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Health,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Length,
-                                                -1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Length,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Width,
-                                                -1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Width,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Height,
-                                                -1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Height,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Size,
-                                                -1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Size,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Speed,
-                                                -1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Speed,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Lifetime,
-                                                -1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::SimpleModify(
-                                                SimpleProjectileModifierType::Lifetime,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::NoEnemyFire,
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::FriendlyFire,
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::LockToOwner,
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::PiercePlayers,
-                                        ),
-                                    ],
-                                    PaletteState::BaseCards => vec![
-                                        DraggableCard::BaseCard(BaseCard::Projectile(vec![])),
-                                        DraggableCard::BaseCard(BaseCard::MultiCast(
-                                            vec![],
-                                            vec![],
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Trigger(0)),
-                                    ],
-                                    PaletteState::AdvancedProjectileModifiers => vec![
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::OnHit(BaseCard::None),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::OnHeadshot(BaseCard::None),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::OnExpiry(BaseCard::None),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::OnTrigger(0, BaseCard::None),
-                                        ),
-                                        DraggableCard::ProjectileModifier(
-                                            ProjectileModifier::Trail(1, BaseCard::None),
-                                        ),
-                                    ],
-                                    PaletteState::MultiCastModifiers => vec![
-                                        DraggableCard::MultiCastModifier(
-                                            MultiCastModifier::Spread(1),
-                                        ),
-                                        DraggableCard::MultiCastModifier(
-                                            MultiCastModifier::Duplication(1),
-                                        ),
-                                    ],
-                                    PaletteState::CooldownModifiers => vec![
-                                        DraggableCard::CooldownModifier(
-                                            CooldownModifier::SimpleCooldownModifier(
-                                                SimpleCooldownModifier::AddCharge,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::CooldownModifier(
-                                            CooldownModifier::SimpleCooldownModifier(
-                                                SimpleCooldownModifier::AddCooldown,
-                                                1,
-                                            ),
-                                        ),
-                                        DraggableCard::CooldownModifier(
-                                            CooldownModifier::SimpleCooldownModifier(
-                                                SimpleCooldownModifier::MultiplyImpact,
-                                                1,
-                                            ),
-                                        ),
-                                    ],
-                                    PaletteState::Effects => vec![
-                                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Damage(
-                                            1,
-                                        ))),
-                                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Damage(
-                                            -1,
-                                        ))),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::Knockback(1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::Knockback(-1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Cleanse)),
-                                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Teleport)),
-                                    ],
-                                    PaletteState::StatusEffects => vec![
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::DamageOverTime, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::HealOverTime, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(
-                                                StatusEffect::DecreaseDamageTaken,
-                                                1,
-                                            ),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(
-                                                StatusEffect::IncreaseDamageTaken,
-                                                1,
-                                            ),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::DecreaseGravity, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::IncreaseGravity, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::Speed, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::Slow, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::Overheal, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::Grow, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::Shrink, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(
-                                                StatusEffect::IncreaseMaxHealth,
-                                                1,
-                                            ),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(
-                                                StatusEffect::DecreaseMaxHealth,
-                                                1,
-                                            ),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::Invincibility, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::Trapped, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::Lockout, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(StatusEffect::Stun, 1),
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::Effect(
-                                            Effect::StatusEffect(
-                                                StatusEffect::OnHit(Box::new(BaseCard::None)),
-                                                1,
-                                            ),
-                                        )),
-                                    ],
-                                    PaletteState::Materials => vec![
-                                        DraggableCard::BaseCard(BaseCard::CreateMaterial(
-                                            VoxelMaterial::Grass,
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::CreateMaterial(
-                                            VoxelMaterial::Dirt,
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::CreateMaterial(
-                                            VoxelMaterial::Stone,
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::CreateMaterial(
-                                            VoxelMaterial::Ice,
-                                        )),
-                                        DraggableCard::BaseCard(BaseCard::CreateMaterial(
-                                            VoxelMaterial::Water,
-                                        )),
-                                    ],
-                                    PaletteState::Dock => gui_state.dock_cards.clone(),
-                                },
-                                match gui_state.palette_state {
-                                    PaletteState::ProjectileModifiers => false,
-                                    PaletteState::BaseCards => false,
-                                    PaletteState::AdvancedProjectileModifiers => true,
-                                    PaletteState::MultiCastModifiers => false,
-                                    PaletteState::CooldownModifiers => false,
-                                    PaletteState::Effects => true,
-                                    PaletteState::StatusEffects => true,
-                                    PaletteState::Materials => true,
-                                    PaletteState::Dock => true,
-                                },
-                            );
-
-                            ui.scope(|ui| {
-                                ui.visuals_mut().override_text_color = Some(Color32::WHITE);
-                                draw_base_card(
-                                    ui,
-                                    &palette_card,
-                                    &mut vec![0].into(),
-                                    &mut source_path,
-                                    &mut drop_path,
-                                    &mut modify_path,
-                                );
-                            });
-
+                            ui.set_clip_rect(scroll_area);
                             let total_impact = gui_state
                                 .gui_cards
                                 .iter()
