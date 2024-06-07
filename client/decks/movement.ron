@@ -14,9 +14,9 @@
         abilities: [
             (
                 card: MultiCast([
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
                 ],[]),
                 keybind: Or(
                     Pressed(Mouse(Right)),
@@ -59,24 +59,24 @@
         abilities: [
             (
                 card: MultiCast([
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
-                    Effect(StatusEffect(DecreaceGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
+                    Effect(StatusEffect(DecreaseGravity, 1)),
                 ],[]),
                 keybind: Pressed(Key(LShift))
             )

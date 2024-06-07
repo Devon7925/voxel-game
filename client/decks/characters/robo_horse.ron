@@ -69,8 +69,8 @@
                     Effect(StatusEffect(Overheal, 9)),
                     Effect(StatusEffect(Overheal, 9)),
                     Effect(StatusEffect(Overheal, 9)),
-                    Effect(StatusEffect(DecreaceDamageTaken, 9)),
-                    Effect(StatusEffect(DecreaceDamageTaken, 9)),
+                    Effect(StatusEffect(DecreaseDamageTaken, 9)),
+                    Effect(StatusEffect(DecreaseDamageTaken, 9)),
                 ],[]),
             )
         ]

@@ -1709,16 +1709,16 @@ impl WorldState {
                         ReferencedStatusEffect::Slow => {
                             speed *= 0.75;
                         }
-                        ReferencedStatusEffect::IncreaceDamageTaken => {
+                        ReferencedStatusEffect::IncreaseDamageTaken => {
                             damage_taken *= 1.25;
                         }
-                        ReferencedStatusEffect::DecreaceDamageTaken => {
+                        ReferencedStatusEffect::DecreaseDamageTaken => {
                             damage_taken *= 0.75;
                         }
-                        ReferencedStatusEffect::IncreaceGravity => {
+                        ReferencedStatusEffect::IncreaseGravity => {
                             gravity += 0.5;
                         }
-                        ReferencedStatusEffect::DecreaceGravity => {
+                        ReferencedStatusEffect::DecreaseGravity => {
                             gravity -= 0.5;
                         }
                         ReferencedStatusEffect::Overheal => {
@@ -1730,10 +1730,10 @@ impl WorldState {
                         ReferencedStatusEffect::Shrink => {
                             size *= 0.75;
                         }
-                        ReferencedStatusEffect::IncreaceMaxHealth => {
+                        ReferencedStatusEffect::IncreaseMaxHealth => {
                             max_health -= 0.1 * PLAYER_BASE_MAX_HEALTH;
                         }
-                        ReferencedStatusEffect::DecreaceMaxHealth => {
+                        ReferencedStatusEffect::DecreaseMaxHealth => {
                             max_health += 0.1 * PLAYER_BASE_MAX_HEALTH;
                         }
                         ReferencedStatusEffect::Invincibility => {

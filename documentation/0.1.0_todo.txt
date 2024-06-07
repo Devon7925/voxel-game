@@ -8,7 +8,6 @@ Card editor
     Add importing from card files
     Reorder card editor tabs
     Makes palettes not scroll
-    fix increace/decreace spelling
 Put abilities on cooldown at start
 Improve bullet player collision for fast projectiles
 Add effect stacking limit

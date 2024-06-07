@@ -51,7 +51,7 @@
                     Effect(StatusEffect(Slow, 2)),
                     Effect(StatusEffect(Slow, 2)),
                     Effect(StatusEffect(Slow, 2)),
-                    Effect(StatusEffect(DecreaceGravity, 2)),
+                    Effect(StatusEffect(DecreaseGravity, 2)),
                 ],[]),
             ),
         ]

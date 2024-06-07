@@ -18,8 +18,8 @@ impl CooldownModifier {
     pub fn get_hover_text(&self) -> String {
         match self {
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => format!("Add {} charges", s),
-            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => format!("Increace cooldown by {}s ({} per)", SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT*(*s as f32), SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT),
-            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increaces the cooldown of all other abilities", s),
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => format!("Increase cooldown by {}s ({} per)", SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT*(*s as f32), SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT),
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increases the cooldown of all other abilities", s),
         }
     }
 }
@@ -387,7 +387,7 @@ pub enum MultiCastModifier {
 impl MultiCastModifier {
     pub fn get_hover_text(&self) -> String {
         match self {
-            MultiCastModifier::Spread(s) => format!("Increace spread by {}", s),
+            MultiCastModifier::Spread(s) => format!("Increase spread by {}", s),
             MultiCastModifier::Duplication(s) => {
                 format!("Create {} copies of the projectile", 2_u32.pow(*s))
             }
@@ -424,15 +424,15 @@ pub enum StatusEffect {
     Slow,
     DamageOverTime,
     HealOverTime,
-    IncreaceDamageTaken,
-    DecreaceDamageTaken,
-    IncreaceGravity,
-    DecreaceGravity,
+    IncreaseDamageTaken,
+    DecreaseDamageTaken,
+    IncreaseGravity,
+    DecreaseGravity,
     Overheal,
     Grow,
     Shrink,
-    IncreaceMaxHealth,
-    DecreaceMaxHealth,
+    IncreaseMaxHealth,
+    DecreaseMaxHealth,
     Invincibility,
     Trapped,
     Lockout,
@@ -1002,28 +1002,28 @@ impl BaseCard {
                                 |idx| if idx == 0 { 1.0 } else { 0.0 },
                             ),
                         }],
-                        StatusEffect::IncreaceDamageTaken => vec![CardValue {
+                        StatusEffect::IncreaseDamageTaken => vec![CardValue {
                             damage: 0.0,
                             generic: 5.0 * true_duration,
                             range_probabilities: core::array::from_fn(
                                 |idx| if idx == 0 { 1.0 } else { 0.0 },
                             ),
                         }],
-                        StatusEffect::DecreaceDamageTaken => vec![CardValue {
+                        StatusEffect::DecreaseDamageTaken => vec![CardValue {
                             damage: 0.0,
                             generic: 5.0 * true_duration,
                             range_probabilities: core::array::from_fn(
                                 |idx| if idx == 0 { 1.0 } else { 0.0 },
                             ),
                         }],
-                        StatusEffect::IncreaceGravity => vec![CardValue {
+                        StatusEffect::IncreaseGravity => vec![CardValue {
                             damage: 0.0,
                             generic: 0.5 * true_duration,
                             range_probabilities: core::array::from_fn(
                                 |idx| if idx == 0 { 1.0 } else { 0.0 },
                             ),
                         }],
-                        StatusEffect::DecreaceGravity => vec![CardValue {
+                        StatusEffect::DecreaseGravity => vec![CardValue {
                             damage: 0.0,
                             generic: 0.5 * true_duration,
                             range_probabilities: core::array::from_fn(
@@ -1054,14 +1054,14 @@ impl BaseCard {
                                 |idx| if idx == 0 { 1.0 } else { 0.0 },
                             ),
                         }],
-                        StatusEffect::IncreaceMaxHealth => vec![CardValue {
+                        StatusEffect::IncreaseMaxHealth => vec![CardValue {
                             damage: 0.0,
                             generic: 1.0 * true_duration,
                             range_probabilities: core::array::from_fn(
                                 |idx| if idx == 0 { 1.0 } else { 0.0 },
                             ),
                         }],
-                        StatusEffect::DecreaceMaxHealth => vec![CardValue {
+                        StatusEffect::DecreaseMaxHealth => vec![CardValue {
                             damage: 0.0,
                             generic: 1.0 * true_duration,
                             range_probabilities: core::array::from_fn(
@@ -1954,15 +1954,15 @@ pub enum ReferencedStatusEffect {
     Slow,
     DamageOverTime,
     HealOverTime,
-    IncreaceDamageTaken,
-    DecreaceDamageTaken,
-    IncreaceGravity,
-    DecreaceGravity,
+    IncreaseDamageTaken,
+    DecreaseDamageTaken,
+    IncreaseGravity,
+    DecreaseGravity,
     Overheal,
     Grow,
     Shrink,
-    IncreaceMaxHealth,
-    DecreaceMaxHealth,
+    IncreaseMaxHealth,
+    DecreaseMaxHealth,
     Invincibility,
     Trapped,
     Lockout,
@@ -2205,27 +2205,27 @@ impl CardManager {
                             StatusEffect::Slow => ReferencedStatusEffect::Slow,
                             StatusEffect::DamageOverTime => ReferencedStatusEffect::DamageOverTime,
                             StatusEffect::HealOverTime => ReferencedStatusEffect::HealOverTime,
-                            StatusEffect::IncreaceDamageTaken => {
-                                ReferencedStatusEffect::IncreaceDamageTaken
+                            StatusEffect::IncreaseDamageTaken => {
+                                ReferencedStatusEffect::IncreaseDamageTaken
                             }
-                            StatusEffect::DecreaceDamageTaken => {
-                                ReferencedStatusEffect::DecreaceDamageTaken
+                            StatusEffect::DecreaseDamageTaken => {
+                                ReferencedStatusEffect::DecreaseDamageTaken
                             }
-                            StatusEffect::IncreaceGravity => {
-                                ReferencedStatusEffect::IncreaceGravity
+                            StatusEffect::IncreaseGravity => {
+                                ReferencedStatusEffect::IncreaseGravity
                             }
-                            StatusEffect::DecreaceGravity => {
-                                ReferencedStatusEffect::DecreaceGravity
+                            StatusEffect::DecreaseGravity => {
+                                ReferencedStatusEffect::DecreaseGravity
                             }
                             StatusEffect::Overheal => ReferencedStatusEffect::Overheal,
 
                             StatusEffect::Grow => ReferencedStatusEffect::Grow,
                             StatusEffect::Shrink => ReferencedStatusEffect::Shrink,
-                            StatusEffect::IncreaceMaxHealth => {
-                                ReferencedStatusEffect::IncreaceMaxHealth
+                            StatusEffect::IncreaseMaxHealth => {
+                                ReferencedStatusEffect::IncreaseMaxHealth
                             }
-                            StatusEffect::DecreaceMaxHealth => {
-                                ReferencedStatusEffect::DecreaceMaxHealth
+                            StatusEffect::DecreaseMaxHealth => {
+                                ReferencedStatusEffect::DecreaseMaxHealth
                             }
                             StatusEffect::Invincibility => ReferencedStatusEffect::Invincibility,
                             StatusEffect::Trapped => ReferencedStatusEffect::Trapped,
