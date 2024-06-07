@@ -14,3 +14,8 @@ Disabled activating abilities while in card editor
 Card shortcuts: cards that act like multiple other cards
     Projectile Size
     Stun Effect
+New Cards
+    Grow
+    Shrink
+    Increase Max Health
+    Decrease Max Health

@@ -1,10 +1,19 @@
-Update game_design.md
-Cards
-    Character modifiers
-        Health
-        Size
-    Move issue tracking to github
+Visuals
+    Tune water visuals
+    Try making grass look more varied
 Update characters
     Use card shortcuts
     Add lockout/trapped status effects
-Add importing from card files
+Card editor
+    Add importing from card files
+    Reorder card editor tabs
+    Makes palettes not scroll
+    fix increace/decreace spelling
+Put abilities on cooldown at start
+Improve bullet player collision for fast projectiles
+Add effect stacking limit
+Worldgen
+    Make biome mixing less apparent
+Multiplayer
+    Quit game instead of crashing on multiplayer lag
+    Addjust max multiplayer lag

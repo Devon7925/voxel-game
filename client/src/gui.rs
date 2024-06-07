@@ -876,6 +876,10 @@ pub fn draw_base_card(
                                     StatusEffect::DecreaceGravity => "Decreace Gravity",
                                     StatusEffect::IncreaceGravity => "Increace Gravity",
                                     StatusEffect::Overheal => "Overheal",
+                                    StatusEffect::Grow => "Grow",
+                                    StatusEffect::Shrink => "Shrink",
+                                    StatusEffect::IncreaceMaxHealth => "Increace Max Health",
+                                    StatusEffect::DecreaceMaxHealth => "Decreace Max Health",
                                     StatusEffect::Invincibility => "Invincibility",
                                     StatusEffect::Trapped => "Trapped",
                                     StatusEffect::Lockout => "Lockout",
@@ -1449,6 +1453,18 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                             Effect::StatusEffect(StatusEffect::Overheal, 1),
                                         )),
                                         DraggableCard::BaseCard(BaseCard::Effect(
+                                            Effect::StatusEffect(StatusEffect::Grow, 1),
+                                        )),
+                                        DraggableCard::BaseCard(BaseCard::Effect(
+                                            Effect::StatusEffect(StatusEffect::Shrink, 1),
+                                        )),
+                                        DraggableCard::BaseCard(BaseCard::Effect(
+                                            Effect::StatusEffect(StatusEffect::IncreaceMaxHealth, 1),
+                                        )),
+                                        DraggableCard::BaseCard(BaseCard::Effect(
+                                            Effect::StatusEffect(StatusEffect::DecreaceMaxHealth, 1),
+                                        )),
+                                        DraggableCard::BaseCard(BaseCard::Effect(
                                             Effect::StatusEffect(StatusEffect::Invincibility, 1),
                                         )),
                                         DraggableCard::BaseCard(BaseCard::Effect(
@@ -1620,6 +1636,10 @@ pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Enti
                     ReferencedStatusEffect::IncreaceGravity => "Increase Gravity",
                     ReferencedStatusEffect::Invincibility => "Invincibility",
                     ReferencedStatusEffect::Overheal => "Overheal",
+                    ReferencedStatusEffect::Grow => "Grow",
+                    ReferencedStatusEffect::Shrink => "Shrink",
+                    ReferencedStatusEffect::IncreaceMaxHealth => "Increace Max Health",
+                    ReferencedStatusEffect::DecreaceMaxHealth => "Decreace Max Health",
                     ReferencedStatusEffect::OnHit(_) => "On Player Hit",
                     ReferencedStatusEffect::Trapped => "Trapped",
                     ReferencedStatusEffect::Lockout => "Lockout",

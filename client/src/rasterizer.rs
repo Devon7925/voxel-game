@@ -34,7 +34,7 @@ use vulkano::{
     render_pass::Subpass,
 };
 
-use crate::rollback_manager::WorldState;
+use crate::{rollback_manager::WorldState, PLAYER_HITBOX_OFFSET};
 
 pub struct RasterizerSystem {
     gfx_queue: Arc<Queue>,
@@ -222,7 +222,7 @@ impl RasterizerSystem {
                 continue;
             }
             player_writer[player_buffer_idx].instance_position =
-                [player.pos[0], player.pos[1], player.pos[2]];
+                [player.pos[0]+PLAYER_HITBOX_OFFSET[0] * player.size, player.pos[1]+PLAYER_HITBOX_OFFSET[1] * player.size, player.pos[2]+PLAYER_HITBOX_OFFSET[2] * player.size];
             let render_rotation =
                 Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]));
             player_writer[player_buffer_idx].instance_rotation = [

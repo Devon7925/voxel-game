@@ -9,7 +9,8 @@ use std::{
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{
-    EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation, Rotation3, Vector2, Vector3,
+    vec3, EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation, Rotation3, Vector2,
+    Vector3,
 };
 use matchbox_socket::{PeerId, PeerState};
 use serde::{Deserialize, Serialize};
@@ -25,11 +26,12 @@ use crate::{
         ReferencedStatusEffect, ReferencedTrigger, StateKeybind, VoxelMaterial,
     },
     game_manager::GameState,
-    gui::{self, GuiElement, GuiState},
+    gui::{GuiElement, GuiState},
     networking::{NetworkConnection, NetworkPacket},
     settings_manager::{Control, Settings},
     voxel_sim_manager::{Projectile, VoxelComputePipeline},
-    WindowProperties, CHUNK_SIZE, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
+    WindowProperties, CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET,
+    PLAYER_HITBOX_SIZE,
 };
 use voxel_shared::{GameSettings, RoomId, WorldGenSettings};
 
@@ -253,6 +255,8 @@ struct PlayerEffectStats {
     speed: f32,
     damage_taken: f32,
     gravity: f32,
+    size: f32,
+    max_health: f32,
     invincible: bool,
     lockout: bool,
 }
@@ -292,7 +296,10 @@ impl Default for Entity {
             rot: Quaternion::one(),
             size: 1.0,
             vel: Vector3::new(0.0, 0.0, 0.0),
-            health: vec![HealthSection::Health(100.0, 100.0)],
+            health: vec![HealthSection::Health(
+                PLAYER_BASE_MAX_HEALTH,
+                PLAYER_BASE_MAX_HEALTH,
+            )],
             abilities: Vec::new(),
             respawn_timer: 0.0,
             collision_vec: Vector3::new(0, 0, 0),
@@ -726,39 +733,54 @@ impl PlayerSim for RollbackData {
                                     let exited_ui = gui_state.menu_stack.last().unwrap();
                                     match exited_ui {
                                         GuiElement::CardEditor => {
-                                            self.player_deck.clear();
-                                            self.player_deck.extend(gui_state.gui_cards.clone());
-                                            self.controls = self
-                                                .player_deck
+                                            if gui_state
+                                                .gui_cards
                                                 .iter()
-                                                .map(|a| {
-                                                    a.abilities
-                                                        .iter()
-                                                        .map(|a| {
-                                                            StateKeybind::from(a.keybind.clone())
-                                                        })
-                                                        .collect()
-                                                })
-                                                .collect();
-                                            self.send_action(
-                                                Action {
-                                                    primary_action: None,
-                                                    meta_action: Some(MetaAction {
-                                                        deck_update: Some(self.player_deck.clone()),
-                                                        ..Default::default()
-                                                    }),
-                                                },
-                                                0,
-                                                self.current_time,
-                                            );
-                                            if let Some(network_connection) =
-                                                self.network_connection.as_mut()
+                                                .all(|cd| cd.is_reasonable())
                                             {
-                                                network_connection.queue_packet(
-                                                    NetworkPacket::DeckUpdate(
-                                                        self.current_time,
-                                                        self.player_deck.clone(),
-                                                    ),
+                                                self.player_deck.clear();
+                                                self.player_deck
+                                                    .extend(gui_state.gui_cards.clone());
+                                                self.controls = self
+                                                    .player_deck
+                                                    .iter()
+                                                    .map(|a| {
+                                                        a.abilities
+                                                            .iter()
+                                                            .map(|a| {
+                                                                StateKeybind::from(
+                                                                    a.keybind.clone(),
+                                                                )
+                                                            })
+                                                            .collect()
+                                                    })
+                                                    .collect();
+                                                self.send_action(
+                                                    Action {
+                                                        primary_action: None,
+                                                        meta_action: Some(MetaAction {
+                                                            deck_update: Some(
+                                                                self.player_deck.clone(),
+                                                            ),
+                                                            ..Default::default()
+                                                        }),
+                                                    },
+                                                    0,
+                                                    self.current_time,
+                                                );
+                                                if let Some(network_connection) =
+                                                    self.network_connection.as_mut()
+                                                {
+                                                    network_connection.queue_packet(
+                                                        NetworkPacket::DeckUpdate(
+                                                            self.current_time,
+                                                            self.player_deck.clone(),
+                                                        ),
+                                                    );
+                                                }
+                                            } else {
+                                                gui_state.errors.push(
+                                                    "Unreasonable Deck not saved".to_string(),
                                                 );
                                             }
                                         }
@@ -1661,13 +1683,15 @@ impl WorldState {
         }
     }
 
-    fn get_player_effect_stats(&mut self) -> Vec<PlayerEffectStats> {
+    fn get_player_effect_stats(&self) -> Vec<PlayerEffectStats> {
         self.players
             .iter()
             .map(|player| {
                 let mut speed = 1.0;
                 let mut damage_taken = 1.0;
                 let mut gravity = 1.0;
+                let mut size = 1.0;
+                let mut max_health = PLAYER_BASE_MAX_HEALTH;
                 let mut invincible = false;
                 let mut lockout = false;
 
@@ -1700,6 +1724,18 @@ impl WorldState {
                         ReferencedStatusEffect::Overheal => {
                             // managed seperately
                         }
+                        ReferencedStatusEffect::Grow => {
+                            size *= 1.25;
+                        }
+                        ReferencedStatusEffect::Shrink => {
+                            size *= 0.75;
+                        }
+                        ReferencedStatusEffect::IncreaceMaxHealth => {
+                            max_health -= 0.1 * PLAYER_BASE_MAX_HEALTH;
+                        }
+                        ReferencedStatusEffect::DecreaceMaxHealth => {
+                            max_health += 0.1 * PLAYER_BASE_MAX_HEALTH;
+                        }
                         ReferencedStatusEffect::Invincibility => {
                             invincible = true;
                         }
@@ -1718,6 +1754,8 @@ impl WorldState {
                     speed,
                     damage_taken,
                     gravity,
+                    size,
+                    max_health,
                     invincible,
                     lockout,
                 }
@@ -2023,6 +2061,7 @@ impl Entity {
             headshot: false,
         },
     ];
+
     fn simple_step(
         &mut self,
         time_step: f32,
@@ -2039,6 +2078,18 @@ impl Entity {
         game_state: &GameState,
         game_settings: &GameSettings,
     ) {
+        let size_change = player_stats[player_idx].size - self.size;
+        if size_change > 0.0 {
+            self.pos += size_change
+                * (0.5 * PLAYER_HITBOX_SIZE.y - PLAYER_HITBOX_OFFSET.y)
+                * vec3(0.0, 1.0, 0.0);
+        }
+        self.size = player_stats[player_idx].size;
+        if let Some(HealthSection::Health(current, max)) = self.health.get_mut(0).as_mut() {
+            *max = player_stats[player_idx].max_health;
+            *current = current.min(*max);
+        }
+
         if self.respawn_timer > 0.0 {
             self.respawn_timer -= time_step;
             if self.respawn_timer <= 0.0 {
@@ -2162,7 +2213,8 @@ impl Entity {
         let x_dist = (self.size * PLAYER_HITBOX_SIZE[0]) / x_iter_count;
         let y_dist = (self.size * PLAYER_HITBOX_SIZE[1]) / y_iter_count;
         let z_dist = (self.size * PLAYER_HITBOX_SIZE[2]) / z_iter_count;
-        let start_pos = self.pos + PLAYER_HITBOX_OFFSET - 0.5 * self.size * PLAYER_HITBOX_SIZE;
+        let start_pos =
+            self.pos + PLAYER_HITBOX_OFFSET * self.size - 0.5 * self.size * PLAYER_HITBOX_SIZE;
         let mut nearby_density = 0.0;
         for x in 0..x_iter_count as u32 {
             for y in 0..y_iter_count as u32 {
@@ -2235,7 +2287,7 @@ impl Entity {
         game_settings: &GameSettings,
     ) {
         let mut player_move_pos = self.pos
-            + PLAYER_HITBOX_OFFSET
+            + PLAYER_HITBOX_OFFSET * self.size
             + self
                 .vel
                 .map(|c| c.signum())
@@ -2306,7 +2358,7 @@ impl Entity {
                         * self.size
                         * PLAYER_HITBOX_SIZE[(component + 2) % 3])
                         / z_iter_count;
-                    let mut start_pos = self.pos + PLAYER_HITBOX_OFFSET
+                    let mut start_pos = self.pos + PLAYER_HITBOX_OFFSET * self.size
                         - HITBOX_SHRINK_FACTOR * 0.5 * self.size * PLAYER_HITBOX_SIZE;
                     start_pos[component] = player_move_pos[component];
 
@@ -2392,7 +2444,7 @@ impl Entity {
             (0.99 * self.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]).ceil() + 1.0;
         let x_dist = (0.99 * self.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]) / x_iter_count;
         let z_dist = (0.99 * self.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]) / z_iter_count;
-        let mut start_pos = self.pos + PLAYER_HITBOX_OFFSET
+        let mut start_pos = self.pos + PLAYER_HITBOX_OFFSET * self.size
             - 0.99 * 0.5 * self.size * PLAYER_HITBOX_SIZE
             + Vector3::new(0.0, 1.0, 0.0);
         start_pos[component] = player_move_pos[component];
