@@ -22,3 +22,5 @@ New Cards
 Card editor
     Reorder card editor tabs
     Makes palettes not scroll
+Visuals
+    Better reflection

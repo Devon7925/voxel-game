@@ -1,4 +1,7 @@
-use crate::{gui::ModificationType, settings_manager::Control, voxel_sim_manager::Projectile, PLAYER_BASE_MAX_HEALTH};
+use crate::{
+    gui::ModificationType, settings_manager::Control, voxel_sim_manager::Projectile,
+    PLAYER_BASE_MAX_HEALTH,
+};
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -493,7 +496,7 @@ impl VoxelMaterial {
             VoxelMaterial::Grass => 0.0,
             VoxelMaterial::Projectile => panic!("Invalid state"),
             VoxelMaterial::Ice => 0.0,
-            VoxelMaterial::Water => 1.0,
+            VoxelMaterial::Water => 0.85,
             VoxelMaterial::Player => panic!("Invalid state"),
             VoxelMaterial::UnloadedAir => 0.0,
         }
@@ -559,7 +562,14 @@ fn get_avg_ttk(
     } else if iterations == 0 {
         0.0
     } else if current_health > SCALED_PLAYER_BASE_MAX_HEALTH {
-        get_avg_ttk(accuracy, damage, healing, SCALED_PLAYER_BASE_MAX_HEALTH, iterations, table)
+        get_avg_ttk(
+            accuracy,
+            damage,
+            healing,
+            SCALED_PLAYER_BASE_MAX_HEALTH,
+            iterations,
+            table,
+        )
     } else {
         if let Some((cached_result, cached_iterations)) = table.get(&current_health) {
             if cached_iterations >= &iterations {
@@ -899,7 +909,6 @@ impl BaseCard {
                                     }
                                 }),
                             }]
-
                         } else {
                             vec![CardValue {
                                 damage: *damage as f32,
@@ -954,9 +963,13 @@ impl BaseCard {
                         StatusEffect::Speed => vec![CardValue {
                             damage: 0.0,
                             generic: 0.5 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::Slow => vec![CardValue {
                             damage: 0.0,
@@ -964,9 +977,13 @@ impl BaseCard {
                                 * (if is_direct { -1.0 } else { 1.0 })
                                 * 0.3
                                 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::DamageOverTime => {
                             if is_direct {
@@ -998,115 +1015,166 @@ impl BaseCard {
                         StatusEffect::HealOverTime => vec![CardValue {
                             damage: 0.0,
                             generic: 1.0 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::IncreaseDamageTaken => vec![CardValue {
                             damage: 0.0,
                             generic: 5.0 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::DecreaseDamageTaken => vec![CardValue {
                             damage: 0.0,
                             generic: 5.0 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::IncreaseGravity => vec![CardValue {
                             damage: 0.0,
                             generic: 0.5 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::DecreaseGravity => vec![CardValue {
                             damage: 0.0,
                             generic: 0.5 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::Overheal => vec![CardValue {
                             damage: 0.0,
-                            generic: 5.0
-                                * (2.0 - (-(true_duration)).exp()),
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            generic: 5.0 * (2.0 - (-(true_duration)).exp()),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::Grow => vec![CardValue {
                             damage: 0.0,
-                            generic: (if is_direct { -0.5 } else { 1.0 })
-                                * 0.3
-                                * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            generic: (if is_direct { -0.5 } else { 1.0 }) * 0.3 * true_duration,
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::Shrink => vec![CardValue {
                             damage: 0.0,
                             generic: 0.5 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::IncreaseMaxHealth => vec![CardValue {
                             damage: 0.0,
                             generic: 1.0 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::DecreaseMaxHealth => vec![CardValue {
                             damage: 0.0,
                             generic: 1.0 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::Invincibility => vec![CardValue {
                             damage: 0.0,
                             generic: 10.0 * true_duration,
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::Trapped => vec![CardValue {
                             damage: 0.0,
                             generic: (if is_direct { -0.5 } else { 1.0 })
                                 * 1.0
                                 * true_duration.powi(2),
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::Lockout => vec![CardValue {
                             damage: 0.0,
                             generic: (if is_direct { -0.5 } else { 1.0 })
                                 * 1.0
                                 * true_duration.powi(2),
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::Stun => vec![CardValue {
                             damage: 0.0,
                             generic: (if is_direct { -0.5 } else { 1.0 })
                                 * 2.0
                                 * true_duration.powi(2),
-                            range_probabilities: core::array::from_fn(
-                                |idx| if idx == 0 { 1.0 } else { 0.0 },
-                            ),
+                            range_probabilities: core::array::from_fn(|idx| {
+                                if idx == 0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }),
                         }],
                         StatusEffect::OnHit(card) => {
                             let range_probabilities: [f32; 10] = core::array::from_fn(|idx| {
-                                (0.1 * (9.0 - idx as f32)
-                                    * true_duration)
-                                    .min(1.0)
+                                (0.1 * (9.0 - idx as f32) * true_duration).min(1.0)
                             });
                             let hit_value = card.evaluate_value(false);
                             hit_value
@@ -1122,7 +1190,7 @@ impl BaseCard {
                                 .collect()
                         }
                     }
-                },
+                }
             },
             BaseCard::Trigger(_id) => vec![],
             BaseCard::None => vec![],

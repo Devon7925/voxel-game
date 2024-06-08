@@ -2139,7 +2139,7 @@ impl Entity {
                 move_vec += Vector3::new(0.0, 0.5, 0.0);
             }
             if action.crouch {
-                move_vec -= Vector3::new(0.0, 0.5, 0.0);
+                move_vec -= Vector3::new(0.0, 0.6, 0.0);
                 speed_multiplier = 0.5;
             }
             if move_vec.magnitude() > 0.0 {
