@@ -330,7 +330,7 @@ pub enum BaseCard {
     CreateMaterial(VoxelMaterial),
     Effect(Effect),
     Trigger(u32),
-    Palette(Vec<DraggableCard>, bool),
+    Palette(Vec<DraggableCard>),
     None,
 }
 
@@ -1445,7 +1445,7 @@ impl BaseCard {
                 assert!(path.pop_front().unwrap() == 0);
                 card.take_from_path(path)
             }
-            BaseCard::Palette(cards, _) => {
+            BaseCard::Palette(cards) => {
                 let card_idx = path.pop_front().unwrap() as usize;
                 cards[card_idx].clone()
             }

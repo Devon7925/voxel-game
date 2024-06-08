@@ -6,7 +6,6 @@ Update characters
     Add lockout/trapped status effects
 Card editor
     Add importing from card files
-    Tune palette display
 Put abilities on cooldown at start
 Improve bullet player collision for fast projectiles
 Add effect stacking limit
@@ -14,4 +13,4 @@ Worldgen
     Make biome mixing less apparent
 Multiplayer
     Quit game instead of crashing on multiplayer lag
-    Addjust max multiplayer lag
+    Allow adjusting max multiplayer lag
