@@ -1753,6 +1753,11 @@ impl WorldState {
                         }
                     }
                 }
+
+                if size > 5.0 {
+                    size = 5.0;
+                }
+                
                 PlayerEffectStats {
                     speed,
                     damage_taken,

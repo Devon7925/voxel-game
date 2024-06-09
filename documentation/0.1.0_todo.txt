@@ -4,7 +4,6 @@ Update characters
 Card editor
     Add autosave to card file
 Improve bullet player collision for fast projectiles
-Add effect stacking limit
 Multiplayer
     Quit game instead of crashing on multiplayer lag
     Allow adjusting max multiplayer lag
