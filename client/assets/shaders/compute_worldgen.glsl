@@ -36,21 +36,24 @@ uint get_worldgen(uvec3 global_pos) {
     vec3 true_pos = vec3(global_pos);
     float macro_noise = voronoise(0.01 * true_pos, 1.0, 1.0).w;
     float density = voronoise(0.04 * true_pos, 1.0, 1.0).w;
-    float temperature = voronoise(vec3(0.015, 0.005, 0.015) * true_pos, 1.0, 1.0).w - clamp((true_pos.y - 1796.0) / 50.0, 0.0, 2.0);
+    float temperature = voronoise(vec3(0.012, 0.005, 0.012) * true_pos, 1.0, 1.0).w - clamp((true_pos.y - 1796.0) / 50.0, 0.0, 2.0);
     float cave_density = clamp(voronoise(vec3(0.06, 0.035, 0.06) * true_pos, 1.0, 1.0).w, -1.0, 0.5);
 
     float terrain_density =
         1.5 * cave_density
             + density
             + 0.7 * macro_noise
-            - clamp((true_pos.y - 1800.0) / 17.0, -0.6, 10.0)
-            + max(1.0 - 4.0 * abs(temperature - 0.1), 0.0) * clamp(0.3 * (1800.0 - true_pos.y), 0.0, 1.0);
+            - clamp((true_pos.y - 1800.0) / 22.0, -0.6, 10.0)
+            + max(1.0 - 3.0 * abs(temperature - 0.1), 0.0) * clamp(0.3 * (1807.0 - true_pos.y), 0.0, 2.0);
     if (terrain_density <= 0.0) {
         if (true_pos[1] > 1796.0) {
+            if (temperature-terrain_density < -0.9) {
+                return MAT_ICE << 24;
+            }
             return MAT_AIR << 24;
-        } else if (temperature + 0.075 * random.x > 0.1) {
+        } else if (temperature + 0.05 * random.x > 0.1) {
             return MAT_WATER << 24;
-        } else if (terrain_density + clamp((true_pos.y - 1796.0) / 30.0, -2.0, 0.0) < -0.27) {
+        } else if (terrain_density + clamp((true_pos.y - 1796.0) / 30.0, -2.0, 0.0) < -0.27 && temperature < 0.1) {
             return MAT_AIR << 24;
         } else {
             return MAT_ICE << 24;

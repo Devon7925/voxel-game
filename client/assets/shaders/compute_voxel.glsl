@@ -83,6 +83,19 @@ void set_data(uvec3 global_pos, uint data) {
     voxels[index] = data;
 }
 
+const bool is_fluid[] = {
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    false,
+    false,
+    };
+
 void main() {
     ivec3 pos = 2 * ivec3(gl_WorkGroupSize) * chunk_updates[gl_WorkGroupID.x].xyz + 2 * ivec3(gl_LocalInvocationID) + ivec3(sim_data.voxel_update_offset);
     uvec2 pos_data[2][2][2];
@@ -119,22 +132,42 @@ void main() {
     }
 
     for (uint i = 0; i < 2; i++) {
-        uint to_voxel = pos_data[0][1][i].x;
-        uint from_voxel = pos_data[1][1][i].x;
-        uint below_voxel = pos_data[1][0][i].x;
-        if (to_voxel == MAT_AIR && from_voxel == MAT_WATER && below_voxel != MAT_AIR) {
-            pos_data[0][1][i] = uvec2(from_voxel, 0);
-            pos_data[1][1][i] = uvec2(MAT_AIR, 0);
+        for (uint k = 0; k < 2; k++) {
+            uint bottom_voxel = pos_data[1 - i][0][k].x;
+            uint top_voxel = pos_data[i][1][k].x;
+            if (bottom_voxel == MAT_AIR && top_voxel == MAT_WATER) {
+                pos_data[1-i][0][k] = uvec2(top_voxel, 0);
+                pos_data[i][1][k] = uvec2(bottom_voxel, 0);
+            }
         }
     }
 
     for (uint i = 0; i < 2; i++) {
-        uint to_voxel = pos_data[i][1][0].x;
-        uint from_voxel = pos_data[i][1][1].x;
-        uint below_voxel = pos_data[i][0][1].x;
-        if (to_voxel == MAT_AIR && from_voxel == MAT_WATER && below_voxel != MAT_AIR) {
-            pos_data[i][1][0] = uvec2(from_voxel, 0);
-            pos_data[i][1][1] = uvec2(MAT_AIR, 0);
+        for (uint k = 0; k < 2; k++) {
+            uint bottom_voxel = pos_data[i][0][1 - k].x;
+            uint top_voxel = pos_data[i][1][k].x;
+            if (bottom_voxel == MAT_AIR && top_voxel == MAT_WATER) {
+                pos_data[i][0][1 - k] = uvec2(top_voxel, 0);
+                pos_data[i][1][k] = uvec2(bottom_voxel, 0);
+            }
+        }
+    }
+
+    for (uint i = 0; i < 2; i++) {
+        uint to_voxel = pos_data[pos.y % 2][1][i].x;
+        uint from_voxel = pos_data[(1 + pos.y) % 2][1][i].x;
+        if (from_voxel == MAT_WATER && to_voxel == MAT_AIR) {
+            pos_data[pos.y % 2][1][i] = uvec2(from_voxel, 0);
+            pos_data[(1 + pos.y) % 2][1][i] = uvec2(to_voxel, 0);
+        }
+    }
+
+    for (uint i = 0; i < 2; i++) {
+        uint to_voxel = pos_data[i][1][pos.y % 2].x;
+        uint from_voxel = pos_data[i][1][(1 + pos.y) % 2].x;
+        if (from_voxel == MAT_WATER && to_voxel == MAT_AIR) {
+            pos_data[i][1][pos.y % 2] = uvec2(from_voxel, 0);
+            pos_data[i][1][(1 + pos.y) % 2] = uvec2(to_voxel, 0);
         }
     }
 
