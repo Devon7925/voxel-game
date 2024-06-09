@@ -3,7 +3,6 @@ Update characters
     Add lockout/trapped status effects
 Card editor
     Add autosave to card file
-Put abilities on cooldown at start
 Improve bullet player collision for fast projectiles
 Add effect stacking limit
 Multiplayer

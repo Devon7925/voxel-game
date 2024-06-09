@@ -319,11 +319,14 @@ pub fn abilities_from_cooldowns(
         .sum();
     cooldowns
         .iter()
-        .map(|cooldown| PlayerAbility {
-            value: cooldown.get_cooldown_recovery(total_impact),
-            ability: card_manager.register_cooldown(cooldown.clone()),
-            cooldown: 0.0,
-            recovery: 0.0,
+        .map(|cooldown| {
+            let cooldown_time = cooldown.get_cooldown_recovery(total_impact);
+            PlayerAbility {
+                value: cooldown_time.clone(),
+                ability: card_manager.register_cooldown(cooldown.clone()),
+                cooldown: cooldown_time.0 * cooldown.ability_charges() as f32,
+                recovery: 0.0,
+            }
         })
         .collect()
 }

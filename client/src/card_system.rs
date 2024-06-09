@@ -324,6 +324,13 @@ impl Cooldown {
             panic!("Invalid state");
         }
     }
+    
+    pub fn ability_charges(&self) -> u32 {
+        self.modifiers.iter().map(|modifier| match modifier {
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => *s,
+            _ => 0,
+        }).sum::<u32>() + 1
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
