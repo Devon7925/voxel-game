@@ -1,5 +1,3 @@
 Update characters
     Use card shortcuts
     Add lockout/trapped status effects
-Multiplayer
-    Quit game instead of crashing on multiplayer lag

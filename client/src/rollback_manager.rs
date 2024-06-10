@@ -95,6 +95,7 @@ pub trait PlayerSim {
     );
     fn leave_game(&mut self);
     fn end_frame(&mut self);
+    fn get_exit_reason(&self) -> Option<String>;
 
     fn is_render_behind_other_players(&self) -> bool;
     fn get_rollback_time(&self) -> u64;
@@ -172,6 +173,7 @@ pub struct RollbackData {
     player_idx_map: HashMap<PeerId, usize>,
     most_future_time_recorded: u64,
     connected_player_count: usize,
+    pub exit_reason: Option<String>,
 }
 
 pub struct ReplayData {
@@ -812,6 +814,10 @@ impl PlayerSim for RollbackData {
             println!("leaving game");
         }
     }
+    
+    fn get_exit_reason(&self) -> Option<String> {
+        self.exit_reason.clone()
+    }
 
     fn is_render_behind_other_players(&self) -> bool {
         self.most_future_time_recorded > self.current_time
@@ -956,6 +962,7 @@ impl RollbackData {
             player_idx_map: HashMap::new(),
             most_future_time_recorded: 0,
             connected_player_count: 1,
+            exit_reason: None,
         }
     }
 
@@ -1002,19 +1009,21 @@ impl RollbackData {
         let EntityMetaData::Player(actions) =
             self.entity_metadata.get_mut(player_idx).unwrap_or_else(|| {
                 panic!(
-                    "cannot access index {} on sending with timestamp {}",
+                    "cannot access entity index {} on sending with timestamp {}",
                     player_idx, time_stamp
                 )
             })
         else {
-            panic!("cannot send dt update from non player");
+            panic!("cannot send action from non player");
         };
-        let action = actions.get_mut(time_idx as usize).unwrap_or_else(|| {
-            panic!(
-                "cannot access index {} on sending with timestamp {}",
+        let Some(action) = actions.get_mut(time_idx as usize) else {
+            self.leave_game();
+            self.exit_reason = Some(format!(
+                "Exiting due to excessive lag: cannot access index {} on sending with timestamp {}",
                 time_idx, time_stamp
-            )
-        });
+            ));
+            return;
+        };
         if let Some(new_primary_action) = action_update.primary_action {
             action.primary_action = Some(new_primary_action);
         }
@@ -1197,6 +1206,9 @@ impl PlayerSim for ReplayData {
 
     fn end_frame(&mut self) {}
     fn leave_game(&mut self) {}
+    fn get_exit_reason(&self) -> Option<String> {
+        None
+    }
 
     fn is_render_behind_other_players(&self) -> bool {
         false

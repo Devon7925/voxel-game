@@ -223,6 +223,12 @@ fn main() {
                         .set_cursor_visible(gui_state.menu_stack.len() > 0 || !window.has_focus());
                     if let Some(game) = app.game.as_mut() {
                         game.rollback_data.end_frame();
+                        if let Some(exit_reason) = game.rollback_data.get_exit_reason() {
+                            gui_state.errors.push(exit_reason);
+                            gui_state.menu_stack.clear();
+                            gui_state.menu_stack.push(GuiElement::MainMenu);
+                            app.game = None;
+                        }
                     }
                 }
             }

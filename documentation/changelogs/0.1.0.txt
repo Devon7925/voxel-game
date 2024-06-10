@@ -15,6 +15,7 @@ Put abilities on cooldown at start and after editing them
 Improve bullet player collision for fast projectiles
 Multiplayer
     Allow adjusting max multiplayer lag
+    Quit game instead of crashing on multiplayer lag
 New Cards
     Grow
     Shrink
