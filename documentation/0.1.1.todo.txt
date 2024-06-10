@@ -1,0 +1,20 @@
+* Card Editor
+    * Add up/down arrows on hover for number cards for more intuitive editing
+* Improve the experience of picking from prebuilt decks
+* Add a way to peek at other player's decks
+* Hitmarkers
+    * Regular hit
+    * Headshot
+* Hurt visuals
+* Cards
+    * Make passive type abilities work better
+    * Add cooldown modifier that makes all charges reload at once
+    * Directions
+        * Add directions
+            * Up
+            * Facing
+            * Movement
+        * Add as parameter to
+            * Knockback
+            * Gravity
+* Move to github issues

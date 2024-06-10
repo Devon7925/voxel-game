@@ -54,7 +54,7 @@
                         SimpleModify(Width,3),
                         SimpleModify(Height,3),
                         SimpleModify(Health,3),
-                        SimpleModify(Lifetime,-1)
+                        SimpleModify(Lifetime,-1),
                         LockToOwner,
                     ]),
                     Effect(StatusEffect(Lockout,4))

@@ -22,9 +22,8 @@
             (
                 keybind: Pressed(Mouse(Left)),
                 card: Projectile([
-                    SimpleModify(Width,3),
-                    SimpleModify(Height,-3),
-                    SimpleModify(Length,-3),
+                    SimpleModify(Size,-3),
+                    SimpleModify(Width,6),
                     SimpleModify(Speed,-1),
                     SimpleModify(Lifetime,-6),
                     SimpleModify(Health,-10),
@@ -42,16 +41,16 @@
         abilities: [
             (
                 keybind: OnPressed(Key(E)),
-                card: Projectile([
-                    SimpleModify(Width,-1),
-                    SimpleModify(Height,-1),
-                    SimpleModify(Length,-1),
-                    SimpleModify(Speed,-1),
-                    SimpleModify(Health,-10),
-                    PiercePlayers,
-                    OnHit(Effect(Damage(50))),
-                ]),
-    
+                card: MultiCast([
+                    Projectile([
+                        SimpleModify(Size,-1),
+                        SimpleModify(Speed,-1),
+                        SimpleModify(Health,-10),
+                        PiercePlayers,
+                        OnHit(Effect(Damage(50))),
+                    ]),
+                    Effect(StatusEffect(Lockout, 1)),
+                ],[]),
             ),
         ]
     ),
@@ -61,9 +60,10 @@
             (
                 keybind: Pressed(Key(LShift)),
                 card: MultiCast([
-                    Effect(StatusEffect(OnHit(Effect(Damage(25))), 6)),
-                    Effect(StatusEffect(OnHit(Effect(Knockback(5))), 6)),
-                    Effect(StatusEffect(DecreaseGravity, 6)),
+                    Effect(StatusEffect(OnHit(Effect(Damage(25))), 4)),
+                    Effect(StatusEffect(OnHit(Effect(Knockback(5))), 4)),
+                    Effect(StatusEffect(DecreaseGravity, 4)),
+                    Effect(StatusEffect(Lockout, 4)),
                     Effect(Knockback(20)),
                 ],[]),
             ),

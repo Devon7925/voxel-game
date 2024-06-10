@@ -8,9 +8,7 @@
                     Projectile([
                         SimpleModify(Speed,1),
                         SimpleModify(Width,-10),
-                        SimpleModify(Height,-10),
-                        SimpleModify(Length,-10),
-                        SimpleModify(Health,-10),
+                        SimpleModify(Size,-10)
                         SimpleModify(Lifetime,-3),
                         OnHit(Effect(Damage(3))),
                         OnHeadshot(Effect(Damage(3))),
@@ -29,7 +27,7 @@
                 keybind: OnPressed(Key(E)),
                 card: MultiCast([
                     Projectile([
-                        SimpleModify(Speed,6),
+                        SimpleModify(Speed,17),
                         SimpleModify(Width,-5),
                         SimpleModify(Length,-5),
                         SimpleModify(Height,4),
@@ -37,10 +35,8 @@
                         SimpleModify(Health,-10),
                         OnHit(Projectile([
                             SimpleModify(Speed,-3),
-                            SimpleModify(Width,-10),
-                            SimpleModify(Length,-10),
-                            SimpleModify(Height,-10),
-                            SimpleModify(Lifetime,-30),
+                            SimpleModify(Size,-10)
+                            SimpleModify(Lifetime,-3),
                             SimpleModify(Health,-10),
                             OnExpiry(MultiCast([
                                 Effect(Cleanse),
@@ -48,9 +44,7 @@
                             ],[])),
                         ])),
                     ]),
-                    Effect(StatusEffect(Slow, 2)),
-                    Effect(StatusEffect(Slow, 2)),
-                    Effect(StatusEffect(Slow, 2)),
+                    Effect(StatusEffect(Stun, 2)),
                     Effect(StatusEffect(DecreaseGravity, 2)),
                 ],[]),
             ),
@@ -66,6 +60,7 @@
                     Effect(StatusEffect(Speed, 6)),
                     Effect(StatusEffect(Speed, 6)),
                     Effect(StatusEffect(Invincibility, 6)),
+                    Effect(StatusEffect(Lockout,6)),
                 ],[]),
             ),
         ]

@@ -1,14 +1,12 @@
 [
     Cooldown(
-        modifiers: [SimpleCooldownModifier(AddCharge, 11)],
+        modifiers: [SimpleCooldownModifier(AddCharge, 11), SimpleCooldownModifier(MultiplyImpact, 5)],
         abilities: [
             (
                 keybind: And(OnPressed(Mouse(Left)), Pressed(Mouse(Right))),
                 card: Projectile([
                     SimpleModify(Speed,15),
-                    SimpleModify(Width,-10),
-                    SimpleModify(Height,-10),
-                    SimpleModify(Length,-10),
+                    SimpleModify(Size,-10),
                     SimpleModify(Lifetime,-2),
                     SimpleModify(Health,-10),
                     OnHit(Effect(Damage(38))),
@@ -20,9 +18,7 @@
                 card: MultiCast([
                     Projectile([
                         SimpleModify(Speed,2),
-                        SimpleModify(Width,-10),
-                        SimpleModify(Height,-10),
-                        SimpleModify(Length,-10),
+                        SimpleModify(Size,-10),
                         SimpleModify(Health,-10),
                         SimpleModify(Lifetime,-3),
                         OnHit(Effect(Damage(5))),
@@ -50,18 +46,14 @@
             (
                 keybind: Pressed(Key(E)),
                 card: Projectile([
-                    SimpleModify(Width,-3),
-                    SimpleModify(Height,-3),
-                    SimpleModify(Length,-3),
+                    SimpleModify(Size,-3),
                     SimpleModify(Gravity,2),
                     SimpleModify(Health,-10),
                     SimpleModify(Speed,-1),
                     WallBounce,
                     OnExpiry(Projectile([
                         SimpleModify(Speed,-3),
-                        SimpleModify(Width,3),
-                        SimpleModify(Height,3),
-                        SimpleModify(Length,3),
+                        SimpleModify(Size,8),
                         SimpleModify(Lifetime,-10),
                         SimpleModify(Health,-10),
                         PiercePlayers,
@@ -74,7 +66,7 @@
         ]
     ),
     Cooldown(
-        modifiers: [],
+        modifiers: [SimpleCooldownModifier(MultiplyImpact, 1)],
         abilities: [
             (
                 keybind: Pressed(Key(LShift)),

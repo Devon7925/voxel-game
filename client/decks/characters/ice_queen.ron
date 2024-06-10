@@ -6,9 +6,7 @@
                 keybind: Pressed(Mouse(Left)),
                 card: Projectile([
                     SimpleModify(Speed,-1),
-                    SimpleModify(Width,-3),
-                    SimpleModify(Height,-3),
-                    SimpleModify(Length,-3),
+                    SimpleModify(Size,-3),
                     SimpleModify(Lifetime,-5),
                     SimpleModify(Health,-10),
                     PiercePlayers,
@@ -21,9 +19,8 @@
                 keybind: Pressed(Mouse(Right)),
                 card: Projectile([
                     SimpleModify(Speed,1),
-                    SimpleModify(Width,-5),
-                    SimpleModify(Height,-5),
-                    SimpleModify(Length,-3),
+                    SimpleModify(Size,-5),
+                    SimpleModify(Length,2),
                     SimpleModify(Lifetime,1),
                     SimpleModify(Health,-10),
                     OnHit(Effect(Damage(38))),
@@ -39,16 +36,13 @@
                 keybind: Pressed(Key(E)),
                 card: Projectile([
                     SimpleModify(Speed,4),
-                    SimpleModify(Width,-5),
-                    SimpleModify(Length,-5),
-                    SimpleModify(Height,3),
+                    SimpleModify(Size,-5),
+                    SimpleModify(Height,8),
                     SimpleModify(Lifetime,-3),
                     SimpleModify(Health,-10),
                     OnHit(MultiCast([
                         Projectile([
-                            SimpleModify(Width,-5),
-                            SimpleModify(Height,-5),
-                            SimpleModify(Length,-5),
+                            SimpleModify(Size,-5),
                             SimpleModify(Lifetime,-6),
                             SimpleModify(Health,-10),
                             PiercePlayers,
@@ -69,8 +63,7 @@
                 keybind: OnPressed(Key(LShift)),
                 card: MultiCast([
                     Effect(Cleanse),
-                    Effect(StatusEffect(Trapped, 10)),
-                    Effect(StatusEffect(Lockout, 10)),
+                    Effect(StatusEffect(Stun, 10)),
                     Effect(StatusEffect(Invincibility, 10)),
                     Effect(StatusEffect(HealOverTime, 10)),
                 ],[]),

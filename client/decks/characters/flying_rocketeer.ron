@@ -1,19 +1,16 @@
 [
     Cooldown(
-        modifiers: [],
+        modifiers: [SimpleCooldownModifier(MultiplyImpact,5)],
         abilities: [
             (
                 card: Projectile([
-                    SimpleModify(Width,-5),
-                    SimpleModify(Height,-5),
-                    SimpleModify(Length,-1),
+                    SimpleModify(Size,-5),
+                    SimpleModify(Length,4),
                     SimpleModify(Health,-10),
                     OnHit(Effect(Damage(20))),
                     OnHit(Projectile([
                         SimpleModify(Speed,-3),
-                        SimpleModify(Width,1),
-                        SimpleModify(Height,1),
-                        SimpleModify(Length,1),
+                        SimpleModify(Size,1),
                         SimpleModify(Lifetime,-10),
                         SimpleModify(Health,-10),
                         PiercePlayers,
@@ -21,9 +18,7 @@
                     ])),
                     OnHit(Projectile([
                         SimpleModify(Speed,-3),
-                        SimpleModify(Width,1),
-                        SimpleModify(Height,1),
-                        SimpleModify(Length,1),
+                        SimpleModify(Size,1),
                         SimpleModify(Lifetime,-10),
                         SimpleModify(Health,-10),
                         FriendlyFire,
@@ -37,7 +32,7 @@
         ]
     ),
     Cooldown(
-        modifiers: [SimpleCooldownModifier(AddCharge, 4)],
+        modifiers: [SimpleCooldownModifier(AddCharge, 4),SimpleCooldownModifier(MultiplyImpact,1)],
         abilities: [
             (
                 card: MultiCast([
@@ -60,16 +55,12 @@
         abilities: [
             (
                 card: Projectile([
-                    SimpleModify(Width,-5),
-                    SimpleModify(Height,-5),
-                    SimpleModify(Length,-1),
+                    SimpleModify(Size,-5),
                     SimpleModify(Health,-10),
                     OnHit(Effect(Damage(15))),
                     OnHit(Projectile([
                         SimpleModify(Speed,-3),
-                        SimpleModify(Width,2),
-                        SimpleModify(Height,2),
-                        SimpleModify(Length,2),
+                        SimpleModify(Size,9),
                         SimpleModify(Lifetime,-10),
                         SimpleModify(Health,-10),
                         FriendlyFire,
