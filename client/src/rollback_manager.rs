@@ -900,7 +900,7 @@ impl RollbackData {
         rollback_state.players.push(first_player.clone());
         entity_metadata.push(EntityMetaData::Player(VecDeque::from(vec![
             Action::empty();
-            (current_time - rollback_time + 15)
+            game_settings.rollback_buffer_size
                 as usize
         ])));
 
@@ -1425,17 +1425,22 @@ impl WorldState {
                 let projectile_right = projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
                 let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
                 let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
-                let projectile_size = Vector3::new(proj.size[0], proj.size[1], proj.size[2]);
+                let adjusted_projectile_size = if proj_card.lock_owner {
+                    Vector3::new(proj.size[0], proj.size[1], proj.size[2])
+                } else {
+                    Vector3::new(proj.size[0], proj.size[1], proj.size[2] + proj.vel * time_step / 2.0)
+                };
 
                 let grid_iteration_count =
-                    (2.0 * projectile_size * 2.0_f32.sqrt()).map(|c| c.ceil());
-                let grid_dist =
-                    2.0 * projectile_size.zip(grid_iteration_count, |size, count| size / count);
+                    (2.0 * adjusted_projectile_size * 2.0_f32.sqrt()).map(|c| c.ceil());
+                let grid_dist = 2.0
+                    * adjusted_projectile_size
+                        .zip(grid_iteration_count, |size, count| size / count);
 
                 let start_pos = projectile_pos
-                    - projectile_size.x * projectile_right
-                    - projectile_size.y * projectile_up
-                    - projectile_size.z * projectile_dir;
+                    - adjusted_projectile_size.x * projectile_right
+                    - adjusted_projectile_size.y * projectile_up
+                    - (proj.size[2] + if proj_card.lock_owner { 0.0 } else { proj.vel * time_step }) * projectile_dir;
                 'outer: for grid_iter_x in 0..=(grid_iteration_count.x as i32) {
                     for grid_iter_y in 0..=(grid_iteration_count.y as i32) {
                         for grid_iter_z in 0..=(grid_iteration_count.z as i32) {
@@ -1757,7 +1762,7 @@ impl WorldState {
                 if size > 5.0 {
                     size = 5.0;
                 }
-                
+
                 PlayerEffectStats {
                     speed,
                     damage_taken,

@@ -1,7 +1,5 @@
 Update characters
     Use card shortcuts
     Add lockout/trapped status effects
-Improve bullet player collision for fast projectiles
 Multiplayer
     Quit game instead of crashing on multiplayer lag
-    Allow adjusting max multiplayer lag

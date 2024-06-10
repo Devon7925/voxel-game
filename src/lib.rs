@@ -12,6 +12,7 @@ pub struct GameSettings {
     pub name: String,
     pub delta_time: f32,
     pub is_remote: bool,
+    pub rollback_buffer_size: u32,
     pub player_count: u32,
     pub render_size: Vector3<u32>,
     pub spawn_location: Point3<f32>,
