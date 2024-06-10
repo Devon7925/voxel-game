@@ -21,6 +21,7 @@ New Cards
         Projectile Size
         Stun Effect
 Card editor
+    Autosave card file
     Reorder card editor tabs
     Makes palettes not scroll
 Visuals

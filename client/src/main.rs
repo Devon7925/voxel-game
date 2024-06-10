@@ -320,7 +320,15 @@ fn handle_events(
                                         .last()
                                         .is_some_and(|gui| *gui == GuiElement::MainMenu)
                                 {
-                                    let _exited_ui = gui_state.menu_stack.pop().unwrap();
+                                    let exited_ui = gui_state.menu_stack.pop().unwrap();
+                                    match exited_ui {
+                                        GuiElement::CardEditor => {
+                                            let export = ron::to_string(&gui_state.gui_cards).unwrap();
+                                            fs::write(&app.settings.card_file, export)
+                                                .expect("failed to write card file");
+                                        }
+                                        _ => (),
+                                    }
                                 } else {
                                     gui_state.menu_stack.push(GuiElement::EscMenu);
                                 }
