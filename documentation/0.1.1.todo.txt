@@ -33,6 +33,5 @@
     * Nerf negative self effects
 * Fixes
     * Try fixing water desync
-    * Fix queue crosshair visibility
     * Fix player render far plane
 * Move to github issues

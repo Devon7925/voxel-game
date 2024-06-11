@@ -581,29 +581,31 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
             // Fill egui UI layout here
             if let Some(game) = game {
                 let spectate_player = &game.rollback_data.get_spectate_player();
-                egui::Area::new("crosshair")
-                    .anchor(Align2::LEFT_TOP, (0.0, 0.0))
-                    .show(&ctx, |ui| {
-                        let center = ui.available_rect_before_wrap().center();
-                        let thickness = 1.0;
-                        let color = Color32::from_additive_luminance(255);
-                        let crosshair_size = 10.0;
+                if gui_state.menu_stack.is_empty() {
+                    egui::Area::new("crosshair")
+                        .anchor(Align2::LEFT_TOP, (0.0, 0.0))
+                        .show(&ctx, |ui| {
+                            let center = ui.available_rect_before_wrap().center();
+                            let thickness = 1.0;
+                            let color = Color32::from_additive_luminance(255);
+                            let crosshair_size = 10.0;
 
-                        ui.painter().add(epaint::Shape::line_segment(
-                            [
-                                center + vec2(-crosshair_size, 0.0),
-                                center + vec2(crosshair_size, 0.0),
-                            ],
-                            Stroke::new(thickness, color),
-                        ));
-                        ui.painter().add(epaint::Shape::line_segment(
-                            [
-                                center + vec2(0.0, -crosshair_size),
-                                center + vec2(0.0, crosshair_size),
-                            ],
-                            Stroke::new(thickness, color),
-                        ));
-                    });
+                            ui.painter().add(epaint::Shape::line_segment(
+                                [
+                                    center + vec2(-crosshair_size, 0.0),
+                                    center + vec2(crosshair_size, 0.0),
+                                ],
+                                Stroke::new(thickness, color),
+                            ));
+                            ui.painter().add(epaint::Shape::line_segment(
+                                [
+                                    center + vec2(0.0, -crosshair_size),
+                                    center + vec2(0.0, crosshair_size),
+                                ],
+                                Stroke::new(thickness, color),
+                            ));
+                        });
+                }
 
                 if let Some(spectate_player) = spectate_player {
                     let corner_offset = 10.0;
@@ -908,6 +910,13 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
                                         ui.label("Waiting for players to join...");
+                                        if let Some(game) = game {
+                                            ui.label(format!(
+                                                "Players: {}/{}",
+                                                game.rollback_data.player_count(),
+                                                game.game_settings.player_count
+                                            ));
+                                        }
                                         if ui.button("Back").clicked() {
                                             gui_state.menu_stack.pop();
                                             *game = None;
