@@ -8,7 +8,9 @@
 // according to those terms.
 use cgmath::{Matrix4, Point3, SquareMatrix, Vector3};
 use egui_winit_vulkano::{
-    egui::{self, epaint, pos2, Align2, Color32, Margin, Order, Rect, RichText, Stroke, Vec2},
+    egui::{
+        self, epaint, pos2, vec2, Align2, Color32, Margin, Order, Rect, RichText, Stroke, Vec2,
+    },
     Gui, GuiConfig,
 };
 use rfd::FileDialog;
@@ -33,9 +35,14 @@ use vulkano::{
 use winit::event_loop::EventLoop;
 
 use crate::{
-    app::CreationInterface, game_manager::Game, gui::{card_editor, cooldown, healthbar, horizontal_centerer, vertical_centerer, GuiElement}, raytracer::PointLightingSystem, settings_manager::Settings, GuiState
+    app::CreationInterface,
+    game_manager::Game,
+    gui::{card_editor, cooldown, healthbar, horizontal_centerer, vertical_centerer, GuiElement},
+    raytracer::PointLightingSystem,
+    settings_manager::Settings,
+    GuiState,
 };
-use voxel_shared::{GameSettings, WorldGenSettings, RoomId};
+use voxel_shared::{GameSettings, RoomId, WorldGenSettings};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -571,31 +578,32 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
         puffin::profile_function!();
         self.frame.system.gui.immediate_ui(|gui| {
             let ctx = gui.context();
-            let screen_size = ctx.screen_rect().size();
             // Fill egui UI layout here
             if let Some(game) = game {
                 let spectate_player = &game.rollback_data.get_spectate_player();
-                egui::Area::new("crosshair").show(&ctx, |ui| {
-                    let center = screen_size / 2.0;
-                    let thickness = 1.0;
-                    let color = Color32::from_additive_luminance(255);
-                    let crosshair_size = 10.0;
+                egui::Area::new("crosshair")
+                    .anchor(Align2::LEFT_TOP, (0.0, 0.0))
+                    .show(&ctx, |ui| {
+                        let center = ui.available_rect_before_wrap().center();
+                        let thickness = 1.0;
+                        let color = Color32::from_additive_luminance(255);
+                        let crosshair_size = 10.0;
 
-                    ui.painter().add(epaint::Shape::line_segment(
-                        [
-                            pos2(-crosshair_size, 0.0) + center,
-                            pos2(crosshair_size, 0.0) + center,
-                        ],
-                        Stroke::new(thickness, color),
-                    ));
-                    ui.painter().add(epaint::Shape::line_segment(
-                        [
-                            pos2(0.0, -crosshair_size) + center,
-                            pos2(0.0, crosshair_size) + center,
-                        ],
-                        Stroke::new(thickness, color),
-                    ));
-                });
+                        ui.painter().add(epaint::Shape::line_segment(
+                            [
+                                center + vec2(-crosshair_size, 0.0),
+                                center + vec2(crosshair_size, 0.0),
+                            ],
+                            Stroke::new(thickness, color),
+                        ));
+                        ui.painter().add(epaint::Shape::line_segment(
+                            [
+                                center + vec2(0.0, -crosshair_size),
+                                center + vec2(0.0, crosshair_size),
+                            ],
+                            Stroke::new(thickness, color),
+                        ));
+                    });
 
                 if let Some(spectate_player) = spectate_player {
                     let corner_offset = 10.0;
@@ -765,14 +773,21 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     ui.vertical_centered(|ui| {
                                         if ui.button("Host").clicked() {
                                             let client = reqwest::blocking::Client::new();
-                                            let new_lobby_response = client.post(format!("http://{}create_lobby", settings.remote_url.clone()))
+                                            let new_lobby_response = client
+                                                .post(format!(
+                                                    "http://{}create_lobby",
+                                                    settings.remote_url.clone()
+                                                ))
                                                 .json(&settings.create_lobby_settings)
                                                 .send();
                                             let new_lobby_response = match new_lobby_response {
                                                 Ok(new_lobby_response) => new_lobby_response,
                                                 Err(e) => {
                                                     println!("error creating lobby: {:?}", e);
-                                                    gui_state.errors.push(format!("Error creating lobby {}", e).to_string());
+                                                    gui_state.errors.push(
+                                                        format!("Error creating lobby {}", e)
+                                                            .to_string(),
+                                                    );
                                                     return;
                                                 }
                                             };
@@ -781,7 +796,10 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 Ok(new_lobby_id) => new_lobby_id,
                                                 Err(e) => {
                                                     println!("error creating lobby: {:?}", e);
-                                                    gui_state.errors.push(format!("Error creating lobby {}", e).to_string());
+                                                    gui_state.errors.push(
+                                                        format!("Error creating lobby {}", e)
+                                                            .to_string(),
+                                                    );
                                                     return;
                                                 }
                                             };
@@ -825,10 +843,14 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 );
                                 vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
-                                        let lobby_list = match gui_state.lobby_browser.get_lobbies() {
+                                        let lobby_list = match gui_state.lobby_browser.get_lobbies()
+                                        {
                                             Ok(lobby_list) => lobby_list,
                                             Err(err) => {
-                                                gui_state.errors.push(format!("Error getting lobbies: {}", err));
+                                                gui_state.errors.push(format!(
+                                                    "Error getting lobbies: {}",
+                                                    err
+                                                ));
                                                 vec![]
                                             }
                                         };
@@ -851,7 +873,9 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                                 creation_interface,
                                                                 Some(lobby.lobby_id.clone()),
                                                             ));
-                                                            gui_state.menu_stack.push(GuiElement::LobbyQueue);
+                                                            gui_state
+                                                                .menu_stack
+                                                                .push(GuiElement::LobbyQueue);
                                                             gui_state.game_just_started = true;
                                                         }
                                                         ui.end_row();
@@ -914,17 +938,21 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                             },
                             ..Default::default()
                         }
-                            .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
-                            .rounding(ui.visuals().widgets.noninteractive.rounding)
-                            .show(ui, |ui| {
-                                ui.style_mut().wrap = Some(false);
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(error).color(egui::Color32::WHITE));
-                                    if ui.button("X").on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                                        errors_to_remove.push(err_idx);
-                                    }
-                                });
+                        .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+                        .rounding(ui.visuals().widgets.noninteractive.rounding)
+                        .show(ui, |ui| {
+                            ui.style_mut().wrap = Some(false);
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(error).color(egui::Color32::WHITE));
+                                if ui
+                                    .button("X")
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                    .clicked()
+                                {
+                                    errors_to_remove.push(err_idx);
+                                }
                             });
+                        });
                     }
                     for err_idx in errors_to_remove.iter().rev() {
                         gui_state.errors.remove(*err_idx);

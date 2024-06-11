@@ -10,6 +10,7 @@ Worldgen
     Add temperature
     Add water to high temperature biomes
     Remove grass from low temperature biomes
+    Add ice to mountain peaks
 Disabled activating abilities while in card editor
 Put abilities on cooldown at start and after editing them
 Improve bullet player collision for fast projectiles

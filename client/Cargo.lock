@@ -4333,7 +4333,7 @@ dependencies = [
 
 [[package]]
 name = "voxel-game"
-version = "0.0.9"
+version = "0.1.0"
 dependencies = [
  "bytemuck",
  "cgmath",

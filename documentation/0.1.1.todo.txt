@@ -1,14 +1,23 @@
 * Card Editor
     * Add up/down arrows on hover for number cards for more intuitive editing
+    * Add hovers for status effects
+    * Give reasoning for unreasonable decks
+    * Rename multiply impact to decrease cooldown
+    * Add a way to type in modifier values
 * Improve the experience of picking from prebuilt decks
 * Add a way to peek at other player's decks
-* Hitmarkers
-    * Regular hit
-    * Headshot
-* Hurt visuals
+* Visuals
+    * Hitmarkers
+        * Regular hit
+        * Headshot
+    * Hurt visuals
+    * Display time to next charge for multicharge cooldowns
+    * Display recovery times
 * Cards
     * Make passive type abilities work better
     * Add cooldown modifier that makes all charges reload at once
+    * Allow faster bullets
+    * Allow negatives for multiply impact modifier
     * Directions
         * Add directions
             * Up
@@ -17,4 +26,14 @@
         * Add as parameter to
             * Knockback
             * Gravity
+* Balance
+    * Nerf 1 shots
+    * Nerf Low health shields
+    * Nerf Splash damage
+    * Nerf negative self effects
+* Fixes
+    * Fix bullet - bullet collision
+    * Try fixing water desync
+    * Fix queue crosshair visibility
+    * Fix player render far plane
 * Move to github issues
