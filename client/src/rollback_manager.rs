@@ -814,7 +814,7 @@ impl PlayerSim for RollbackData {
             println!("leaving game");
         }
     }
-    
+
     fn get_exit_reason(&self) -> Option<String> {
         self.exit_reason.clone()
     }
@@ -1389,7 +1389,7 @@ impl WorldState {
             )
         });
 
-        let collision_pairs = self.get_collision_pairs(card_manager);
+        let collision_pairs = self.get_collision_pairs(card_manager, time_step);
 
         for (i, j) in collision_pairs {
             let damage_1 = self.projectiles.get(i).unwrap().damage;
@@ -1440,7 +1440,11 @@ impl WorldState {
                 let adjusted_projectile_size = if proj_card.lock_owner {
                     Vector3::new(proj.size[0], proj.size[1], proj.size[2])
                 } else {
-                    Vector3::new(proj.size[0], proj.size[1], proj.size[2] + proj.vel * time_step / 2.0)
+                    Vector3::new(
+                        proj.size[0],
+                        proj.size[1],
+                        proj.size[2] + proj.vel * time_step / 2.0,
+                    )
                 };
 
                 let grid_iteration_count =
@@ -1452,7 +1456,13 @@ impl WorldState {
                 let start_pos = projectile_pos
                     - adjusted_projectile_size.x * projectile_right
                     - adjusted_projectile_size.y * projectile_up
-                    - (proj.size[2] + if proj_card.lock_owner { 0.0 } else { proj.vel * time_step }) * projectile_dir;
+                    - (proj.size[2]
+                        + if proj_card.lock_owner {
+                            0.0
+                        } else {
+                            proj.vel * time_step
+                        })
+                        * projectile_dir;
                 'outer: for grid_iter_x in 0..=(grid_iteration_count.x as i32) {
                     for grid_iter_y in 0..=(grid_iteration_count.y as i32) {
                         for grid_iter_z in 0..=(grid_iteration_count.z as i32) {
@@ -1788,7 +1798,11 @@ impl WorldState {
             .collect()
     }
 
-    fn get_collision_pairs(&self, card_manager: &CardManager) -> Vec<(usize, usize)> {
+    fn get_collision_pairs(
+        &self,
+        card_manager: &CardManager,
+        time_step: f32,
+    ) -> Vec<(usize, usize)> {
         let mut collision_pairs = Vec::new();
         for i in 0..self.projectiles.len() {
             let proj1 = self.projectiles.get(i).unwrap();
@@ -1801,7 +1815,16 @@ impl WorldState {
                 projectile_1_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
             ];
             let projectile_1_pos = Point3::new(proj1.pos[0], proj1.pos[1], proj1.pos[2]);
-            let projectile_1_size = Vector3::new(proj1.size[0], proj1.size[1], proj1.size[2]);
+            let adjusted_projectile_1_size = Vector3::new(
+                proj1.size[0],
+                proj1.size[1],
+                proj1.size[2]
+                    + if !proj1_card.lock_owner {
+                        proj1.vel * time_step / 2.0
+                    } else {
+                        0.0
+                    },
+            );
             let projectile_1_coords = vec![
                 [-1.0, -1.0, -1.0],
                 [-1.0, -1.0, 1.0],
@@ -1816,7 +1839,7 @@ impl WorldState {
             .map(|c| {
                 let mut pos = projectile_1_pos;
                 for i in 0..3 {
-                    pos += projectile_1_size[i] * projectile_1_vectors[i] * c[i];
+                    pos += adjusted_projectile_1_size[i] * projectile_1_vectors[i] * c[i];
                 }
                 pos
             })
@@ -1844,7 +1867,16 @@ impl WorldState {
                     projectile_2_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
                 ];
                 let projectile_2_pos = Point3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
-                let projectile_2_size = Vector3::new(proj2.size[0], proj2.size[1], proj2.size[2]);
+                let adjusted_projectile_2_size = Vector3::new(
+                    proj2.size[0],
+                    proj2.size[1],
+                    proj2.size[2]
+                        + if !proj2_card.lock_owner {
+                            proj2.vel * time_step / 2.0
+                        } else {
+                            0.0
+                        },
+                );
 
                 let projectile_2_coords = vec![
                     [-1.0, -1.0, -1.0],
@@ -1860,7 +1892,7 @@ impl WorldState {
                 .map(|c| {
                     let mut pos = projectile_2_pos;
                     for i in 0..3 {
-                        pos += projectile_2_size[i] * projectile_2_vectors[i] * c[i];
+                        pos += adjusted_projectile_2_size[i] * projectile_2_vectors[i] * c[i];
                     }
                     pos
                 })
@@ -1876,10 +1908,10 @@ impl WorldState {
                         });
                     if min_proj_2
                         > projectile_1_pos.to_vec().dot(projectile_1_vectors[i])
-                            + projectile_1_size[i]
+                            + adjusted_projectile_1_size[i]
                         || max_proj_2
                             < projectile_1_pos.to_vec().dot(projectile_1_vectors[i])
-                                - projectile_1_size[i]
+                                - adjusted_projectile_1_size[i]
                     {
                         continue 'second_proj_loop;
                     }
@@ -1893,10 +1925,10 @@ impl WorldState {
                         });
                     if min_proj_1
                         > projectile_2_pos.to_vec().dot(projectile_2_vectors[i])
-                            + projectile_2_size[i]
+                            + adjusted_projectile_2_size[i]
                         || max_proj_1
                             < projectile_2_pos.to_vec().dot(projectile_2_vectors[i])
-                                - projectile_2_size[i]
+                                - adjusted_projectile_2_size[i]
                     {
                         continue 'second_proj_loop;
                     }

@@ -32,7 +32,6 @@
     * Nerf Splash damage
     * Nerf negative self effects
 * Fixes
-    * Fix bullet - bullet collision
     * Try fixing water desync
     * Fix queue crosshair visibility
     * Fix player render far plane
