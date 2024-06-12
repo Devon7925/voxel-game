@@ -324,12 +324,18 @@ impl Cooldown {
             panic!("Invalid state");
         }
     }
-    
+
     pub fn ability_charges(&self) -> u32 {
-        self.modifiers.iter().map(|modifier| match modifier {
-            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => *s,
-            _ => 0,
-        }).sum::<u32>() + 1
+        self.modifiers
+            .iter()
+            .map(|modifier| match modifier {
+                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => {
+                    *s
+                }
+                _ => 0,
+            })
+            .sum::<u32>()
+            + 1
     }
 }
 
@@ -1181,7 +1187,7 @@ impl BaseCard {
                         }],
                         StatusEffect::OnHit(card) => {
                             let range_probabilities: [f32; 10] = core::array::from_fn(|idx| {
-                                (0.1 * (9.0 - idx as f32) * true_duration).min(1.0)
+                                (0.1 * (10.0 - idx as f32 / true_duration)).min(1.0)
                             });
                             let hit_value = card.evaluate_value(false);
                             hit_value

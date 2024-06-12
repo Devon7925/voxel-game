@@ -3,10 +3,10 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     hash::Hash,
 };
-
-use egui_winit_vulkano::egui;
+use egui_winit_vulkano::egui::{self};
 use priority_queue::PriorityQueue;
 use winit::event::VirtualKeyCode;
+use ahash::RandomState;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -221,7 +221,7 @@ impl<T: Clone + Eq + PartialEq + Hash> QueueSet<T> {
 }
 
 pub struct VoxelUpdateQueue {
-    queue_sets: [[[PriorityQueue<[u32; 3], i32>; 2]; 2]; 2],
+    queue_sets: [[[PriorityQueue<[u32; 3], i32, RandomState>; 2]; 2]; 2],
     active_queue_set: [u32; 3],
 }
 
@@ -229,7 +229,7 @@ impl VoxelUpdateQueue {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             queue_sets: from_fn(|_| {
-                from_fn(|_| from_fn(|_| PriorityQueue::with_capacity(capacity)))
+                from_fn(|_| from_fn(|_| PriorityQueue::with_capacity_and_hasher(capacity, RandomState::with_seed(0))))
             }),
             active_queue_set: [0, 0, 0],
         }
@@ -265,7 +265,7 @@ impl VoxelUpdateQueue {
         }
     }
 
-    fn active_queue_set(&mut self) -> &mut PriorityQueue<[u32; 3], i32> {
+    fn active_queue_set(&mut self) -> &mut PriorityQueue<[u32; 3], i32, RandomState> {
         &mut self.queue_sets[self.active_queue_set[0] as usize][self.active_queue_set[1] as usize]
             [self.active_queue_set[2] as usize]
     }

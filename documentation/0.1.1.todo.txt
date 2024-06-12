@@ -26,12 +26,12 @@
         * Add as parameter to
             * Knockback
             * Gravity
+* Add gravity independent pressure volume effects
 * Balance
     * Nerf 1 shots
     * Nerf Low health shields
     * Nerf Splash damage
     * Nerf negative self effects
 * Fixes
-    * Try fixing water desync
     * Fix player render far plane
 * Move to github issues
