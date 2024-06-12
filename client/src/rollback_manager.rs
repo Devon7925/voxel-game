@@ -21,8 +21,7 @@ use winit::event::{ElementState, WindowEvent};
 
 use crate::{
     card_system::{
-        BaseCard, CardManager, Cooldown, ReferencedCooldown, ReferencedEffect,
-        ReferencedStatusEffect, ReferencedTrigger, StateKeybind, VoxelMaterial,
+        BaseCard, CardManager, Cooldown, ReferencedCooldown, ReferencedEffect, ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType, StateKeybind, StatusEffect, VoxelMaterial
     },
     game_manager::GameState,
     gui::{GuiElement, GuiState},
@@ -1326,6 +1325,7 @@ impl WorldState {
         let mut new_projectiles = Vec::new();
         let mut voxels_to_write: Vec<(Point3<u32>, u32)> = Vec::new();
         let mut new_effects: Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)> = Vec::new();
+        let mut new_status_effects: Vec<(usize, ReferencedStatusEffects)> = Vec::new();
         let mut step_triggers: Vec<(ReferencedTrigger, u32)> = Vec::new();
 
         let player_stats: Vec<PlayerEffectStats> = self.get_player_effect_stats();
@@ -1334,11 +1334,8 @@ impl WorldState {
             let mut health_adjustment = 0.0;
             for status_effect in player.status_effects.iter_mut() {
                 match status_effect.effect {
-                    ReferencedStatusEffect::DamageOverTime => {
-                        health_adjustment += -10.0 * player_stats.damage_taken * time_step;
-                    }
-                    ReferencedStatusEffect::HealOverTime => {
-                        health_adjustment += 10.0 * player_stats.damage_taken * time_step;
+                    ReferencedStatusEffect::DamageOverTime(stacks) => {
+                        health_adjustment += -10.0 * player_stats.damage_taken * stacks as f32 * time_step;
                     }
                     _ => {}
                 }
@@ -1369,6 +1366,7 @@ impl WorldState {
                     &mut new_projectiles,
                     &mut voxels_to_write,
                     &mut new_effects,
+                    &mut new_status_effects,
                     &mut step_triggers,
                     game_state,
                     game_settings,
@@ -1384,6 +1382,7 @@ impl WorldState {
                 &mut new_projectiles,
                 &mut voxels_to_write,
                 &mut new_effects,
+                &mut new_status_effects,
                 &mut step_triggers,
             )
         });
@@ -1512,7 +1511,7 @@ impl WorldState {
                                     proj_rot[1],
                                     proj_rot[2],
                                 );
-                                let (on_hit_projectiles, on_hit_voxels, effects, triggers) =
+                                let (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) =
                                     card_manager.get_effects_from_base_card(
                                         card_ref,
                                         &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
@@ -1526,6 +1525,9 @@ impl WorldState {
                                 }
                                 for effect in effects {
                                     new_effects.push((player_idx, pos, player.pos - pos, effect));
+                                }
+                                for status_effects in status_effects {
+                                    new_status_effects.push((player_idx, status_effects));
                                 }
                                 step_triggers.extend(triggers);
                             }
@@ -1601,13 +1603,16 @@ impl WorldState {
                 });
                 hit_effects
             };
-            for (on_hit_projectiles, on_hit_voxels, effects, triggers) in hit_effects {
+            for (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) in hit_effects {
                 new_projectiles.extend(on_hit_projectiles);
                 for (pos, material) in on_hit_voxels {
                     voxels_to_write.push((pos, material.to_memory()));
                 }
                 for effect in effects {
                     new_effects.push((j, player1_pos, player2_pos - player1_pos, effect));
+                }
+                for status_effects in status_effects {
+                    new_status_effects.push((j, status_effects));
                 }
                 step_triggers.extend(triggers);
             }
@@ -1633,7 +1638,7 @@ impl WorldState {
                 for (proj_trigger_id, on_trigger) in proj_card.on_trigger {
                     if proj_trigger_id == trigger_id {
                         proj.health = 0.0;
-                        let (proj_effects, vox_effects, effects, _) = card_manager
+                        let (proj_effects, vox_effects, effects, status_effects, _) = card_manager
                             .get_effects_from_base_card(
                                 on_trigger,
                                 &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
@@ -1652,6 +1657,9 @@ impl WorldState {
                                 projectile_dir,
                                 effect,
                             ));
+                        }
+                        for status_effects in status_effects {
+                            new_status_effects.push((proj.owner as usize, status_effects));
                         }
                     }
                 }
@@ -1684,21 +1692,6 @@ impl WorldState {
                         player.vel.y += knockback;
                     }
                 }
-                ReferencedEffect::StatusEffect(effect, duration) => {
-                    match effect {
-                        ReferencedStatusEffect::Overheal => {
-                            player.health.push(HealthSection::Overhealth(
-                                10.0,
-                                BaseCard::EFFECT_LENGTH_SCALE * duration as f32,
-                            ));
-                        }
-                        _ => {}
-                    }
-                    player.status_effects.push(AppliedStatusEffect {
-                        effect,
-                        time_left: BaseCard::EFFECT_LENGTH_SCALE * duration as f32,
-                    })
-                }
                 ReferencedEffect::Cleanse => {
                     player.status_effects.clear();
                 }
@@ -1708,6 +1701,24 @@ impl WorldState {
                         player.size * (PLAYER_HITBOX_SIZE[1] / 2.0 - PLAYER_HITBOX_OFFSET[1]);
                     player.vel = Vector3::new(0.0, 0.0, 0.0);
                 }
+            }
+        }
+        for (player_idx, status_effects) in new_status_effects {
+            let player: &mut Entity = self.players.get_mut(player_idx).unwrap();
+            for status_effect in status_effects.effects {
+                match status_effect {
+                    ReferencedStatusEffect::Overheal(stacks) => {
+                        player.health.push(HealthSection::Overhealth(
+                            10.0 * stacks as f32,
+                            BaseCard::EFFECT_LENGTH_SCALE * status_effects.duration as f32,
+                        ));
+                    }
+                    _ => {}
+                }
+                player.status_effects.push(AppliedStatusEffect {
+                    effect: status_effect,
+                    time_left: BaseCard::EFFECT_LENGTH_SCALE * status_effects.duration as f32,
+                })
             }
         }
     }
@@ -1726,44 +1737,26 @@ impl WorldState {
 
                 for status_effect in player.status_effects.iter() {
                     match status_effect.effect {
-                        ReferencedStatusEffect::DamageOverTime => {
+                        ReferencedStatusEffect::DamageOverTime(_) => {
                             // wait for damage taken to be calculated
                         }
-                        ReferencedStatusEffect::HealOverTime => {
-                            // wait for damage taken to be calculated
+                        ReferencedStatusEffect::Speed(stacks) => {
+                            speed *= StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, stacks).get_effect_value();
                         }
-                        ReferencedStatusEffect::Speed => {
-                            speed *= 1.25;
+                        ReferencedStatusEffect::IncreaseDamageTaken(stacks) => {
+                            damage_taken *= StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseDamageTaken, stacks).get_effect_value();
                         }
-                        ReferencedStatusEffect::Slow => {
-                            speed *= 0.75;
+                        ReferencedStatusEffect::IncreaseGravity(stacks) => {
+                            gravity += StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity, stacks).get_effect_value();
                         }
-                        ReferencedStatusEffect::IncreaseDamageTaken => {
-                            damage_taken *= 1.25;
-                        }
-                        ReferencedStatusEffect::DecreaseDamageTaken => {
-                            damage_taken *= 0.75;
-                        }
-                        ReferencedStatusEffect::IncreaseGravity => {
-                            gravity += 0.5;
-                        }
-                        ReferencedStatusEffect::DecreaseGravity => {
-                            gravity -= 0.5;
-                        }
-                        ReferencedStatusEffect::Overheal => {
+                        ReferencedStatusEffect::Overheal(_) => {
                             // managed seperately
                         }
-                        ReferencedStatusEffect::Grow => {
-                            size *= 1.25;
+                        ReferencedStatusEffect::Grow(stacks) => {
+                            size *= StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, stacks).get_effect_value();
                         }
-                        ReferencedStatusEffect::Shrink => {
-                            size *= 0.75;
-                        }
-                        ReferencedStatusEffect::IncreaseMaxHealth => {
-                            max_health -= 0.1 * PLAYER_BASE_MAX_HEALTH;
-                        }
-                        ReferencedStatusEffect::DecreaseMaxHealth => {
-                            max_health += 0.1 * PLAYER_BASE_MAX_HEALTH;
+                        ReferencedStatusEffect::IncreaseMaxHealth(stacks) => {
+                            max_health += StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, stacks).get_effect_value();
                         }
                         ReferencedStatusEffect::Invincibility => {
                             invincible = true;
@@ -1949,6 +1942,7 @@ impl Projectile {
         new_projectiles: &mut Vec<Projectile>,
         voxels_to_write: &mut Vec<(Point3<u32>, u32)>,
         new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
+        new_status_effects: &mut Vec<(usize, ReferencedStatusEffects)>,
         step_triggers: &mut Vec<(ReferencedTrigger, u32)>,
     ) {
         let proj_card = card_manager.get_referenced_proj(self.proj_card_idx as usize);
@@ -1993,7 +1987,7 @@ impl Projectile {
                 .on_expiry
                 .clone()
             {
-                let (proj_effects, vox_effects, effects, triggers) = card_manager
+                let (proj_effects, vox_effects, effects, status_effects, triggers) = card_manager
                     .get_effects_from_base_card(
                         card_ref,
                         &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
@@ -2013,13 +2007,16 @@ impl Projectile {
                         effect,
                     ));
                 }
+                for status_effects in status_effects {
+                    new_status_effects.push((self.owner as usize, status_effects));
+                }
                 step_triggers.extend(triggers);
             }
         }
 
         for (trail_time, trail_card) in proj_card.trail.iter() {
             if self.lifetime % trail_time >= trail_time - time_step {
-                let (proj_effects, vox_effects, effects, triggers) = card_manager
+                let (proj_effects, vox_effects, effects, status_effects, triggers) = card_manager
                     .get_effects_from_base_card(
                         trail_card.clone(),
                         &Point3::new(self.pos[0], self.pos[1], self.pos[2]),
@@ -2038,6 +2035,9 @@ impl Projectile {
                         projectile_dir,
                         effect,
                     ));
+                }
+                for status_effects in status_effects {
+                    new_status_effects.push((self.owner as usize, status_effects));
                 }
                 step_triggers.extend(triggers);
             }
@@ -2130,6 +2130,7 @@ impl Entity {
         new_projectiles: &mut Vec<Projectile>,
         voxels_to_write: &mut Vec<(Point3<u32>, u32)>,
         new_effects: &mut Vec<(usize, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
+        new_status_effects: &mut Vec<(usize, ReferencedStatusEffects)>,
         step_triggers: &mut Vec<(ReferencedTrigger, u32)>,
         game_state: &GameState,
         game_settings: &GameSettings,
@@ -2231,7 +2232,7 @@ impl Entity {
                         {
                             cooldown.cooldown += cooldown.value.0;
                             cooldown.recovery = cooldown.value.1[ability_idx];
-                            let (proj_effects, vox_effects, effects, triggers) = card_manager
+                            let (proj_effects, vox_effects, effects, status_effects, triggers) = card_manager
                                 .get_effects_from_base_card(
                                     ability.0,
                                     &self.pos,
@@ -2245,6 +2246,9 @@ impl Entity {
                             }
                             for effect in effects {
                                 new_effects.push((player_idx, self.pos, self.dir, effect));
+                            }
+                            for status_effects in status_effects {
+                                new_status_effects.push((player_idx, status_effects));
                             }
                             step_triggers.extend(triggers);
                             break;

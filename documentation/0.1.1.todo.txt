@@ -4,8 +4,7 @@
     * Give reasoning for unreasonable decks
     * Add a way to decrease impact of ability
     * Add a way to type in modifier values
-* Improve the experience of picking from prebuilt decks
-* Add a way to peek at other player's decks
+* Fix prebuilt decks
 * Visuals
     * Hitmarkers
         * Regular hit
@@ -14,6 +13,7 @@
     * Display time to next charge for multicharge cooldowns
     * Display recovery times
 * Cards
+    * Make sure negative overhealth works
     * Make passive type abilities work better
     * Add cooldown modifier that makes all charges reload at once
     * Allow faster bullets
@@ -30,5 +30,4 @@
     * Nerf 1 shots
     * Nerf Low health shields
     * Nerf Splash damage
-    * Nerf negative self effects
 * Move to github issues

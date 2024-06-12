@@ -35,11 +35,7 @@
         modifiers: [SimpleCooldownModifier(AddCharge, 4),SimpleCooldownModifier(DecreaseCooldown,1)],
         abilities: [
             (
-                card: MultiCast([
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                ],[]),
+                card: StatusEffects(1, [SimpleStatusEffect(IncreaseGravity, -3)]),
                 keybind: Or(
                     Pressed(Mouse(Right)),
                     And(
@@ -76,26 +72,7 @@
         modifiers: [],
         abilities: [
             (
-                card: MultiCast([
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                    Effect(StatusEffect(DecreaseGravity, 1)),
-                ],[]),
+                card: StatusEffects(1, [SimpleStatusEffect(IncreaseGravity, -20)]),
                 keybind: Pressed(Key(LShift))
             )
         ]

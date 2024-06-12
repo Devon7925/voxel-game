@@ -1,0 +1,22 @@
+# Gamemode Update
+* Add Control Mode
+    * Adjust friendly fire
+    * Spawn rooms
+        * Healing / Invincibility
+        * Respawn
+        * Allow swapping deck
+    * Control point
+        * Score points
+* Improve lobby selector
+    * Display Gamemode
+    * Display Players / Max Players
+* Add unbreakable blocks
+* Worldgen
+    * Control mode Worldgen
+        * Spawn rooms
+        * Control point
+        * Symmetrical worlgen
+    * Regular worldgen
+        * Add trees
+* Add a way to peek at other player's decks
+* Improve the experience of picking from prebuilt decks

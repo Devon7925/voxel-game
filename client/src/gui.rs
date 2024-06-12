@@ -9,9 +9,7 @@ use itertools::Itertools;
 
 use crate::{
     card_system::{
-        Ability, BaseCard, Cooldown, CooldownModifier, DraggableCard, Effect, Keybind,
-        MultiCastModifier, ProjectileModifier, ReferencedStatusEffect, SimpleCooldownModifier,
-        SimpleProjectileModifierType, StatusEffect, VoxelMaterial,
+        Ability, BaseCard, Cooldown, CooldownModifier, DraggableCard, Effect, Keybind, MultiCastModifier, ProjectileModifier, ReferencedStatusEffect, SimpleCooldownModifier, SimpleProjectileModifierType, SimpleStatusEffectType, StatusEffect, VoxelMaterial
     },
     lobby_browser::LobbyBrowser,
     rollback_manager::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
@@ -39,7 +37,6 @@ pub enum PaletteState {
     MultiCastModifiers,
     CooldownModifiers,
     Materials,
-    Effects,
     StatusEffects,
     Dock,
 }
@@ -259,6 +256,7 @@ pub enum DragableType {
     ProjectileModifier,
     MultiCastModifier,
     CooldownModifier,
+    StatusEffect,
     BaseCard,
 }
 
@@ -267,6 +265,7 @@ pub enum DropableType {
     MultiCastBaseCard,
     BaseNone,
     BaseProjectile,
+    BaseStatusEffects,
     Cooldown,
     Palette,
 }
@@ -280,6 +279,7 @@ pub enum ModificationType {
 pub fn is_valid_drag(from: &DragableType, to: &DropableType) -> bool {
     match (from, to) {
         (DragableType::ProjectileModifier, DropableType::BaseProjectile) => true,
+        (DragableType::StatusEffect, DropableType::BaseStatusEffects) => true,
         (DragableType::MultiCastModifier, DropableType::MultiCastBaseCard) => true,
         (DragableType::BaseCard, DropableType::MultiCastBaseCard) => true,
         (DragableType::BaseCard, DropableType::BaseNone) => true,
@@ -439,6 +439,7 @@ impl DraggableCard {
             DraggableCard::CooldownModifier(_) => DragableType::CooldownModifier,
             DraggableCard::MultiCastModifier(_) => DragableType::MultiCastModifier,
             DraggableCard::ProjectileModifier(_) => DragableType::ProjectileModifier,
+            DraggableCard::StatusEffect(_) => DragableType::StatusEffect,
         }
     }
 
@@ -590,6 +591,15 @@ impl DraggableCard {
                         modify_path,
                         path,
                     ),
+                    ProjectileModifier::None => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "None",
+                        "",
+                        modifier.get_hover_text(),
+                        modify_path,
+                        path,
+                    ),
                     modifier if modifier.is_advanced() => {
                         advanced_modifier = true;
                     }
@@ -662,6 +672,105 @@ impl DraggableCard {
                             ProjectileModifier::Trail(frequency, base_card) => {
                                 drag_source(ui, item_id, true, |ui| {
                                     add_basic_modifer(ui, "Trail", *frequency, modify_path, path);
+                                    path.push_back(0);
+                                    draw_base_card(
+                                        ui,
+                                        base_card,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                    );
+                                    path.pop_back();
+                                });
+                            }
+                            _ => panic!("Invalid State"),
+                        }
+                    });
+                }
+            }
+            DraggableCard::StatusEffect(effect) => {
+                let item_id = egui::Id::new(ID_SOURCE).with(path.clone());
+                let mut advanced_effect = false;
+                match effect {
+                    StatusEffect::SimpleStatusEffect(ty, v) => {
+                        let name = match ty {
+                            SimpleStatusEffectType::DamageOverTime => "Damage Over Time",
+                            SimpleStatusEffectType::Speed => "Speed",
+                            SimpleStatusEffectType::IncreaseDamageTaken => "Increase Damage Taken",
+                            SimpleStatusEffectType::IncreaseGravity =>  "Increase Gravity",
+                            SimpleStatusEffectType::Overheal => "Overheal",
+                            SimpleStatusEffectType::Grow => "Grow",
+                            SimpleStatusEffectType::IncreaseMaxHealth => "Increase Max Health",
+                            
+                        };
+                        add_hoverable_basic_modifer(
+                            ui,
+                            item_id,
+                            name,
+                            *v,
+                            effect.get_hover_text(),
+                            modify_path,
+                            path,
+                        )
+                    }
+                    StatusEffect::Invincibility => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Invincibility",
+                        "",
+                        effect.get_hover_text(),
+                        modify_path,
+                        path,
+                    ),
+                    StatusEffect::Lockout => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Lockout",
+                        "",
+                        effect.get_hover_text(),
+                        modify_path,
+                        path,
+                    ),
+                    StatusEffect::Trapped => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Trapped",
+                        "",
+                        effect.get_hover_text(),
+                        modify_path,
+                        path,
+                    ),
+                    StatusEffect::Stun => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Stun",
+                        "",
+                        effect.get_hover_text(),
+                        modify_path,
+                        path,
+                    ),
+                    StatusEffect::None => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "None",
+                        "",
+                        effect.get_hover_text(),
+                        modify_path,
+                        path,
+                    ),
+                    modifier if modifier.is_advanced() => {
+                        advanced_effect = true;
+                    }
+                    _ => panic!("Invalid State"),
+                }
+                if advanced_effect {
+                    ui.horizontal(|ui| {
+                        ui.add_space(CARD_UI_SPACING);
+                        match effect {
+                            StatusEffect::OnHit(base_card) => {
+                                drag_source(ui, item_id, true, |ui| {
+                                    ui.label("On Hit");
                                     path.push_back(0);
                                     draw_base_card(
                                         ui,
@@ -862,45 +971,6 @@ pub fn draw_base_card(
                         Effect::Teleport => {
                             add_basic_modifer(ui, "Teleport", "", modify_path, path)
                         }
-                        Effect::StatusEffect(e, t) => {
-                            if let StatusEffect::OnHit(base_card) = e {
-                                add_basic_modifer(ui, "On Hit", *t, modify_path, path);
-                                path.push_back(0);
-                                draw_base_card(
-                                    ui,
-                                    base_card,
-                                    path,
-                                    source_path,
-                                    dest_path,
-                                    modify_path,
-                                );
-                                path.pop_back();
-                            } else {
-                                let effect_name = match e {
-                                    StatusEffect::DamageOverTime => "Damage Over Time",
-                                    StatusEffect::HealOverTime => "Heal Over Time",
-                                    StatusEffect::DecreaseDamageTaken => "Decrease Damage Taken",
-                                    StatusEffect::IncreaseDamageTaken => "Increase Damage Taken",
-                                    StatusEffect::Slow => "Slow",
-                                    StatusEffect::Speed => "Speed Up",
-                                    StatusEffect::DecreaseGravity => "Decrease Gravity",
-                                    StatusEffect::IncreaseGravity => "Increase Gravity",
-                                    StatusEffect::Overheal => "Overheal",
-                                    StatusEffect::Grow => "Grow",
-                                    StatusEffect::Shrink => "Shrink",
-                                    StatusEffect::IncreaseMaxHealth => "Increase Max Health",
-                                    StatusEffect::DecreaseMaxHealth => "Decrease Max Health",
-                                    StatusEffect::Invincibility => "Invincibility",
-                                    StatusEffect::Trapped => "Trapped",
-                                    StatusEffect::Lockout => "Lockout",
-                                    StatusEffect::Stun => "Stun",
-                                    StatusEffect::OnHit(_base_card) => {
-                                        panic!("OnHit should be handled above")
-                                    }
-                                };
-                                add_basic_modifer(ui, effect_name, *t, modify_path, path)
-                            }
-                        }
                     }
                     ui.add_space(CARD_UI_SPACING);
                 });
@@ -917,6 +987,73 @@ pub fn draw_base_card(
                     Stroke::new(1.0, color),
                 ),
             );
+        }
+        BaseCard::StatusEffects(duration, effects) => {
+            ui.vertical(|ui| {
+                ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(0.5, Color32::LIGHT_RED);
+                ui.visuals_mut().widgets.inactive.bg_fill =
+                    darken(ui.visuals_mut().widgets.inactive.bg_stroke.color, 0.25);
+
+                let response = drop_target(ui, can_accept_what_is_being_dragged, |ui| {
+                    let mut advanced_effects = vec![];
+                    ui.horizontal(|ui| {
+                        ui.add_space(CARD_UI_SPACING);
+                        ui.vertical(|ui| {
+                            ui.add_space(CARD_UI_SPACING);
+                            ui.horizontal_wrapped(|ui| {
+                                add_basic_modifer(ui, "Apply Status Effects", *duration, modify_path, path);
+                                for (effect_idx, effect) in effects.iter().enumerate() {
+                                    if effect.is_advanced() {
+                                        advanced_effects.push((effect_idx, effect));
+                                        continue;
+                                    }
+                                    path.push_back(effect_idx as u32);
+                                    DraggableCard::StatusEffect(effect.clone())
+                                        .draw_draggable(
+                                            ui,
+                                            path,
+                                            source_path,
+                                            dest_path,
+                                            modify_path,
+                                        );
+                                    path.pop_back();
+                                }
+                            });
+
+                            for (modifier_idx, modifier) in advanced_effects.into_iter() {
+                                path.push_back(modifier_idx as u32);
+                                DraggableCard::StatusEffect(modifier.clone()).draw_draggable(
+                                    ui,
+                                    path,
+                                    source_path,
+                                    dest_path,
+                                    modify_path,
+                                );
+                                path.pop_back();
+                            }
+                            ui.add_space(CARD_UI_SPACING);
+                        });
+                        ui.add_space(CARD_UI_SPACING);
+                    });
+
+                    for (modifier_idx, _modifier) in effects.iter().enumerate() {
+                        path.push_back(modifier_idx as u32);
+                        let item_id = egui::Id::new(ID_SOURCE).with(path.clone());
+                        if source_path.is_none() && ui.memory(|mem| mem.is_being_dragged(item_id)) {
+                            *source_path = Some((path.clone(), DragableType::StatusEffect));
+                        }
+                        path.pop_back();
+                    }
+                })
+                .response;
+
+                if dest_path.is_none() {
+                    let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
+                    if is_being_dragged && can_accept_what_is_being_dragged && response.hovered() {
+                        *dest_path = Some((path.clone(), DropableType::BaseStatusEffects));
+                    }
+                }
+            });
         }
         BaseCard::Trigger(id) => {
             let where_to_put_background = ui.painter().add(Shape::Noop);
@@ -1193,16 +1330,6 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             );
                             ui.selectable_value(
                                 &mut gui_state.palette_state,
-                                PaletteState::Effects,
-                                "Effects",
-                            );
-                            ui.selectable_value(
-                                &mut gui_state.palette_state,
-                                PaletteState::StatusEffects,
-                                "Status Effects",
-                            );
-                            ui.selectable_value(
-                                &mut gui_state.palette_state,
                                 PaletteState::Materials,
                                 "Materials",
                             );
@@ -1220,6 +1347,11 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                 &mut gui_state.palette_state,
                                 PaletteState::MultiCastModifiers,
                                 "Multicast Modifiers",
+                            );
+                            ui.selectable_value(
+                                &mut gui_state.palette_state,
+                                PaletteState::StatusEffects,
+                                "Status Effects",
                             );
                             ui.selectable_value(
                                 &mut gui_state.palette_state,
@@ -1315,6 +1447,11 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                         DraggableCard::BaseCard(BaseCard::Projectile(vec![])),
                         DraggableCard::BaseCard(BaseCard::MultiCast(vec![], vec![])),
                         DraggableCard::BaseCard(BaseCard::Trigger(0)),
+                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Damage(1))),
+                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Knockback(1))),
+                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Cleanse)),
+                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Teleport)),
+                        DraggableCard::BaseCard(BaseCard::StatusEffects(1, vec![])),
                     ],
                     PaletteState::AdvancedProjectileModifiers => vec![
                         DraggableCard::ProjectileModifier(ProjectileModifier::OnHit(
@@ -1353,87 +1490,19 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             1,
                         )),
                     ],
-                    PaletteState::Effects => vec![
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Damage(1))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Damage(-1))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Knockback(1))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Knockback(-1))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Cleanse)),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::Teleport)),
-                    ],
                     PaletteState::StatusEffects => vec![
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::DamageOverTime,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::HealOverTime,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::DecreaseDamageTaken,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::IncreaseDamageTaken,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::DecreaseGravity,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::IncreaseGravity,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::Speed,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::Slow,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::Overheal,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::Grow,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::Shrink,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::IncreaseMaxHealth,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::DecreaseMaxHealth,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::Invincibility,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::Trapped,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::Lockout,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::Stun,
-                            1,
-                        ))),
-                        DraggableCard::BaseCard(BaseCard::Effect(Effect::StatusEffect(
-                            StatusEffect::OnHit(Box::new(BaseCard::None)),
-                            1,
-                        ))),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::DamageOverTime, 1)),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseDamageTaken, 1)),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity, 1)),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, 1)),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, 1)),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, 1)),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, 1)),
+                        DraggableCard::StatusEffect(StatusEffect::Invincibility),
+                        DraggableCard::StatusEffect(StatusEffect::Trapped),
+                        DraggableCard::StatusEffect(StatusEffect::Lockout),
+                        DraggableCard::StatusEffect(StatusEffect::Stun),
+                        DraggableCard::StatusEffect(StatusEffect::OnHit(Box::new(BaseCard::None))),
                     ],
                     PaletteState::Materials => vec![
                         DraggableCard::BaseCard(BaseCard::CreateMaterial(VoxelMaterial::Grass)),
@@ -1572,23 +1641,17 @@ pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Enti
 
             for AppliedStatusEffect { effect, time_left } in spectate_player.status_effects.iter() {
                 let effect_name = match effect {
-                    ReferencedStatusEffect::DamageOverTime => "Damage Over Time",
-                    ReferencedStatusEffect::HealOverTime => "Heal Over Time",
-                    ReferencedStatusEffect::Slow => "Slow",
-                    ReferencedStatusEffect::Speed => "Speed",
-                    ReferencedStatusEffect::DecreaseDamageTaken => "Decrease Damage Taken",
-                    ReferencedStatusEffect::IncreaseDamageTaken => "Increase Damage Taken",
-                    ReferencedStatusEffect::DecreaseGravity => "Decrease Gravity",
-                    ReferencedStatusEffect::IncreaseGravity => "Increase Gravity",
-                    ReferencedStatusEffect::Invincibility => "Invincibility",
-                    ReferencedStatusEffect::Overheal => "Overheal",
-                    ReferencedStatusEffect::Grow => "Grow",
-                    ReferencedStatusEffect::Shrink => "Shrink",
-                    ReferencedStatusEffect::IncreaseMaxHealth => "Increase Max Health",
-                    ReferencedStatusEffect::DecreaseMaxHealth => "Decrease Max Health",
-                    ReferencedStatusEffect::OnHit(_) => "On Player Hit",
-                    ReferencedStatusEffect::Trapped => "Trapped",
-                    ReferencedStatusEffect::Lockout => "Lockout",
+                    ReferencedStatusEffect::DamageOverTime(stacks) => format!("Damage Over Time {}", stacks),
+                    ReferencedStatusEffect::Speed(stacks) => format!("Speed {}", stacks),
+                    ReferencedStatusEffect::IncreaseDamageTaken(stacks) => format!("Increase Damage Taken {}", stacks),
+                    ReferencedStatusEffect::IncreaseGravity(stacks) => format!("Increase Gravity {}", stacks),
+                    ReferencedStatusEffect::Overheal(stacks) => format!("Overheal {}", stacks),
+                    ReferencedStatusEffect::Grow(stacks) => format!("Grow {}", stacks),
+                    ReferencedStatusEffect::IncreaseMaxHealth(stacks) => format!("Increase Max Health {}", stacks),
+                    ReferencedStatusEffect::Invincibility => "Invincibility".to_string(),
+                    ReferencedStatusEffect::Trapped => "Trapped".to_string(),
+                    ReferencedStatusEffect::Lockout => "Lockout".to_string(),
+                    ReferencedStatusEffect::OnHit(_) => "On Player Hit".to_string(),
                 };
                 ui.label(
                     RichText::new(format!("{}: {:.1}s", effect_name, time_left))
