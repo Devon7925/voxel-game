@@ -1266,7 +1266,7 @@ impl BaseCard {
                             SimpleProjectileModifierType::Speed,
                             _,
                         ) => {
-                            if modifier.get_effect_value().abs() > 200.0 {
+                            if modifier.get_effect_value().abs() > 400.0 {
                                 return false;
                             }
                         }

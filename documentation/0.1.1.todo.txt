@@ -16,7 +16,6 @@
     * Make sure negative overhealth works
     * Make passive type abilities work better
     * Add cooldown modifier that makes all charges reload at once
-    * Allow faster bullets
     * Allow negatives for multiply impact modifier
     * Directions
         * Add directions
