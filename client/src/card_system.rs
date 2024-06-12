@@ -502,16 +502,16 @@ impl VoxelMaterial {
 
     pub fn density(&self) -> f32 {
         match self {
-            VoxelMaterial::Air => 0.0,
-            VoxelMaterial::Stone => 0.0,
-            VoxelMaterial::Unloaded => 0.0,
-            VoxelMaterial::Dirt => 0.0,
-            VoxelMaterial::Grass => 0.0,
+            VoxelMaterial::Air => 1.0,
+            VoxelMaterial::Stone => 1.0,
+            VoxelMaterial::Unloaded => 1.0,
+            VoxelMaterial::Dirt => 1.0,
+            VoxelMaterial::Grass => 1.0,
             VoxelMaterial::Projectile => panic!("Invalid state"),
-            VoxelMaterial::Ice => 0.0,
-            VoxelMaterial::Water => 0.85,
+            VoxelMaterial::Ice => 1.0,
+            VoxelMaterial::Water => 4.4,
             VoxelMaterial::Player => panic!("Invalid state"),
-            VoxelMaterial::UnloadedAir => 0.0,
+            VoxelMaterial::UnloadedAir => 1.0,
         }
     }
 }

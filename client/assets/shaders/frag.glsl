@@ -441,7 +441,7 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(1.0, 0.20, 0.0, 0.0, vec3(0.25, -0.7, 0.2), vec3(0.0)),
             MaterialNoiseLayer(2.0, 0.10, 0.0, 0.0, vec3(0.375, -0.5, 0.475), vec3(0.0)),
             MaterialNoiseLayer(4.0, 0.05, 0.0, 0.0, vec3(0.5, -0.6, 0.5), vec3(0.0))
-        ), 0.05, 0.25, 0.8, 0.7, vec3(0.25, 0.3, 0.6)),
+        ), 0.05, 0.25, 0.8, 0.85, vec3(0.25, 0.3, 0.6)),
     // PLAYER
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(0.0, 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),

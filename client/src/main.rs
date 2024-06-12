@@ -58,7 +58,7 @@ pub struct WindowProperties {
 
 pub const PLAYER_HITBOX_OFFSET: Vector3<f32> = Vector3::new(0.0, -2.0, 0.0);
 pub const PLAYER_HITBOX_SIZE: Vector3<f32> = Vector3::new(1.8, 4.8, 1.8);
-pub const PLAYER_DENSITY: f32 = 0.7;
+pub const PLAYER_DENSITY: f32 = 3.8;
 pub const PLAYER_BASE_MAX_HEALTH: f32 = 100.0;
 
 const SETTINGS_FILE: &str = "settings.yaml";

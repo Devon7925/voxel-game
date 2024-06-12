@@ -1,3 +1,4 @@
+* Add gravity independent pressure volume effects
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync

@@ -9,8 +9,7 @@ use std::{
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{
-    vec3, EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation, Rotation3, Vector2,
-    Vector3,
+    vec3, ElementWise, EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation, Rotation3, Vector2, Vector3
 };
 use matchbox_socket::{PeerId, PeerState};
 use serde::{Deserialize, Serialize};
@@ -2264,17 +2263,21 @@ impl Entity {
         }
 
         //volume effects
-        let start_pos = (self.pos + self.size * PLAYER_HITBOX_OFFSET - self.size * PLAYER_HITBOX_SIZE / 2.0).map(|c| c.floor() as u32);
-        let iter_counts = (self.pos + self.size * PLAYER_HITBOX_OFFSET + self.size * PLAYER_HITBOX_SIZE / 2.0).zip(
-            start_pos,
-            |a, b| a.floor() as u32 - b,
+        let start_pos = self.pos + self.size * PLAYER_HITBOX_OFFSET - self.size * PLAYER_HITBOX_SIZE / 2.0;
+        let end_pos = self.pos + self.size * PLAYER_HITBOX_OFFSET + self.size * PLAYER_HITBOX_SIZE / 2.0;
+        let start_voxel_pos = start_pos.map(|c| c.floor() as u32);
+        let iter_counts = end_pos.zip(
+            start_voxel_pos,
+            |a, b| a.floor() as u32 - b + 1,
         );
         let mut nearby_density = 0.0;
-        for x in 0..iter_counts[0] {
-            for y in 0..iter_counts[1] {
-                for z in 0..iter_counts[2] {
-                    let voxel_pos = start_pos
-                        + Vector3::new(x, y, z);
+        let mut directional_density = Vector3::new(0.0, 0.0, 0.0);
+        for x in 0..iter_counts.x {
+            for y in 0..iter_counts.y {
+                for z in 0..iter_counts.z {
+                    let voxel_pos = start_voxel_pos + Vector3::new(x, y, z);
+                    let overlapping_volume = voxel_pos.zip(end_pos, |a, b| b.min(a as f32 + 1.0)) - voxel_pos.zip(start_pos, |a, b| b.max(a as f32));
+                    let overlapping_volume = overlapping_volume.x * overlapping_volume.y * overlapping_volume.z;
                     let material = if is_inbounds(voxel_pos, game_state, game_settings) {
                         let idx = get_index(voxel_pos, cpu_chunks, game_state, game_settings);
                         if let Some(idx) = idx {
@@ -2285,19 +2288,23 @@ impl Entity {
                     } else {
                         VoxelMaterial::Unloaded
                     };
-                    nearby_density += material.density();
+                    let density = material.density();
+                    nearby_density += overlapping_volume * density;
+                    directional_density += overlapping_volume * density * (voxel_pos.map(|c| c as f32 + 0.5) - self.pos - self.size * PLAYER_HITBOX_OFFSET) / self.size;
                 }
             }
         }
-        nearby_density /= (iter_counts[0] * iter_counts[1] * iter_counts[2]) as f32;
+        nearby_density /= self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
+        directional_density /= self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
 
-        self.vel.y -= (PLAYER_DENSITY - nearby_density) / PLAYER_DENSITY
+        self.vel.y -= (PLAYER_DENSITY - nearby_density)
             * player_stats[player_idx].gravity
-            * 32.0
+            * 11.428571428571429
             * time_step;
+        self.vel -= 0.5 * directional_density * time_step;
         if self.vel.magnitude() > 0.0 {
-            self.vel -= (4.0 * nearby_density + 1.0) / 2.0
-                * 0.075
+            self.vel -= nearby_density
+                * 0.0375
                 * self.vel
                 * self.vel.magnitude()
                 * time_step
