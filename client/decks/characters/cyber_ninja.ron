@@ -44,7 +44,7 @@
         ]
     ),(
         modifiers:[
-            SimpleCooldownModifier(MultiplyImpact,1)
+            SimpleCooldownModifier(DecreaseCooldown,1)
         ],
         abilities:[
             (

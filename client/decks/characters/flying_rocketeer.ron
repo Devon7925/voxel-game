@@ -1,6 +1,6 @@
 [
     Cooldown(
-        modifiers: [SimpleCooldownModifier(MultiplyImpact,5)],
+        modifiers: [SimpleCooldownModifier(DecreaseCooldown,5)],
         abilities: [
             (
                 card: Projectile([
@@ -32,7 +32,7 @@
         ]
     ),
     Cooldown(
-        modifiers: [SimpleCooldownModifier(AddCharge, 4),SimpleCooldownModifier(MultiplyImpact,1)],
+        modifiers: [SimpleCooldownModifier(AddCharge, 4),SimpleCooldownModifier(DecreaseCooldown,1)],
         abilities: [
             (
                 card: MultiCast([

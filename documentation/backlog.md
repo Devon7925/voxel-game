@@ -11,6 +11,7 @@
     * FXAA https://en.wikipedia.org/wiki/Fast_approximate_anti-aliasing
     * Improve water waves to not be directional
     * Depth based shadows
+    * Refraction
     * Improved player model
 * Cards
     * Homing cards so turrets can exist

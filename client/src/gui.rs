@@ -483,12 +483,12 @@ impl DraggableCard {
                         path,
                     ),
                     CooldownModifier::SimpleCooldownModifier(
-                        SimpleCooldownModifier::MultiplyImpact,
+                        SimpleCooldownModifier::DecreaseCooldown,
                         v,
                     ) => add_hoverable_basic_modifer(
                         ui,
                         item_id,
-                        "Multiply Impact",
+                        "Decrease Cooldown",
                         *v,
                         hover_text,
                         modify_path,
@@ -777,13 +777,14 @@ pub fn draw_base_card(
                                 path.push_back(0);
                                 for (mod_idx, modifier) in modifiers.iter().enumerate() {
                                     path.push_back(mod_idx as u32);
-                                    DraggableCard::MultiCastModifier(modifier.clone()).draw_draggable(
-                                        ui,
-                                        path,
-                                        source_path,
-                                        dest_path,
-                                        modify_path,
-                                    );
+                                    DraggableCard::MultiCastModifier(modifier.clone())
+                                        .draw_draggable(
+                                            ui,
+                                            path,
+                                            source_path,
+                                            dest_path,
+                                            modify_path,
+                                        );
                                     path.pop_back();
                                 }
                                 path.pop_back();
@@ -1348,7 +1349,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             1,
                         )),
                         DraggableCard::CooldownModifier(CooldownModifier::SimpleCooldownModifier(
-                            SimpleCooldownModifier::MultiplyImpact,
+                            SimpleCooldownModifier::DecreaseCooldown,
                             1,
                         )),
                     ],

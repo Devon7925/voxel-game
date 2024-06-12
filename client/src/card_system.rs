@@ -22,7 +22,7 @@ impl CooldownModifier {
         match self {
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => format!("Add {} charges", s),
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => format!("Increase cooldown by {}s ({} per)", SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT*(*s as f32), SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT),
-            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::MultiplyImpact, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increases the cooldown of all other abilities", s),
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::DecreaseCooldown, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increases the cooldown of all other abilities", s),
         }
     }
 }
@@ -31,7 +31,7 @@ impl CooldownModifier {
 pub enum SimpleCooldownModifier {
     AddCharge,
     AddCooldown,
-    MultiplyImpact,
+    DecreaseCooldown,
 }
 
 impl SimpleCooldownModifier {
@@ -161,7 +161,7 @@ impl Cooldown {
                     added_cooldown += s;
                 }
                 CooldownModifier::SimpleCooldownModifier(
-                    SimpleCooldownModifier::MultiplyImpact,
+                    SimpleCooldownModifier::DecreaseCooldown,
                     s,
                 ) => {
                     impact_multiplier += 0.25 * *s as f32;
@@ -188,7 +188,7 @@ impl Cooldown {
         for modifier in self.modifiers.iter() {
             match modifier {
                 CooldownModifier::SimpleCooldownModifier(
-                    SimpleCooldownModifier::MultiplyImpact,
+                    SimpleCooldownModifier::DecreaseCooldown,
                     s,
                 ) => {
                     impact_multiplier += 0.25 * *s as f32;
@@ -2094,7 +2094,7 @@ impl CardManager {
                     c,
                 ) => add_cooldown += c,
                 CooldownModifier::SimpleCooldownModifier(
-                    SimpleCooldownModifier::MultiplyImpact,
+                    SimpleCooldownModifier::DecreaseCooldown,
                     _c,
                 ) => {}
             }

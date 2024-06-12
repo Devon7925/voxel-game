@@ -2,7 +2,7 @@
     * Add up/down arrows on hover for number cards for more intuitive editing
     * Add hovers for status effects
     * Give reasoning for unreasonable decks
-    * Rename multiply impact to decrease cooldown
+    * Add a way to decrease impact of ability
     * Add a way to type in modifier values
 * Improve the experience of picking from prebuilt decks
 * Add a way to peek at other player's decks
