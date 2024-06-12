@@ -32,6 +32,4 @@
     * Nerf Low health shields
     * Nerf Splash damage
     * Nerf negative self effects
-* Fixes
-    * Fix player render far plane
 * Move to github issues

@@ -34,7 +34,7 @@ use vulkano::{
     render_pass::Subpass,
 };
 
-use crate::{rollback_manager::WorldState, PLAYER_HITBOX_OFFSET};
+use crate::{rollback_manager::WorldState, PLAYER_HITBOX_OFFSET, RASTER_FAR_PLANE};
 
 pub struct RasterizerSystem {
     gfx_queue: Arc<Queue>,
@@ -202,7 +202,7 @@ impl RasterizerSystem {
         let uniform_buffer_subbuffer = {
             let aspect_ratio = viewport_dimensions[0] as f32 / viewport_dimensions[1] as f32;
             let proj =
-                cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), aspect_ratio, 0.1, 100.0);
+                cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), aspect_ratio, 0.1, RASTER_FAR_PLANE);
 
             let uniform_data = vs::Data {
                 view: view_matrix.into(),
@@ -221,8 +221,11 @@ impl RasterizerSystem {
             if player.get_health_stats().0 <= 0.0 {
                 continue;
             }
-            player_writer[player_buffer_idx].instance_position =
-                [player.pos[0]+PLAYER_HITBOX_OFFSET[0] * player.size, player.pos[1]+PLAYER_HITBOX_OFFSET[1] * player.size, player.pos[2]+PLAYER_HITBOX_OFFSET[2] * player.size];
+            player_writer[player_buffer_idx].instance_position = [
+                player.pos[0] + PLAYER_HITBOX_OFFSET[0] * player.size,
+                player.pos[1] + PLAYER_HITBOX_OFFSET[1] * player.size,
+                player.pos[2] + PLAYER_HITBOX_OFFSET[2] * player.size,
+            ];
             let render_rotation =
                 Quaternion::from_axis_angle(Vector3::new(0.0, 1.0, 0.0), Rad(player.facing[0]));
             player_writer[player_buffer_idx].instance_rotation = [

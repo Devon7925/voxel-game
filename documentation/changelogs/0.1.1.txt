@@ -1,3 +1,4 @@
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync
+    * Fix player render far plane

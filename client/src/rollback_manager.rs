@@ -2264,23 +2264,17 @@ impl Entity {
         }
 
         //volume effects
-        let x_iter_count = (self.size * PLAYER_HITBOX_SIZE[0]).ceil() + 1.0;
-        let y_iter_count = (self.size * PLAYER_HITBOX_SIZE[1]).ceil() + 1.0;
-        let z_iter_count = (self.size * PLAYER_HITBOX_SIZE[2]).ceil() + 1.0;
-        let x_dist = (self.size * PLAYER_HITBOX_SIZE[0]) / x_iter_count;
-        let y_dist = (self.size * PLAYER_HITBOX_SIZE[1]) / y_iter_count;
-        let z_dist = (self.size * PLAYER_HITBOX_SIZE[2]) / z_iter_count;
-        let start_pos =
-            self.pos + PLAYER_HITBOX_OFFSET * self.size - 0.5 * self.size * PLAYER_HITBOX_SIZE;
+        let start_pos = (self.pos + self.size * PLAYER_HITBOX_OFFSET - self.size * PLAYER_HITBOX_SIZE / 2.0).map(|c| c.floor() as u32);
+        let iter_counts = (self.pos + self.size * PLAYER_HITBOX_OFFSET + self.size * PLAYER_HITBOX_SIZE / 2.0).zip(
+            start_pos,
+            |a, b| a.floor() as u32 - b,
+        );
         let mut nearby_density = 0.0;
-        for x in 0..x_iter_count as u32 {
-            for y in 0..y_iter_count as u32 {
-                for z in 0..z_iter_count as u32 {
-                    let pos = start_pos
-                        + x_dist * x as f32 * Vector3::new(1.0, 0.0, 0.0)
-                        + y_dist * y as f32 * Vector3::new(0.0, 1.0, 0.0)
-                        + z_dist * z as f32 * Vector3::new(0.0, 0.0, 1.0);
-                    let voxel_pos = pos.map(|c| c.floor() as u32);
+        for x in 0..iter_counts[0] {
+            for y in 0..iter_counts[1] {
+                for z in 0..iter_counts[2] {
+                    let voxel_pos = start_pos
+                        + Vector3::new(x, y, z);
                     let material = if is_inbounds(voxel_pos, game_state, game_settings) {
                         let idx = get_index(voxel_pos, cpu_chunks, game_state, game_settings);
                         if let Some(idx) = idx {
@@ -2295,7 +2289,7 @@ impl Entity {
                 }
             }
         }
-        nearby_density /= x_iter_count * y_iter_count * z_iter_count;
+        nearby_density /= (iter_counts[0] * iter_counts[1] * iter_counts[2]) as f32;
 
         self.vel.y -= (PLAYER_DENSITY - nearby_density) / PLAYER_DENSITY
             * player_stats[player_idx].gravity

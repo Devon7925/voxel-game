@@ -39,6 +39,7 @@ use winit::{
 
 pub const WINDOW_WIDTH: f32 = 1024.0;
 pub const WINDOW_HEIGHT: f32 = 1024.0;
+pub const RASTER_FAR_PLANE: f32 = 200.0;
 pub const CHUNK_SIZE: usize = 16;
 const SUB_CHUNK_COUNT: usize = CHUNK_SIZE / 16;
 const WORLDGEN_CHUNK_COUNT: usize = CHUNK_SIZE / 8;
@@ -449,7 +450,7 @@ fn compute_then_render(
     } else {
         Matrix4::identity()
     };
-    let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), 1.0, 0.1, 100.0);
+let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), 1.0, 0.1, RASTER_FAR_PLANE);
     // Start the frame.
     let future = if let Some(game) = app.game.as_mut() {
         if game.has_started {
