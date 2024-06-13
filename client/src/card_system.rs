@@ -39,6 +39,7 @@ pub struct Cooldown {
 pub enum CooldownModifier {
     SignedSimpleCooldownModifier(SignedSimpleCooldownModifier, i32),
     SimpleCooldownModifier(SimpleCooldownModifier, u32),
+    Reloading,
 }
 
 impl CooldownModifier {
@@ -47,6 +48,7 @@ impl CooldownModifier {
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => format!("Add {} charges", s),
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => format!("Increase cooldown by {}s ({} per)", SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT*(*s as f32), SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT),
             CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increases the cooldown of all other abilities", self.get_effect_value()),
+            CooldownModifier::Reloading => "For multicharge cooldowns, only start cooldown once all charges are depleted".to_string(),
         }
     }
 
@@ -55,6 +57,7 @@ impl CooldownModifier {
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => *s as f32,
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => *s as f32,
             CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, s) => 1.25f32.powi(*s),
+            CooldownModifier::Reloading => 1.0,
         }
     }
 }
@@ -181,6 +184,7 @@ impl Cooldown {
         let mut ability_charges = 0;
         let mut added_cooldown = 0;
         let mut impact_multiplier = 1.0;
+        let mut reloading = false;
         for modifier in self.modifiers.iter() {
             match modifier {
                 CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => {
@@ -198,13 +202,12 @@ impl Cooldown {
                 ) => {
                     impact_multiplier *= modifier.get_effect_value();
                 }
+                CooldownModifier::Reloading => {
+                    reloading = true;
+                }
             }
         }
-        let cooldown = SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT * added_cooldown as f32
-            + Self::GLOBAL_COOLDOWN_MULTIPLIER * (sum + 2.0 * max) / 3.0
-                * (1.0 + 0.25 * (ability_charges as f32 + 1.0).ln())
-                / (impact_multiplier / total_impact);
-        let recovery = ability_values
+        let recovery: Vec<f32> = ability_values
             .iter()
             .map(|val| {
                 Self::GLOBAL_COOLDOWN_MULTIPLIER * 0.5 * added_cooldown as f32
@@ -212,6 +215,18 @@ impl Cooldown {
                         / (impact_multiplier / total_impact)
             })
             .collect();
+        let max_recovery = recovery
+            .iter()
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
+            .clone();
+        let mut cooldown = SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT * added_cooldown as f32
+            + Self::GLOBAL_COOLDOWN_MULTIPLIER * (sum + 2.0 * max) / 3.0
+                * (2.0 - (-(ability_charges as f32 / 10.0)).exp())
+                / (impact_multiplier / total_impact);
+        if reloading && ability_charges > 0 {
+            cooldown = (1 + ability_charges) as f32 * (cooldown - max_recovery);
+        }
         (cooldown, recovery)
     }
 
@@ -253,6 +268,7 @@ impl Cooldown {
                     ModificationType::Add => *v += 1,
                     ModificationType::Remove => *v -= 1,
                 },
+                _ => {}
             }
         } else if type_idx == 1 {
             let idx = path.pop_front().unwrap() as usize;
@@ -329,6 +345,7 @@ impl Cooldown {
                             }
                         }
                     }
+                    _ => {}
                 }
 
                 if !combined {
@@ -364,6 +381,7 @@ impl Cooldown {
                         self.modifiers.remove(idx);
                     }
                 }
+                _ => {}
             }
         } else if idx_type == 1 {
             let idx = path.pop_front().unwrap() as usize;
@@ -2165,6 +2183,7 @@ pub struct ReferencedCooldown {
     pub add_charge: u32,
     pub add_cooldown: u32,
     pub abilities: Vec<(ReferencedBaseCard, Keybind)>,
+    pub is_reloading: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
@@ -2287,6 +2306,7 @@ impl CardManager {
         }
         let mut add_charge = 0;
         let mut add_cooldown = 0;
+        let mut is_reloading = false;
         for modifier in cooldown.modifiers {
             match modifier {
                 CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, c) => {
@@ -2300,12 +2320,14 @@ impl CardManager {
                     SignedSimpleCooldownModifier::DecreaseCooldown,
                     _c,
                 ) => {}
+                CooldownModifier::Reloading => is_reloading = true,
             }
         }
         ReferencedCooldown {
             add_charge,
             add_cooldown,
             abilities,
+            is_reloading,
         }
     }
 

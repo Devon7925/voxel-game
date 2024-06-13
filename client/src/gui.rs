@@ -495,6 +495,15 @@ impl DraggableCard {
                         modify_path,
                         path,
                     ),
+                    CooldownModifier::Reloading => add_hoverable_basic_modifer(
+                        ui,
+                        item_id,
+                        "Reloading",
+                        "",
+                        hover_text,
+                        modify_path,
+                        path,
+                    ),
                 }
             }
             DraggableCard::MultiCastModifier(modifier) => {
@@ -1461,6 +1470,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             SignedSimpleCooldownModifier::DecreaseCooldown,
                             1,
                         )),
+                        DraggableCard::CooldownModifier(CooldownModifier::Reloading),
                     ],
                     PaletteState::StatusEffects => vec![
                         DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(

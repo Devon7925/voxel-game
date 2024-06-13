@@ -13,7 +13,6 @@
     * Display time to next charge for multicharge cooldowns
     * Display recovery times
 * Cards
-    * Add cooldown modifier that makes all charges reload at once
     * Directions
         * Add directions
             * Up

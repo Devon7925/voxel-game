@@ -2305,8 +2305,15 @@ impl Entity {
             }
         }
         for ability in self.abilities.iter_mut() {
-            if ability.cooldown > 0.0 {
-                ability.cooldown -= time_step;
+            if ability.ability.is_reloading {
+                if ability.cooldown >= ability.value.0 * (1 + ability.ability.add_charge) as f32 {
+                    ability.cooldown = 0.0;
+                    ability.recovery = ability.recovery.max(ability.value.0);
+                }
+            } else {
+                if ability.cooldown > 0.0 {
+                    ability.cooldown -= time_step;
+                }
             }
             if ability.recovery > 0.0 {
                 ability.recovery -= time_step;

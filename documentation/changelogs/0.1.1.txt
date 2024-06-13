@@ -3,6 +3,7 @@
     * Allow faster bullets
     * Added passives
     * Allow negatives for multiply impact modifier
+    * Add cooldown modifier that makes all charges reload at once
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync
