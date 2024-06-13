@@ -9,9 +9,7 @@ use itertools::Itertools;
 
 use crate::{
     card_system::{
-        Ability, BaseCard, Cooldown, CooldownModifier, Deck, DraggableCard, Effect, Keybind,
-        MultiCastModifier, ProjectileModifier, ReferencedStatusEffect, SimpleCooldownModifier,
-        SimpleProjectileModifierType, SimpleStatusEffectType, StatusEffect, VoxelMaterial,
+        Ability, BaseCard, Cooldown, CooldownModifier, Deck, DraggableCard, Effect, Keybind, MultiCastModifier, ProjectileModifier, ReferencedStatusEffect, SignedSimpleCooldownModifier, SimpleCooldownModifier, SimpleProjectileModifierType, SimpleStatusEffectType, StatusEffect, VoxelMaterial
     },
     lobby_browser::LobbyBrowser,
     rollback_manager::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
@@ -485,8 +483,8 @@ impl DraggableCard {
                         modify_path,
                         path,
                     ),
-                    CooldownModifier::SimpleCooldownModifier(
-                        SimpleCooldownModifier::DecreaseCooldown,
+                    CooldownModifier::SignedSimpleCooldownModifier(
+                        SignedSimpleCooldownModifier::DecreaseCooldown,
                         v,
                     ) => add_hoverable_basic_modifer(
                         ui,
@@ -1382,15 +1380,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                     PaletteState::ProjectileModifiers => vec![
                         DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
                             SimpleProjectileModifierType::Gravity,
-                            -1,
-                        )),
-                        DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
-                            SimpleProjectileModifierType::Gravity,
                             1,
-                        )),
-                        DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
-                            SimpleProjectileModifierType::Health,
-                            -1,
                         )),
                         DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
                             SimpleProjectileModifierType::Health,
@@ -1398,15 +1388,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                         )),
                         DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
                             SimpleProjectileModifierType::Length,
-                            -1,
-                        )),
-                        DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
-                            SimpleProjectileModifierType::Length,
                             1,
-                        )),
-                        DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
-                            SimpleProjectileModifierType::Width,
-                            -1,
                         )),
                         DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
                             SimpleProjectileModifierType::Width,
@@ -1414,15 +1396,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                         )),
                         DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
                             SimpleProjectileModifierType::Height,
-                            -1,
-                        )),
-                        DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
-                            SimpleProjectileModifierType::Height,
                             1,
-                        )),
-                        DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
-                            SimpleProjectileModifierType::Size,
-                            -1,
                         )),
                         DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
                             SimpleProjectileModifierType::Size,
@@ -1430,15 +1404,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                         )),
                         DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
                             SimpleProjectileModifierType::Speed,
-                            -1,
-                        )),
-                        DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
-                            SimpleProjectileModifierType::Speed,
                             1,
-                        )),
-                        DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
-                            SimpleProjectileModifierType::Lifetime,
-                            -1,
                         )),
                         DraggableCard::ProjectileModifier(ProjectileModifier::SimpleModify(
                             SimpleProjectileModifierType::Lifetime,
@@ -1491,8 +1457,8 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             SimpleCooldownModifier::AddCooldown,
                             1,
                         )),
-                        DraggableCard::CooldownModifier(CooldownModifier::SimpleCooldownModifier(
-                            SimpleCooldownModifier::DecreaseCooldown,
+                        DraggableCard::CooldownModifier(CooldownModifier::SignedSimpleCooldownModifier(
+                            SignedSimpleCooldownModifier::DecreaseCooldown,
                             1,
                         )),
                     ],

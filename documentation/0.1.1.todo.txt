@@ -14,7 +14,6 @@
     * Display recovery times
 * Cards
     * Add cooldown modifier that makes all charges reload at once
-    * Allow negatives for multiply impact modifier
     * Directions
         * Add directions
             * Up

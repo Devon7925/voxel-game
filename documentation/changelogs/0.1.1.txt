@@ -2,6 +2,7 @@
 * Cards
     * Allow faster bullets
     * Added passives
+    * Allow negatives for multiply impact modifier
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync

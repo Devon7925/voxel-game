@@ -37,6 +37,7 @@ pub struct Cooldown {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum CooldownModifier {
+    SignedSimpleCooldownModifier(SignedSimpleCooldownModifier, i32),
     SimpleCooldownModifier(SimpleCooldownModifier, u32),
 }
 
@@ -45,16 +46,28 @@ impl CooldownModifier {
         match self {
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => format!("Add {} charges", s),
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => format!("Increase cooldown by {}s ({} per)", SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT*(*s as f32), SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT),
-            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::DecreaseCooldown, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increases the cooldown of all other abilities", s),
+            CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increases the cooldown of all other abilities", self.get_effect_value()),
         }
     }
+
+    pub fn get_effect_value(&self) -> f32 {
+        match self {
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => *s as f32,
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => *s as f32,
+            CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, s) => 1.25f32.powi(*s),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub enum SignedSimpleCooldownModifier {
+    DecreaseCooldown,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum SimpleCooldownModifier {
     AddCharge,
     AddCooldown,
-    DecreaseCooldown,
 }
 
 impl SimpleCooldownModifier {
@@ -179,11 +192,11 @@ impl Cooldown {
                 ) => {
                     added_cooldown += s;
                 }
-                CooldownModifier::SimpleCooldownModifier(
-                    SimpleCooldownModifier::DecreaseCooldown,
+                CooldownModifier::SignedSimpleCooldownModifier(
+                    SignedSimpleCooldownModifier::DecreaseCooldown,
                     s,
                 ) => {
-                    impact_multiplier += 0.25 * *s as f32;
+                    impact_multiplier *= modifier.get_effect_value();
                 }
             }
         }
@@ -206,11 +219,11 @@ impl Cooldown {
         let mut impact_multiplier = 1.0;
         for modifier in self.modifiers.iter() {
             match modifier {
-                CooldownModifier::SimpleCooldownModifier(
-                    SimpleCooldownModifier::DecreaseCooldown,
+                CooldownModifier::SignedSimpleCooldownModifier(
+                    SignedSimpleCooldownModifier::DecreaseCooldown,
                     s,
                 ) => {
-                    impact_multiplier += 0.25 * *s as f32;
+                    impact_multiplier *= modifier.get_effect_value();
                 }
                 _ => {}
             }
@@ -235,6 +248,10 @@ impl Cooldown {
                             *v -= 1
                         }
                     }
+                },
+                CooldownModifier::SignedSimpleCooldownModifier(_, v) => match modification_type {
+                    ModificationType::Add => *v += 1,
+                    ModificationType::Remove => *v -= 1,
                 },
             }
         } else if type_idx == 1 {
@@ -298,6 +315,20 @@ impl Cooldown {
                             }
                         }
                     }
+                    CooldownModifier::SignedSimpleCooldownModifier(last_type, last_s) => {
+                        for modifier in self.modifiers.iter_mut() {
+                            match modifier {
+                                CooldownModifier::SignedSimpleCooldownModifier(current_type, s)
+                                    if *current_type == last_type =>
+                                {
+                                    *s += last_s;
+                                    combined = true;
+                                    break;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                 }
 
                 if !combined {
@@ -324,6 +355,11 @@ impl Cooldown {
             assert!(path.is_empty());
             match self.modifiers[idx] {
                 CooldownModifier::SimpleCooldownModifier(_, s) => {
+                    if s == 0 {
+                        self.modifiers.remove(idx);
+                    }
+                }
+                CooldownModifier::SignedSimpleCooldownModifier(_, s) => {
                     if s == 0 {
                         self.modifiers.remove(idx);
                     }
@@ -384,25 +420,6 @@ pub enum ProjectileModifier {
     LockToOwner,
     PiercePlayers,
     WallBounce,
-}
-
-impl ProjectileModifier {
-    pub fn is_advanced(&self) -> bool {
-        match self {
-            ProjectileModifier::None => false,
-            ProjectileModifier::SimpleModify(_, _) => false,
-            ProjectileModifier::FriendlyFire => false,
-            ProjectileModifier::NoEnemyFire => false,
-            ProjectileModifier::OnHit(_) => true,
-            ProjectileModifier::OnHeadshot(_) => true,
-            ProjectileModifier::OnExpiry(_) => true,
-            ProjectileModifier::OnTrigger(_, _) => true,
-            ProjectileModifier::Trail(_, _) => true,
-            ProjectileModifier::LockToOwner => false,
-            ProjectileModifier::PiercePlayers => false,
-            ProjectileModifier::WallBounce => false,
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -1904,6 +1921,23 @@ impl Default for BaseCard {
 }
 
 impl ProjectileModifier {
+    pub fn is_advanced(&self) -> bool {
+        match self {
+            ProjectileModifier::None => false,
+            ProjectileModifier::SimpleModify(_, _) => false,
+            ProjectileModifier::FriendlyFire => false,
+            ProjectileModifier::NoEnemyFire => false,
+            ProjectileModifier::OnHit(_) => true,
+            ProjectileModifier::OnHeadshot(_) => true,
+            ProjectileModifier::OnExpiry(_) => true,
+            ProjectileModifier::OnTrigger(_, _) => true,
+            ProjectileModifier::Trail(_, _) => true,
+            ProjectileModifier::LockToOwner => false,
+            ProjectileModifier::PiercePlayers => false,
+            ProjectileModifier::WallBounce => false,
+        }
+    }
+
     pub fn get_hover_text(&self) -> String {
         match self {
             ProjectileModifier::None => format!(""),
@@ -2262,8 +2296,8 @@ impl CardManager {
                     SimpleCooldownModifier::AddCooldown,
                     c,
                 ) => add_cooldown += c,
-                CooldownModifier::SimpleCooldownModifier(
-                    SimpleCooldownModifier::DecreaseCooldown,
+                CooldownModifier::SignedSimpleCooldownModifier(
+                    SignedSimpleCooldownModifier::DecreaseCooldown,
                     _c,
                 ) => {}
             }
