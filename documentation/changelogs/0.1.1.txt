@@ -1,6 +1,7 @@
 * Add gravity independent pressure volume effects
 * Cards
     * Allow faster bullets
+    * Added passives
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync

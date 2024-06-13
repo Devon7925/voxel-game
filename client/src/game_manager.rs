@@ -7,7 +7,7 @@ use cgmath::{EuclideanSpace, Point3};
 
 use crate::{
     app::CreationInterface,
-    card_system::{CardManager, Cooldown},
+    card_system::{CardManager, Cooldown, Deck},
     rollback_manager::{PlayerSim, ReplayData, RollbackData},
     settings_manager::Settings,
     voxel_sim_manager::VoxelComputePipeline,
@@ -32,7 +32,7 @@ impl Game {
     pub fn new(
         settings: &Settings,
         game_settings: GameSettings,
-        deck: &Vec<Cooldown>,
+        deck: &Deck,
         creation_interface: &CreationInterface,
         lobby_id: Option<RoomId>,
     ) -> Self {

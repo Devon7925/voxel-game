@@ -20,6 +20,7 @@ use crate::{
     settings_manager::Settings,
     utils::Direction,
 };
+use card_system::Deck;
 use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use multipass_system::Pass;
 use std::io::Write;
@@ -104,9 +105,9 @@ fn main() {
         start_puffin_server();
     }
 
-    let player_deck =
-        Cooldown::vec_from_string(fs::read_to_string(&settings.card_file).unwrap().as_str());
-    assert!(player_deck.iter().all(|cooldown| cooldown.is_reasonable()));
+    let player_deck:Deck =
+        ron::from_str(fs::read_to_string(&settings.card_file).unwrap().as_str()).unwrap();
+    assert!(player_deck.cooldowns.iter().all(|cooldown| cooldown.is_reasonable()));
 
     // Create app with vulkano context.
     let mut app = RenderPipeline::new(&event_loop, settings);
@@ -124,7 +125,7 @@ fn main() {
     let mut gui_state = GuiState {
         menu_stack: vec![GuiElement::MainMenu],
         errors: Vec::new(),
-        gui_cards: player_deck.clone(),
+        gui_deck: player_deck.clone(),
         dock_cards: vec![],
         cooldown_cache_refresh_delay: 0.0,
         palette_state: PaletteState::BaseCards,
@@ -330,7 +331,7 @@ fn handle_events(
                                     let exited_ui = gui_state.menu_stack.pop().unwrap();
                                     match exited_ui {
                                         GuiElement::CardEditor => {
-                                            let export = ron::to_string(&gui_state.gui_cards).unwrap();
+                                            let export = ron::to_string(&gui_state.gui_deck).unwrap();
                                             fs::write(&app.settings.card_file, export)
                                                 .expect("failed to write card file");
                                         }

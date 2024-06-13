@@ -661,7 +661,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             *game = Some(Game::new(
                                                 settings,
                                                 settings.singleplayer_settings.clone(),
-                                                &gui_state.gui_cards,
+                                                &gui_state.gui_deck,
                                                 creation_interface,
                                                 None,
                                             ));
@@ -675,7 +675,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             *game = Some(Game::new(
                                                 settings,
                                                 settings.practice_range_settings.clone(),
-                                                &gui_state.gui_cards,
+                                                &gui_state.gui_deck,
                                                 creation_interface,
                                                 None,
                                             ));
@@ -809,7 +809,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                             *game = Some(Game::new(
                                                 settings,
                                                 settings.create_lobby_settings.clone(),
-                                                &gui_state.gui_cards,
+                                                &gui_state.gui_deck,
                                                 creation_interface,
                                                 Some(RoomId(new_lobby_id)),
                                             ));
@@ -871,7 +871,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                             *game = Some(Game::new(
                                                                 settings,
                                                                 lobby.settings.clone(),
-                                                                &gui_state.gui_cards,
+                                                                &gui_state.gui_deck,
                                                                 creation_interface,
                                                                 Some(lobby.lobby_id.clone()),
                                                             ));

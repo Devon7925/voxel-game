@@ -14,6 +14,7 @@
     * Refraction
     * Improved player model
 * Cards
+    * Merge status effects and projectile modifiers
     * Homing cards so turrets can exist
     * Add energy system
         * Energy buff cards

@@ -10,6 +10,26 @@ use std::{
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Deck {
+    pub cooldowns: Vec<Cooldown>,
+    pub passive_effects: Vec<StatusEffect>,
+}
+
+impl Deck {
+    pub fn get_total_impact(&self) -> f32 {
+        let passive_value = BaseCard::StatusEffects(1, self.passive_effects.clone()).get_cooldown();
+        if passive_value > 0.5 {
+            return f32::MIN_POSITIVE;
+        }
+        self.cooldowns
+            .iter()
+            .map(|cooldown| cooldown.get_impact_multiplier())
+            .sum::<f32>()
+            / (1.0 - 2.0 * passive_value)
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Cooldown {
     pub modifiers: Vec<CooldownModifier>,
     pub abilities: Vec<Ability>,
@@ -110,10 +130,6 @@ impl Cooldown {
             modifiers: vec![],
             abilities: vec![Ability::default()],
         }
-    }
-
-    pub fn vec_from_string(ron_string: &str) -> Vec<Self> {
-        ron::from_str(ron_string).unwrap()
     }
 
     pub fn is_reasonable(&self) -> bool {
@@ -506,7 +522,7 @@ impl StatusEffect {
         match self {
             StatusEffect::None => "".to_string(),
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, _) => {
-                format!("Speed (25% per) {}%", self.get_effect_value())
+                format!("Speed (25% per) {}%", self.get_effect_value() * 100.0)
             }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::DamageOverTime, _) => format!(
                 "Damage over time (10 dps per) {}dps",
@@ -515,7 +531,7 @@ impl StatusEffect {
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseDamageTaken, _) => {
                 format!(
                     "Increase damage taken (25% per) {}%",
-                    self.get_effect_value()
+                    self.get_effect_value() * 100.0
                 )
             }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity, _) => {
@@ -528,7 +544,7 @@ impl StatusEffect {
                 format!("Overheal (10 per) {}", self.get_effect_value())
             }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, _) => {
-                format!("Grow (25% per) {}%", self.get_effect_value())
+                format!("Grow (25% per) {}%", self.get_effect_value() * 100.0)
             }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, _) => {
                 format!("Increase max health (10% per) {}%", self.get_effect_value())
@@ -538,6 +554,45 @@ impl StatusEffect {
             StatusEffect::Lockout => "Lockout".to_string(),
             StatusEffect::Stun => "Stun".to_string(),
             StatusEffect::OnHit(card) => format!("On hit {}", card.to_string()),
+        }
+    }
+
+    pub fn modify_from_path(
+        &mut self,
+        path: &mut VecDeque<u32>,
+        modification_type: &ModificationType,
+    ) {
+        match self {
+            StatusEffect::None => {}
+            StatusEffect::SimpleStatusEffect(_, ref mut stacks) => match modification_type {
+                ModificationType::Add => *stacks += 1,
+                ModificationType::Remove => *stacks -= 1,
+            },
+            StatusEffect::Invincibility => {}
+            StatusEffect::Trapped => {}
+            StatusEffect::Lockout => {}
+            StatusEffect::Stun => {}
+            StatusEffect::OnHit(ref mut card) => {
+                assert!(path.pop_front().unwrap() == 0);
+                card.modify_from_path(path, modification_type)
+            }
+        }
+    }
+
+    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {
+        match self {
+            StatusEffect::OnHit(card) => {
+                assert!(path.pop_front().unwrap() == 0);
+                card.take_from_path(path)
+            }
+            _ => panic!("Invalid state"),
+        }
+    }
+
+    pub fn insert_to_path(&mut self, drop_path: &mut VecDeque<u32>, item: DraggableCard) {
+        match self {
+            StatusEffect::OnHit(ref mut card) => card.insert_to_path(drop_path, item),
+            _ => panic!("Invalid state"),
         }
     }
 }
@@ -1166,7 +1221,7 @@ impl BaseCard {
                                 SimpleStatusEffectType::IncreaseMaxHealth => vec![CardValue {
                                     damage: 0.0,
                                     generic: (if is_direct && stacks < &0 { -0.5 } else { 1.0 })
-                                        * 1.0
+                                        * 0.01
                                         * true_duration
                                         * effect.get_effect_value().abs(),
                                     range_probabilities: core::array::from_fn(|idx| {
@@ -1471,23 +1526,7 @@ impl BaseCard {
                     }
                 } else {
                     let effect_idx = path.pop_front().unwrap() as usize;
-                    match effects[effect_idx] {
-                        StatusEffect::None => {}
-                        StatusEffect::SimpleStatusEffect(_, ref mut stacks) => {
-                            match modification_type {
-                                ModificationType::Add => *stacks += 1,
-                                ModificationType::Remove => *stacks -= 1,
-                            }
-                        }
-                        StatusEffect::Invincibility => {}
-                        StatusEffect::Trapped => {}
-                        StatusEffect::Lockout => {}
-                        StatusEffect::Stun => {}
-                        StatusEffect::OnHit(ref mut card) => {
-                            assert!(path.pop_front().unwrap() == 0);
-                            card.modify_from_path(path, modification_type)
-                        }
-                    }
+                    effects[effect_idx].modify_from_path(path, modification_type);
                 }
             }
             BaseCard::Effect(effect) => {
@@ -1600,13 +1639,10 @@ impl BaseCard {
                     effects[effect_idx as usize] = StatusEffect::None;
                     return DraggableCard::StatusEffect(effect);
                 }
-                match effects.get_mut(effect_idx as usize).unwrap() {
-                    StatusEffect::OnHit(card) => {
-                        assert!(path.pop_front().unwrap() == 0);
-                        card.take_from_path(path)
-                    }
-                    _ => panic!("Invalid state"),
-                }
+                effects
+                    .get_mut(effect_idx as usize)
+                    .unwrap()
+                    .take_from_path(path)
             }
             BaseCard::Palette(cards) => {
                 let card_idx = path.pop_front().unwrap() as usize;
@@ -1750,10 +1786,7 @@ impl BaseCard {
                 } else {
                     let idx = path.pop_front().unwrap() as usize;
                     assert!(path.pop_front().unwrap() == 0);
-                    match effects[idx] {
-                        StatusEffect::OnHit(ref mut card) => card.insert_to_path(path, item),
-                        _ => panic!("Invalid state"),
-                    }
+                    effects[idx].insert_to_path(path, item);
                 }
             }
             BaseCard::None => {
@@ -2430,47 +2463,7 @@ impl CardManager {
                     effects: vec![],
                 };
                 for effect in effects {
-                    referenced_status_effects.effects.extend(match effect {
-                        StatusEffect::None => panic!("Invalid state"),
-                        StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, stacks) => {
-                            vec![ReferencedStatusEffect::Speed(stacks)]
-                        }
-                        StatusEffect::SimpleStatusEffect(
-                            SimpleStatusEffectType::DamageOverTime,
-                            stacks,
-                        ) => vec![ReferencedStatusEffect::DamageOverTime(stacks)],
-                        StatusEffect::SimpleStatusEffect(
-                            SimpleStatusEffectType::IncreaseDamageTaken,
-                            stacks,
-                        ) => vec![ReferencedStatusEffect::IncreaseDamageTaken(stacks)],
-                        StatusEffect::SimpleStatusEffect(
-                            SimpleStatusEffectType::IncreaseGravity,
-                            stacks,
-                        ) => vec![ReferencedStatusEffect::IncreaseGravity(stacks)],
-                        StatusEffect::SimpleStatusEffect(
-                            SimpleStatusEffectType::Overheal,
-                            stacks,
-                        ) => vec![ReferencedStatusEffect::Overheal(stacks)],
-                        StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, stacks) => {
-                            vec![ReferencedStatusEffect::Grow(stacks)]
-                        }
-                        StatusEffect::SimpleStatusEffect(
-                            SimpleStatusEffectType::IncreaseMaxHealth,
-                            stacks,
-                        ) => vec![ReferencedStatusEffect::IncreaseMaxHealth(stacks)],
-                        StatusEffect::Invincibility => vec![ReferencedStatusEffect::Invincibility],
-                        StatusEffect::Trapped => vec![ReferencedStatusEffect::Trapped],
-                        StatusEffect::Lockout => vec![ReferencedStatusEffect::Lockout],
-                        StatusEffect::Stun => vec![
-                            ReferencedStatusEffect::Trapped,
-                            ReferencedStatusEffect::Lockout,
-                        ],
-                        StatusEffect::OnHit(card) => {
-                            vec![ReferencedStatusEffect::OnHit(
-                                self.register_base_card(*card),
-                            )]
-                        }
-                    });
+                    referenced_status_effects.effects.extend(self.register_status_effect(effect));
                 }
                 self.referenced_status_effects
                     .push(referenced_status_effects);
@@ -2494,6 +2487,50 @@ impl CardManager {
         }
     }
 
+    pub fn register_status_effect(&mut self, effect: StatusEffect) -> Vec<ReferencedStatusEffect> {
+        match effect {
+            StatusEffect::None => panic!("Invalid state"),
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, stacks) => {
+                vec![ReferencedStatusEffect::Speed(stacks)]
+            }
+            StatusEffect::SimpleStatusEffect(
+                SimpleStatusEffectType::DamageOverTime,
+                stacks,
+            ) => vec![ReferencedStatusEffect::DamageOverTime(stacks)],
+            StatusEffect::SimpleStatusEffect(
+                SimpleStatusEffectType::IncreaseDamageTaken,
+                stacks,
+            ) => vec![ReferencedStatusEffect::IncreaseDamageTaken(stacks)],
+            StatusEffect::SimpleStatusEffect(
+                SimpleStatusEffectType::IncreaseGravity,
+                stacks,
+            ) => vec![ReferencedStatusEffect::IncreaseGravity(stacks)],
+            StatusEffect::SimpleStatusEffect(
+                SimpleStatusEffectType::Overheal,
+                stacks,
+            ) => vec![ReferencedStatusEffect::Overheal(stacks)],
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, stacks) => {
+                vec![ReferencedStatusEffect::Grow(stacks)]
+            }
+            StatusEffect::SimpleStatusEffect(
+                SimpleStatusEffectType::IncreaseMaxHealth,
+                stacks,
+            ) => vec![ReferencedStatusEffect::IncreaseMaxHealth(stacks)],
+            StatusEffect::Invincibility => vec![ReferencedStatusEffect::Invincibility],
+            StatusEffect::Trapped => vec![ReferencedStatusEffect::Trapped],
+            StatusEffect::Lockout => vec![ReferencedStatusEffect::Lockout],
+            StatusEffect::Stun => vec![
+                ReferencedStatusEffect::Trapped,
+                ReferencedStatusEffect::Lockout,
+            ],
+            StatusEffect::OnHit(card) => {
+                vec![ReferencedStatusEffect::OnHit(
+                    self.register_base_card(*card),
+                )]
+            }
+        }
+    }
+    
     pub fn get_effects_from_base_card(
         &self,
         card: ReferencedBaseCard,

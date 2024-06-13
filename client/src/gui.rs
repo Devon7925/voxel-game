@@ -9,7 +9,9 @@ use itertools::Itertools;
 
 use crate::{
     card_system::{
-        Ability, BaseCard, Cooldown, CooldownModifier, DraggableCard, Effect, Keybind, MultiCastModifier, ProjectileModifier, ReferencedStatusEffect, SimpleCooldownModifier, SimpleProjectileModifierType, SimpleStatusEffectType, StatusEffect, VoxelMaterial
+        Ability, BaseCard, Cooldown, CooldownModifier, Deck, DraggableCard, Effect, Keybind,
+        MultiCastModifier, ProjectileModifier, ReferencedStatusEffect, SimpleCooldownModifier,
+        SimpleProjectileModifierType, SimpleStatusEffectType, StatusEffect, VoxelMaterial,
     },
     lobby_browser::LobbyBrowser,
     rollback_manager::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
@@ -44,7 +46,7 @@ pub enum PaletteState {
 pub struct GuiState {
     pub menu_stack: Vec<GuiElement>,
     pub errors: Vec<String>,
-    pub gui_cards: Vec<Cooldown>,
+    pub gui_deck: Deck,
     pub dock_cards: Vec<DraggableCard>,
     pub cooldown_cache_refresh_delay: f32,
     pub palette_state: PaletteState,
@@ -698,11 +700,10 @@ impl DraggableCard {
                             SimpleStatusEffectType::DamageOverTime => "Damage Over Time",
                             SimpleStatusEffectType::Speed => "Speed",
                             SimpleStatusEffectType::IncreaseDamageTaken => "Increase Damage Taken",
-                            SimpleStatusEffectType::IncreaseGravity =>  "Increase Gravity",
+                            SimpleStatusEffectType::IncreaseGravity => "Increase Gravity",
                             SimpleStatusEffectType::Overheal => "Overheal",
                             SimpleStatusEffectType::Grow => "Grow",
                             SimpleStatusEffectType::IncreaseMaxHealth => "Increase Max Health",
-                            
                         };
                         add_hoverable_basic_modifer(
                             ui,
@@ -1001,21 +1002,26 @@ pub fn draw_base_card(
                         ui.vertical(|ui| {
                             ui.add_space(CARD_UI_SPACING);
                             ui.horizontal_wrapped(|ui| {
-                                add_basic_modifer(ui, "Apply Status Effects", *duration, modify_path, path);
+                                add_basic_modifer(
+                                    ui,
+                                    "Apply Status Effects",
+                                    *duration,
+                                    modify_path,
+                                    path,
+                                );
                                 for (effect_idx, effect) in effects.iter().enumerate() {
                                     if effect.is_advanced() {
                                         advanced_effects.push((effect_idx, effect));
                                         continue;
                                     }
                                     path.push_back(effect_idx as u32);
-                                    DraggableCard::StatusEffect(effect.clone())
-                                        .draw_draggable(
-                                            ui,
-                                            path,
-                                            source_path,
-                                            dest_path,
-                                            modify_path,
-                                        );
+                                    DraggableCard::StatusEffect(effect.clone()).draw_draggable(
+                                        ui,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                    );
                                     path.pop_back();
                                 }
                             });
@@ -1293,13 +1299,13 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(RichText::new("Card Editor").color(Color32::WHITE));
                             if ui.button("Export to Clipboard").clicked() {
-                                let export = ron::to_string(&gui_state.gui_cards).unwrap();
+                                let export = ron::to_string(&gui_state.gui_deck).unwrap();
                                 ui.output_mut(|o| o.copied_text = export);
                             }
 
                             if ui.button("Import from Clipboard").clicked() {
                                 let mut clipboard = clippers::Clipboard::get();
-                                let import: Option<Vec<Cooldown>> = match clipboard.read() {
+                                let import: Option<Deck> = match clipboard.read() {
                                     Some(clippers::ClipperData::Text(text)) => {
                                         let clipboard_parse = ron::from_str(text.as_str());
                                         if let Err(e) = &clipboard_parse {
@@ -1313,7 +1319,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                     }
                                 };
                                 if let Some(import) = import {
-                                    gui_state.gui_cards = import;
+                                    gui_state.gui_deck = import;
                                 }
                             }
 
@@ -1491,13 +1497,34 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                         )),
                     ],
                     PaletteState::StatusEffects => vec![
-                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::DamageOverTime, 1)),
-                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseDamageTaken, 1)),
-                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity, 1)),
-                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, 1)),
-                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, 1)),
-                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, 1)),
-                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, 1)),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(
+                            SimpleStatusEffectType::DamageOverTime,
+                            1,
+                        )),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(
+                            SimpleStatusEffectType::IncreaseDamageTaken,
+                            1,
+                        )),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(
+                            SimpleStatusEffectType::IncreaseGravity,
+                            1,
+                        )),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(
+                            SimpleStatusEffectType::Speed,
+                            1,
+                        )),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(
+                            SimpleStatusEffectType::Overheal,
+                            1,
+                        )),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(
+                            SimpleStatusEffectType::Grow,
+                            1,
+                        )),
+                        DraggableCard::StatusEffect(StatusEffect::SimpleStatusEffect(
+                            SimpleStatusEffectType::IncreaseMaxHealth,
+                            1,
+                        )),
                         DraggableCard::StatusEffect(StatusEffect::Invincibility),
                         DraggableCard::StatusEffect(StatusEffect::Trapped),
                         DraggableCard::StatusEffect(StatusEffect::Lockout),
@@ -1542,28 +1569,37 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                             ui.set_clip_rect(scroll_area);
-                            let total_impact = gui_state
-                                .gui_cards
-                                .iter()
-                                .map(|card| card.get_impact_multiplier())
-                                .sum::<f32>();
+                            let total_impact = gui_state.gui_deck.get_total_impact();
 
                             if gui_state.cooldown_cache_refresh_delay <= 0.0 {
-                                for cooldown in gui_state.gui_cards.iter_mut() {
+                                for cooldown in gui_state.gui_deck.cooldowns.iter_mut() {
                                     if cooldown.generate_cooldown_cache() {
                                         gui_state.cooldown_cache_refresh_delay = 0.5;
                                     }
                                 }
                             }
+                            ui.horizontal_top(|ui| {
+                                draw_base_card(
+                                    ui,
+                                    &mut BaseCard::StatusEffects(
+                                        1,
+                                        gui_state.gui_deck.passive_effects.clone(),
+                                    ),
+                                    &mut vec![1].into(),
+                                    &mut source_path,
+                                    &mut drop_path,
+                                    &mut modify_path,
+                                );
+                            });
 
                             for (ability_idx, mut cooldown) in
-                                gui_state.gui_cards.iter_mut().enumerate()
+                                gui_state.gui_deck.cooldowns.iter_mut().enumerate()
                             {
                                 ui.horizontal_top(|ui| {
                                     draw_cooldown(
                                         ui,
                                         &mut cooldown,
-                                        &mut vec![ability_idx as u32 + 1].into(),
+                                        &mut vec![ability_idx as u32 + 2].into(),
                                         &mut source_path,
                                         &mut drop_path,
                                         &mut modify_path,
@@ -1577,16 +1613,22 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                 .on_hover_text("Add a new cooldown")
                                 .clicked()
                             {
-                                gui_state.gui_cards.push(Cooldown::empty());
+                                gui_state.gui_deck.cooldowns.push(Cooldown::empty());
                             }
 
                             if let Some((modify_path, modify_type)) = modify_path.as_mut() {
                                 let modify_action_idx = modify_path.pop_front().unwrap() as usize;
-                                if modify_path.is_empty() {
-                                    assert!(matches!(modify_type, ModificationType::Remove));
-                                    gui_state.gui_cards.remove(modify_action_idx - 1);
-                                } else if modify_action_idx > 0 {
-                                    gui_state.gui_cards[modify_action_idx - 1]
+                                if modify_action_idx == 1 {
+                                    if let Some(passive_modification_idx) = modify_path.pop_front() {
+                                        gui_state.gui_deck.passive_effects[passive_modification_idx as usize]
+                                            .modify_from_path(&mut modify_path.clone(), modify_type);
+                                    }
+                                } else if modify_path.is_empty() {
+                                    if matches!(modify_type, ModificationType::Remove) {
+                                        gui_state.gui_deck.cooldowns.remove(modify_action_idx - 2);
+                                    }
+                                } else if modify_action_idx > 1 {
+                                    gui_state.gui_deck.cooldowns[modify_action_idx - 2]
                                         .modify_from_path(&mut modify_path.clone(), modify_type);
                                 }
                             }
@@ -1602,12 +1644,42 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                         // do the drop:
                                         let item = if source_action_idx == 0 {
                                             palette_card.take_from_path(source_path)
+                                        } else if source_action_idx == 1 {
+                                            let passive_idx =
+                                                source_path.pop_front().unwrap() as usize;
+                                            if source_path.is_empty() {
+                                                DraggableCard::StatusEffect(
+                                                    gui_state
+                                                        .gui_deck
+                                                        .passive_effects
+                                                        .remove(passive_idx),
+                                                )
+                                            } else {
+                                                gui_state.gui_deck.passive_effects[passive_idx]
+                                                    .take_from_path(&mut source_path.clone())
+                                            }
                                         } else {
-                                            gui_state.gui_cards[source_action_idx - 1]
+                                            gui_state.gui_deck.cooldowns[source_action_idx - 2]
                                                 .take_from_path(&mut source_path.clone())
                                         };
-                                        if drop_action_idx > 0 {
-                                            gui_state.gui_cards[drop_action_idx - 1]
+                                        if drop_action_idx == 1 {
+                                            if drop_path.is_empty() {
+                                                gui_state.gui_deck.passive_effects.push(
+                                                    match item {
+                                                        DraggableCard::StatusEffect(effect) => {
+                                                            effect
+                                                        }
+                                                        _ => panic!("Invalid drop"),
+                                                    },
+                                                );
+                                            } else {
+                                                let passive_idx =
+                                                    drop_path.pop_front().unwrap() as usize;
+                                                gui_state.gui_deck.passive_effects[passive_idx]
+                                                    .insert_to_path(drop_path, item);
+                                            }
+                                        } else if drop_action_idx > 1 {
+                                            gui_state.gui_deck.cooldowns[drop_action_idx - 2]
                                                 .insert_to_path(drop_path, item);
                                         } else if matches!(
                                             gui_state.palette_state,
@@ -1615,8 +1687,8 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                         ) {
                                             gui_state.dock_cards.push(item);
                                         }
-                                        if source_action_idx > 0 {
-                                            gui_state.gui_cards[source_action_idx - 1]
+                                        if source_action_idx > 1 {
+                                            gui_state.gui_deck.cooldowns[source_action_idx - 2]
                                                 .cleanup(source_path);
                                         }
                                     }
@@ -1641,13 +1713,21 @@ pub fn healthbar(corner_offset: f32, ctx: &egui::Context, spectate_player: &Enti
 
             for AppliedStatusEffect { effect, time_left } in spectate_player.status_effects.iter() {
                 let effect_name = match effect {
-                    ReferencedStatusEffect::DamageOverTime(stacks) => format!("Damage Over Time {}", stacks),
+                    ReferencedStatusEffect::DamageOverTime(stacks) => {
+                        format!("Damage Over Time {}", stacks)
+                    }
                     ReferencedStatusEffect::Speed(stacks) => format!("Speed {}", stacks),
-                    ReferencedStatusEffect::IncreaseDamageTaken(stacks) => format!("Increase Damage Taken {}", stacks),
-                    ReferencedStatusEffect::IncreaseGravity(stacks) => format!("Increase Gravity {}", stacks),
+                    ReferencedStatusEffect::IncreaseDamageTaken(stacks) => {
+                        format!("Increase Damage Taken {}", stacks)
+                    }
+                    ReferencedStatusEffect::IncreaseGravity(stacks) => {
+                        format!("Increase Gravity {}", stacks)
+                    }
                     ReferencedStatusEffect::Overheal(stacks) => format!("Overheal {}", stacks),
                     ReferencedStatusEffect::Grow(stacks) => format!("Grow {}", stacks),
-                    ReferencedStatusEffect::IncreaseMaxHealth(stacks) => format!("Increase Max Health {}", stacks),
+                    ReferencedStatusEffect::IncreaseMaxHealth(stacks) => {
+                        format!("Increase Max Health {}", stacks)
+                    }
                     ReferencedStatusEffect::Invincibility => "Invincibility".to_string(),
                     ReferencedStatusEffect::Trapped => "Trapped".to_string(),
                     ReferencedStatusEffect::Lockout => "Lockout".to_string(),

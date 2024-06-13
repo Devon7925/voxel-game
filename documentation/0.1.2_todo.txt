@@ -18,5 +18,12 @@
         * Symmetrical worlgen
     * Regular worldgen
         * Add trees
+* Rendering
+    * make RaycastResultLayer smaller for performance
+        * remove pos and recalculate using depth
+        * make normal into an uint type ex 0 = vec3(1, 0, 0)
 * Add a way to peek at other player's decks
 * Improve the experience of picking from prebuilt decks
+* Cards
+    * Make sure negative overhealth works
+    * Fix onhit and overheal passive effects

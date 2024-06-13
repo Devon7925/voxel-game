@@ -9,8 +9,10 @@ use std::{
 
 use bytemuck::{Pod, Zeroable};
 use cgmath::{
-    vec3, ElementWise, EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation, Rotation3, Vector2, Vector3
+    vec3, ElementWise, EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation,
+    Rotation3, Vector2, Vector3,
 };
+use itertools::Itertools;
 use matchbox_socket::{PeerId, PeerState};
 use serde::{Deserialize, Serialize};
 use vulkano::{
@@ -21,7 +23,9 @@ use winit::event::{ElementState, WindowEvent};
 
 use crate::{
     card_system::{
-        BaseCard, CardManager, Cooldown, ReferencedCooldown, ReferencedEffect, ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType, StateKeybind, StatusEffect, VoxelMaterial
+        BaseCard, CardManager, Cooldown, Deck, ReferencedCooldown, ReferencedEffect,
+        ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType,
+        StateKeybind, StatusEffect, VoxelMaterial,
     },
     game_manager::GameState,
     gui::{GuiElement, GuiState},
@@ -167,7 +171,7 @@ pub struct RollbackData {
     network_connection: Option<NetworkConnection>,
     controls: Vec<Vec<StateKeybind>>,
     player_action: PlayerAction,
-    player_deck: Vec<Cooldown>,
+    player_deck: Deck,
     player_idx_map: HashMap<PeerId, usize>,
     most_future_time_recorded: u64,
     connected_player_count: usize,
@@ -197,7 +201,7 @@ pub struct PlayerAction {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MetaAction {
-    pub deck_update: Option<Vec<Cooldown>>,
+    pub deck_update: Option<Deck>,
     pub leave: Option<bool>,
 }
 
@@ -213,6 +217,7 @@ pub struct Entity {
     pub right: Vector3<f32>,
     pub health: Vec<HealthSection>,
     pub abilities: Vec<PlayerAbility>,
+    pub passive_abilities: Vec<ReferencedStatusEffect>,
     pub respawn_timer: f32,
     pub collision_vec: Vector3<i32>,
     pub status_effects: Vec<AppliedStatusEffect>,
@@ -301,6 +306,7 @@ impl Default for Entity {
                 PLAYER_BASE_MAX_HEALTH,
             )],
             abilities: Vec::new(),
+            passive_abilities: Vec::new(),
             respawn_timer: 0.0,
             collision_vec: Vector3::new(0, 0, 0),
             status_effects: Vec::new(),
@@ -310,25 +316,28 @@ impl Default for Entity {
 }
 
 pub fn abilities_from_cooldowns(
-    cooldowns: &Vec<Cooldown>,
+    deck: &Deck,
     card_manager: &mut CardManager,
-) -> Vec<PlayerAbility> {
-    let total_impact = cooldowns
-        .iter()
-        .map(|card| card.get_impact_multiplier())
-        .sum();
-    cooldowns
-        .iter()
-        .map(|cooldown| {
-            let cooldown_time = cooldown.get_cooldown_recovery(total_impact);
-            PlayerAbility {
-                value: cooldown_time.clone(),
-                ability: card_manager.register_cooldown(cooldown.clone()),
-                cooldown: cooldown_time.0 * cooldown.ability_charges() as f32,
-                recovery: 0.0,
-            }
-        })
-        .collect()
+) -> (Vec<PlayerAbility>, Vec<ReferencedStatusEffect>) {
+    let total_impact = deck.get_total_impact();
+    (
+        deck.cooldowns
+            .iter()
+            .map(|cooldown| {
+                let cooldown_time = cooldown.get_cooldown_recovery(total_impact);
+                PlayerAbility {
+                    value: cooldown_time.clone(),
+                    ability: card_manager.register_cooldown(cooldown.clone()),
+                    cooldown: cooldown_time.0 * cooldown.ability_charges() as f32,
+                    recovery: 0.0,
+                }
+            })
+            .collect(),
+        deck.passive_effects
+            .iter()
+            .flat_map(|x| card_manager.register_status_effect(x.clone()))
+            .collect(),
+    )
 }
 
 impl PlayerSim for RollbackData {
@@ -377,8 +386,10 @@ impl PlayerSim for RollbackData {
                 }) = meta_action
                 {
                     if let Some(new_deck) = deck_update {
-                        self.rollback_state.players[player_idx].abilities =
-                            abilities_from_cooldowns(new_deck, card_manager)
+                        (
+                            self.rollback_state.players[player_idx].abilities,
+                            self.rollback_state.players[player_idx].passive_abilities,
+                        ) = abilities_from_cooldowns(new_deck, card_manager)
                     }
                     if let Some(true) = leave {
                         println!("player {} left", player_idx);
@@ -588,11 +599,12 @@ impl PlayerSim for RollbackData {
                     self.player_idx_map
                         .insert(peer, self.rollback_state.players.len());
 
-                    let new_player = Entity {
+                    let mut new_player = Entity {
                         pos: settings.spawn_location.into(),
-                        abilities: abilities_from_cooldowns(&cards, card_manager),
                         ..Default::default()
                     };
+                    (new_player.abilities, new_player.passive_abilities) =
+                        abilities_from_cooldowns(&cards, card_manager);
 
                     self.rollback_state.players.push(new_player);
                     self.entity_metadata
@@ -737,15 +749,15 @@ impl PlayerSim for RollbackData {
                                     match exited_ui {
                                         GuiElement::CardEditor => {
                                             if gui_state
-                                                .gui_cards
+                                                .gui_deck
+                                                .cooldowns
                                                 .iter()
                                                 .all(|cd| cd.is_reasonable())
                                             {
-                                                self.player_deck.clear();
-                                                self.player_deck
-                                                    .extend(gui_state.gui_cards.clone());
+                                                self.player_deck = gui_state.gui_deck.clone();
                                                 self.controls = self
                                                     .player_deck
+                                                    .cooldowns
                                                     .iter()
                                                     .map(|a| {
                                                         a.abilities
@@ -835,7 +847,7 @@ impl RollbackData {
         memory_allocator: &Arc<StandardMemoryAllocator>,
         settings: &Settings,
         game_settings: &GameSettings,
-        deck: &Vec<Cooldown>,
+        deck: &Deck,
         card_manager: &mut CardManager,
         lobby_id: Option<RoomId>,
     ) -> Self {
@@ -896,11 +908,12 @@ impl RollbackData {
         let mut rollback_state = WorldState::new();
         let mut entity_metadata = Vec::new();
 
-        let first_player = Entity {
+        let mut first_player = Entity {
             pos: game_settings.spawn_location.into(),
-            abilities: abilities_from_cooldowns(deck, card_manager),
             ..Default::default()
         };
+        (first_player.abilities, first_player.passive_abilities) =
+            abilities_from_cooldowns(deck, card_manager);
         rollback_state.players.push(first_player.clone());
         entity_metadata.push(EntityMetaData::Player(VecDeque::from(vec![
             Action::empty();
@@ -1066,8 +1079,10 @@ impl PlayerSim for ReplayData {
                 }) = meta_action
                 {
                     if let Some(new_deck) = deck_update {
-                        self.state.players[player_idx].abilities =
-                            abilities_from_cooldowns(new_deck, card_manager)
+                        (
+                            self.state.players[player_idx].abilities,
+                            self.state.players[player_idx].passive_abilities,
+                        ) = abilities_from_cooldowns(new_deck, card_manager)
                     }
                     if let Some(true) = leave {
                         leaving_players.push(player_idx);
@@ -1267,13 +1282,15 @@ impl ReplayData {
             if let Some(_game_settings_string) = line.strip_prefix("GAME SETTINGS ") {
                 panic!("Game settings should have already been handled")
             } else if let Some(deck_string) = line.strip_prefix("PLAYER DECK ") {
-                let deck: Vec<Cooldown> = ron::de::from_str(deck_string).unwrap();
+                let deck: Deck = ron::de::from_str(deck_string).unwrap();
 
-                state.players.push(Entity {
+                let mut new_player = Entity {
                     pos: game_settings.spawn_location.into(),
-                    abilities: abilities_from_cooldowns(&deck, card_manager),
                     ..Default::default()
-                });
+                };
+                (new_player.abilities, new_player.passive_abilities) =
+                    abilities_from_cooldowns(&deck, card_manager);
+                state.players.push(new_player);
 
                 if matches!(game_settings.world_gen, WorldGenSettings::PracticeRange) {
                     let bot = Entity {
@@ -1332,13 +1349,16 @@ impl WorldState {
 
         for (player, player_stats) in self.players.iter_mut().zip(player_stats.iter()) {
             let mut health_adjustment = 0.0;
-            for status_effect in player.status_effects.iter_mut() {
-                match status_effect.effect {
+            for status_effect in player.status_effects.iter().map(|e| &e.effect).chain(player.passive_abilities.iter()) {
+                match status_effect {
                     ReferencedStatusEffect::DamageOverTime(stacks) => {
-                        health_adjustment += -10.0 * player_stats.damage_taken * stacks as f32 * time_step;
+                        health_adjustment +=
+                            -10.0 * player_stats.damage_taken * *stacks as f32 * time_step;
                     }
                     _ => {}
                 }
+            }
+            for status_effect in player.status_effects.iter_mut() {
                 status_effect.time_left -= time_step;
             }
             if health_adjustment != 0.0 {
@@ -1511,14 +1531,19 @@ impl WorldState {
                                     proj_rot[1],
                                     proj_rot[2],
                                 );
-                                let (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) =
-                                    card_manager.get_effects_from_base_card(
-                                        card_ref,
-                                        &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
-                                        &proj_rot,
-                                        proj.owner,
-                                        false,
-                                    );
+                                let (
+                                    on_hit_projectiles,
+                                    on_hit_voxels,
+                                    effects,
+                                    status_effects,
+                                    triggers,
+                                ) = card_manager.get_effects_from_base_card(
+                                    card_ref,
+                                    &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                                    &proj_rot,
+                                    proj.owner,
+                                    false,
+                                );
                                 new_projectiles.extend(on_hit_projectiles);
                                 for (pos, material) in on_hit_voxels {
                                     voxels_to_write.push((pos, material.to_memory()));
@@ -1603,7 +1628,9 @@ impl WorldState {
                 });
                 hit_effects
             };
-            for (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) in hit_effects {
+            for (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) in
+                hit_effects
+            {
                 new_projectiles.extend(on_hit_projectiles);
                 for (pos, material) in on_hit_voxels {
                     voxels_to_write.push((pos, material.to_memory()));
@@ -1735,28 +1762,48 @@ impl WorldState {
                 let mut invincible = false;
                 let mut lockout = false;
 
-                for status_effect in player.status_effects.iter() {
-                    match status_effect.effect {
+                for status_effect in player.status_effects.iter().map(|e| &e.effect).chain(player.passive_abilities.iter()) {
+                    match status_effect {
                         ReferencedStatusEffect::DamageOverTime(_) => {
                             // wait for damage taken to be calculated
                         }
                         ReferencedStatusEffect::Speed(stacks) => {
-                            speed *= StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, stacks).get_effect_value();
+                            speed *= StatusEffect::SimpleStatusEffect(
+                                SimpleStatusEffectType::Speed,
+                                *stacks,
+                            )
+                            .get_effect_value();
                         }
                         ReferencedStatusEffect::IncreaseDamageTaken(stacks) => {
-                            damage_taken *= StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseDamageTaken, stacks).get_effect_value();
+                            damage_taken *= StatusEffect::SimpleStatusEffect(
+                                SimpleStatusEffectType::IncreaseDamageTaken,
+                                *stacks,
+                            )
+                            .get_effect_value();
                         }
                         ReferencedStatusEffect::IncreaseGravity(stacks) => {
-                            gravity += StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity, stacks).get_effect_value();
+                            gravity += StatusEffect::SimpleStatusEffect(
+                                SimpleStatusEffectType::IncreaseGravity,
+                                *stacks,
+                            )
+                            .get_effect_value();
                         }
                         ReferencedStatusEffect::Overheal(_) => {
                             // managed seperately
                         }
                         ReferencedStatusEffect::Grow(stacks) => {
-                            size *= StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, stacks).get_effect_value();
+                            size *= StatusEffect::SimpleStatusEffect(
+                                SimpleStatusEffectType::Grow,
+                                *stacks,
+                            )
+                            .get_effect_value();
                         }
                         ReferencedStatusEffect::IncreaseMaxHealth(stacks) => {
-                            max_health += StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, stacks).get_effect_value();
+                            max_health += StatusEffect::SimpleStatusEffect(
+                                SimpleStatusEffectType::IncreaseMaxHealth,
+                                *stacks,
+                            )
+                            .get_effect_value();
                         }
                         ReferencedStatusEffect::Invincibility => {
                             invincible = true;
@@ -2232,8 +2279,8 @@ impl Entity {
                         {
                             cooldown.cooldown += cooldown.value.0;
                             cooldown.recovery = cooldown.value.1[ability_idx];
-                            let (proj_effects, vox_effects, effects, status_effects, triggers) = card_manager
-                                .get_effects_from_base_card(
+                            let (proj_effects, vox_effects, effects, status_effects, triggers) =
+                                card_manager.get_effects_from_base_card(
                                     ability.0,
                                     &self.pos,
                                     &self.rot,
@@ -2267,21 +2314,22 @@ impl Entity {
         }
 
         //volume effects
-        let start_pos = self.pos + self.size * PLAYER_HITBOX_OFFSET - self.size * PLAYER_HITBOX_SIZE / 2.0;
-        let end_pos = self.pos + self.size * PLAYER_HITBOX_OFFSET + self.size * PLAYER_HITBOX_SIZE / 2.0;
+        let start_pos =
+            self.pos + self.size * PLAYER_HITBOX_OFFSET - self.size * PLAYER_HITBOX_SIZE / 2.0;
+        let end_pos =
+            self.pos + self.size * PLAYER_HITBOX_OFFSET + self.size * PLAYER_HITBOX_SIZE / 2.0;
         let start_voxel_pos = start_pos.map(|c| c.floor() as u32);
-        let iter_counts = end_pos.zip(
-            start_voxel_pos,
-            |a, b| a.floor() as u32 - b + 1,
-        );
+        let iter_counts = end_pos.zip(start_voxel_pos, |a, b| a.floor() as u32 - b + 1);
         let mut nearby_density = 0.0;
         let mut directional_density = Vector3::new(0.0, 0.0, 0.0);
         for x in 0..iter_counts.x {
             for y in 0..iter_counts.y {
                 for z in 0..iter_counts.z {
                     let voxel_pos = start_voxel_pos + Vector3::new(x, y, z);
-                    let overlapping_volume = voxel_pos.zip(end_pos, |a, b| b.min(a as f32 + 1.0)) - voxel_pos.zip(start_pos, |a, b| b.max(a as f32));
-                    let overlapping_volume = overlapping_volume.x * overlapping_volume.y * overlapping_volume.z;
+                    let overlapping_volume = voxel_pos.zip(end_pos, |a, b| b.min(a as f32 + 1.0))
+                        - voxel_pos.zip(start_pos, |a, b| b.max(a as f32));
+                    let overlapping_volume =
+                        overlapping_volume.x * overlapping_volume.y * overlapping_volume.z;
                     let material = if is_inbounds(voxel_pos, game_state, game_settings) {
                         let idx = get_index(voxel_pos, cpu_chunks, game_state, game_settings);
                         if let Some(idx) = idx {
@@ -2294,12 +2342,19 @@ impl Entity {
                     };
                     let density = material.density();
                     nearby_density += overlapping_volume * density;
-                    directional_density += overlapping_volume * density * (voxel_pos.map(|c| c as f32 + 0.5) - self.pos - self.size * PLAYER_HITBOX_OFFSET) / self.size;
+                    directional_density += overlapping_volume
+                        * density
+                        * (voxel_pos.map(|c| c as f32 + 0.5)
+                            - self.pos
+                            - self.size * PLAYER_HITBOX_OFFSET)
+                        / self.size;
                 }
             }
         }
-        nearby_density /= self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
-        directional_density /= self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
+        nearby_density /=
+            self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
+        directional_density /=
+            self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
 
         self.vel.y -= (PLAYER_DENSITY - nearby_density)
             * player_stats[player_idx].gravity
@@ -2307,11 +2362,7 @@ impl Entity {
             * time_step;
         self.vel -= 0.5 * directional_density * time_step;
         if self.vel.magnitude() > 0.0 {
-            self.vel -= nearby_density
-                * 0.0375
-                * self.vel
-                * self.vel.magnitude()
-                * time_step
+            self.vel -= nearby_density * 0.0375 * self.vel * self.vel.magnitude() * time_step
                 + 0.2 * self.vel.normalize() * time_step;
         }
         let prev_collision_vec = self.collision_vec.clone();

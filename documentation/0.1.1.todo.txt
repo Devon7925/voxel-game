@@ -13,8 +13,6 @@
     * Display time to next charge for multicharge cooldowns
     * Display recovery times
 * Cards
-    * Make sure negative overhealth works
-    * Make passive type abilities work better
     * Add cooldown modifier that makes all charges reload at once
     * Allow negatives for multiply impact modifier
     * Directions
