@@ -1349,7 +1349,12 @@ impl WorldState {
 
         for (player, player_stats) in self.players.iter_mut().zip(player_stats.iter()) {
             let mut health_adjustment = 0.0;
-            for status_effect in player.status_effects.iter().map(|e| &e.effect).chain(player.passive_abilities.iter()) {
+            for status_effect in player
+                .status_effects
+                .iter()
+                .map(|e| &e.effect)
+                .chain(player.passive_abilities.iter())
+            {
                 match status_effect {
                     ReferencedStatusEffect::DamageOverTime(stacks) => {
                         health_adjustment +=
@@ -1451,9 +1456,11 @@ impl WorldState {
 
                 let projectile_rot =
                     Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
-                let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
-                let projectile_right = projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0));
-                let projectile_up = projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0));
+                let projectile_vectors = [
+                    projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0)),
+                    projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0)),
+                    projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
+                ];
                 let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
                 let adjusted_projectile_size = if proj_card.lock_owner {
                     Vector3::new(proj.size[0], proj.size[1], proj.size[2])
@@ -1464,100 +1471,80 @@ impl WorldState {
                         proj.size[2] + proj.vel * time_step / 2.0,
                     )
                 };
-
-                let grid_iteration_count =
-                    (2.0 * adjusted_projectile_size * 2.0_f32.sqrt()).map(|c| c.ceil());
-                let grid_dist = 2.0
-                    * adjusted_projectile_size
-                        .zip(grid_iteration_count, |size, count| size / count);
-
-                let start_pos = projectile_pos
-                    - adjusted_projectile_size.x * projectile_right
-                    - adjusted_projectile_size.y * projectile_up
-                    - (proj.size[2]
-                        + if proj_card.lock_owner {
-                            0.0
-                        } else {
-                            proj.vel * time_step
-                        })
-                        * projectile_dir;
-                'outer: for grid_iter_x in 0..=(grid_iteration_count.x as i32) {
-                    for grid_iter_y in 0..=(grid_iteration_count.y as i32) {
-                        for grid_iter_z in 0..=(grid_iteration_count.z as i32) {
-                            let pos = start_pos
-                                + grid_dist.x * grid_iter_x as f32 * projectile_right
-                                + grid_dist.y * grid_iter_y as f32 * projectile_up
-                                + grid_dist.z * grid_iter_z as f32 * projectile_dir;
-                            let likely_hit = Entity::HITSPHERES
-                                .iter()
-                                .min_by(|sphere_a, sphere_b| {
-                                    (player.pos + player.size * sphere_a.offset - pos)
-                                        .magnitude()
-                                        .total_cmp(
-                                            &(player.pos + player.size * sphere_b.offset - pos)
-                                                .magnitude(),
-                                        )
-                                })
-                                .unwrap();
-
-                            if (player.pos + player.size * likely_hit.offset - pos).magnitude()
-                                > likely_hit.radius * player.size
-                            {
-                                continue;
-                            }
-
-                            if !proj_card.pierce_players {
-                                proj.health = 0.0;
-                            } else {
-                                player.player_piercing_invincibility = 0.3;
-                            }
-                            let mut hit_cards = card_manager
-                                .get_referenced_proj(proj.proj_card_idx as usize)
-                                .on_hit
-                                .clone();
-                            if likely_hit.headshot {
-                                hit_cards.extend(
-                                    card_manager
-                                        .get_referenced_proj(proj.proj_card_idx as usize)
-                                        .on_headshot
-                                        .clone(),
-                                );
-                            }
-                            for card_ref in hit_cards {
-                                let proj_rot = proj.dir;
-                                let proj_rot = Quaternion::new(
-                                    proj_rot[3],
-                                    proj_rot[0],
-                                    proj_rot[1],
-                                    proj_rot[2],
-                                );
-                                let (
-                                    on_hit_projectiles,
-                                    on_hit_voxels,
-                                    effects,
-                                    status_effects,
-                                    triggers,
-                                ) = card_manager.get_effects_from_base_card(
-                                    card_ref,
-                                    &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
-                                    &proj_rot,
-                                    proj.owner,
-                                    false,
-                                );
-                                new_projectiles.extend(on_hit_projectiles);
-                                for (pos, material) in on_hit_voxels {
-                                    voxels_to_write.push((pos, material.to_memory()));
-                                }
-                                for effect in effects {
-                                    new_effects.push((player_idx, pos, player.pos - pos, effect));
-                                }
-                                for status_effects in status_effects {
-                                    new_status_effects.push((player_idx, status_effects));
-                                }
-                                step_triggers.extend(triggers);
-                            }
-                            break 'outer;
+                let mut collision: Option<Hitsphere> = None;
+                'outer: for hitsphere in Entity::HITSPHERES.iter().map(|x| Hitsphere {
+                    offset: (player.pos + x.offset * player.size).to_vec(),
+                    radius: x.radius * player.size,
+                    headshot: x.headshot,
+                }) {
+                    if let Some(prev_collision) = collision.as_ref() {
+                        if (projectile_pos - hitsphere.offset).to_vec().magnitude()
+                            > (projectile_pos - prev_collision.offset).to_vec().magnitude()
+                        {
+                            continue 'outer;
                         }
+                    }
+                    for i in 0..3 {
+                        if (hitsphere.offset.dot(projectile_vectors[i])
+                            - projectile_pos.dot(projectile_vectors[i]))
+                        .abs()
+                            > adjusted_projectile_size[i] + hitsphere.radius
+                        {
+                            continue 'outer;
+                        }
+                    }
+                    collision = Some(hitsphere.clone());
+                }
+                if let Some(collision) = collision {
+                    if !proj_card.pierce_players {
+                        proj.health = 0.0;
+                    } else {
+                        player.player_piercing_invincibility = 0.3;
+                    }
+                    let mut hit_cards = card_manager
+                        .get_referenced_proj(proj.proj_card_idx as usize)
+                        .on_hit
+                        .clone();
+                    if collision.headshot {
+                        hit_cards.extend(
+                            card_manager
+                                .get_referenced_proj(proj.proj_card_idx as usize)
+                                .on_headshot
+                                .clone(),
+                        );
+                    }
+                    for card_ref in hit_cards {
+                        let proj_rot = proj.dir;
+                        let proj_rot = Quaternion::new(
+                            proj_rot[3],
+                            proj_rot[0],
+                            proj_rot[1],
+                            proj_rot[2],
+                        );
+                        let (
+                            on_hit_projectiles,
+                            on_hit_voxels,
+                            effects,
+                            status_effects,
+                            triggers,
+                        ) = card_manager.get_effects_from_base_card(
+                            card_ref,
+                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                            &proj_rot,
+                            proj.owner,
+                            false,
+                        );
+                        new_projectiles.extend(on_hit_projectiles);
+                        for (pos, material) in on_hit_voxels {
+                            voxels_to_write.push((pos, material.to_memory()));
+                        }
+                        for effect in effects {
+                            new_effects.push((player_idx, Point3::from_vec(collision.offset), ((collision.offset-projectile_pos.to_vec()).normalize() + projectile_vectors[2] * proj.vel).normalize(), effect));
+                        }
+                        for status_effects in status_effects {
+                            new_status_effects.push((player_idx, status_effects));
+                        }
+                        step_triggers.extend(triggers);
                     }
                 }
             }
@@ -1762,7 +1749,12 @@ impl WorldState {
                 let mut invincible = false;
                 let mut lockout = false;
 
-                for status_effect in player.status_effects.iter().map(|e| &e.effect).chain(player.passive_abilities.iter()) {
+                for status_effect in player
+                    .status_effects
+                    .iter()
+                    .map(|e| &e.effect)
+                    .chain(player.passive_abilities.iter())
+                {
                     match status_effect {
                         ReferencedStatusEffect::DamageOverTime(_) => {
                             // wait for damage taken to be calculated
@@ -2125,6 +2117,7 @@ pub fn get_index(
     Some(chunk_idx * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 + idx_in_chunk)
 }
 
+#[derive(Debug, Clone)]
 struct Hitsphere {
     offset: Vector3<f32>,
     radius: f32,
@@ -2308,7 +2301,7 @@ impl Entity {
             if ability.ability.is_reloading {
                 if ability.cooldown >= ability.value.0 * (1 + ability.ability.add_charge) as f32 {
                     ability.cooldown = 0.0;
-                    ability.recovery = ability.recovery.max(ability.value.0);
+                    ability.recovery += ability.value.0;
                 }
             } else {
                 if ability.cooldown > 0.0 {
