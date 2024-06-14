@@ -14,7 +14,6 @@ mod voxel_sim_manager;
 
 use crate::{
     app::RenderPipeline,
-    card_system::Cooldown,
     gui::{GuiElement, GuiState, PaletteState},
     lobby_browser::LobbyBrowser,
     settings_manager::Settings,

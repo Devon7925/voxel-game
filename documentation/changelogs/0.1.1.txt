@@ -12,6 +12,8 @@
         * Add as parameter to
             * Knockback
             * Gravity
+* Card Editor
+    * Add hovers for status effects and other missing cards
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync

@@ -1,10 +1,8 @@
 * Card Editor
     * Add up/down arrows on hover for number cards for more intuitive editing
-    * Add hovers for status effects
     * Give reasoning for unreasonable decks
     * Add a way to decrease impact of ability
     * Add a way to type in modifier values
-* Fix prebuilt decks
 * Visuals
     * Hitmarkers
         * Regular hit
@@ -16,4 +14,5 @@
     * Nerf 1 shots
     * Nerf Low health shields
     * Nerf Splash damage
+* Fix prebuilt decks
 * Move to github issues

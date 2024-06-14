@@ -4,10 +4,7 @@ use crate::{
 };
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, VecDeque},
-    result,
-};
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Deck {
@@ -2043,14 +2040,14 @@ impl ProjectileModifier {
             }
             ProjectileModifier::FriendlyFire => format!("Prevents hitting friendly entities"),
             ProjectileModifier::NoEnemyFire => format!("Prevents hitting enemy entities"),
-            ProjectileModifier::OnHit(card) => format!("On Hit {}", card.to_string()),
-            ProjectileModifier::OnHeadshot(card) => format!("On Headshot {}", card.to_string()),
-            ProjectileModifier::OnExpiry(card) => format!("On Expiry {}", card.to_string()),
-            ProjectileModifier::OnTrigger(id, card) => {
-                format!("On trigger {} {}", id, card.to_string())
+            ProjectileModifier::OnHit(_) => format!("On hit activate the following card"),
+            ProjectileModifier::OnHeadshot(_) => format!("On headshot activate the following card"),
+            ProjectileModifier::OnExpiry(_) => format!("On expiry activate the following card"),
+            ProjectileModifier::OnTrigger(id, _) => {
+                format!("When {} triggers, activate the following card", id)
             }
-            ProjectileModifier::Trail(freq, card) => {
-                format!("Trail {}: {}", freq, card.to_string())
+            ProjectileModifier::Trail(freq, _) => {
+                format!("Every {}s, activate the following card", 1.0 / *freq as f32)
             }
             ProjectileModifier::LockToOwner => {
                 format!("Locks the projectile's position to the player's position")

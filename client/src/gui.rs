@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use egui_winit_vulkano::egui::{
-    self, emath, epaint, pos2, scroll_area, text::LayoutJob, vec2, Align, Align2, Color32,
+    self, emath, epaint, pos2, text::LayoutJob, vec2, Align, Align2, Color32,
     CursorIcon, FontId, Id, InnerResponse, Label, LayerId, Order, Rect, Rgba, RichText, Rounding,
     ScrollArea, Sense, Shape, Stroke, TextFormat, Ui, Vec2,
 };
@@ -470,7 +470,7 @@ impl DragableCard {
                     CooldownModifier::SimpleCooldownModifier(
                         SimpleCooldownModifier::AddCharge,
                         v,
-                    ) => add_hoverable_basic_modifer(
+                    ) => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Add Charge",
@@ -482,7 +482,7 @@ impl DragableCard {
                     CooldownModifier::SimpleCooldownModifier(
                         SimpleCooldownModifier::AddCooldown,
                         v,
-                    ) => add_hoverable_basic_modifer(
+                    ) => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Add Cooldown",
@@ -494,7 +494,7 @@ impl DragableCard {
                     CooldownModifier::SignedSimpleCooldownModifier(
                         SignedSimpleCooldownModifier::DecreaseCooldown,
                         v,
-                    ) => add_hoverable_basic_modifer(
+                    ) => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Decrease Cooldown",
@@ -503,7 +503,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    CooldownModifier::Reloading => add_hoverable_basic_modifer(
+                    CooldownModifier::Reloading => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Reloading",
@@ -518,7 +518,7 @@ impl DragableCard {
                 let item_id = egui::Id::new(ID_SOURCE).with(path.clone());
                 let hover_text = modifier.get_hover_text();
                 match modifier {
-                    MultiCastModifier::Spread(v) => add_hoverable_basic_modifer(
+                    MultiCastModifier::Spread(v) => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Spread",
@@ -527,7 +527,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    MultiCastModifier::Duplication(v) => add_hoverable_basic_modifer(
+                    MultiCastModifier::Duplication(v) => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Duplication",
@@ -553,7 +553,7 @@ impl DragableCard {
                             SimpleProjectileModifierType::Lifetime => "Lifetime",
                             SimpleProjectileModifierType::Speed => "Speed",
                         };
-                        add_hoverable_basic_modifer(
+                        add_hoverable_draggable_basic_modifer(
                             ui,
                             item_id,
                             name,
@@ -563,7 +563,7 @@ impl DragableCard {
                             path,
                         )
                     }
-                    ProjectileModifier::NoEnemyFire => add_hoverable_basic_modifer(
+                    ProjectileModifier::NoEnemyFire => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "No Enemy Fire",
@@ -572,7 +572,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    ProjectileModifier::FriendlyFire => add_hoverable_basic_modifer(
+                    ProjectileModifier::FriendlyFire => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Friendly Fire",
@@ -581,7 +581,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    ProjectileModifier::LockToOwner => add_hoverable_basic_modifer(
+                    ProjectileModifier::LockToOwner => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Lock To Owner",
@@ -590,7 +590,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    ProjectileModifier::PiercePlayers => add_hoverable_basic_modifer(
+                    ProjectileModifier::PiercePlayers => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Pierce Players",
@@ -599,7 +599,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    ProjectileModifier::WallBounce => add_hoverable_basic_modifer(
+                    ProjectileModifier::WallBounce => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Wall Bounce",
@@ -608,7 +608,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    ProjectileModifier::None => add_hoverable_basic_modifer(
+                    ProjectileModifier::None => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "None",
@@ -628,7 +628,7 @@ impl DragableCard {
                         match modifier {
                             ProjectileModifier::OnHit(base_card) => {
                                 drag_source(ui, item_id, true, |ui| {
-                                    ui.label("On Hit");
+                                    add_basic_modifer(ui, "On Hit", "", modifier.get_hover_text(), modify_path, path);
                                     path.push_back(0);
                                     draw_base_card(
                                         ui,
@@ -643,7 +643,7 @@ impl DragableCard {
                             }
                             ProjectileModifier::OnHeadshot(base_card) => {
                                 drag_source(ui, item_id, true, |ui| {
-                                    ui.label("On Headshot");
+                                    add_basic_modifer(ui, "On Headshot", "", modifier.get_hover_text(), modify_path, path);
                                     path.push_back(0);
                                     draw_base_card(
                                         ui,
@@ -658,7 +658,7 @@ impl DragableCard {
                             }
                             ProjectileModifier::OnExpiry(base_card) => {
                                 drag_source(ui, item_id, true, |ui| {
-                                    ui.label("On Expiry");
+                                    add_basic_modifer(ui, "On Expiry", "", modifier.get_hover_text(), modify_path, path);
                                     path.push_back(0);
                                     draw_base_card(
                                         ui,
@@ -673,7 +673,7 @@ impl DragableCard {
                             }
                             ProjectileModifier::OnTrigger(id, base_card) => {
                                 drag_source(ui, item_id, true, |ui| {
-                                    add_basic_modifer(ui, "On Trigger", *id, modify_path, path);
+                                    add_basic_modifer(ui, "On Trigger", *id, modifier.get_hover_text(), modify_path, path);
                                     path.push_back(0);
                                     draw_base_card(
                                         ui,
@@ -688,7 +688,7 @@ impl DragableCard {
                             }
                             ProjectileModifier::Trail(frequency, base_card) => {
                                 drag_source(ui, item_id, true, |ui| {
-                                    add_basic_modifer(ui, "Trail", *frequency, modify_path, path);
+                                    add_basic_modifer(ui, "Trail", *frequency, modifier.get_hover_text(), modify_path, path);
                                     path.push_back(0);
                                     draw_base_card(
                                         ui,
@@ -715,7 +715,7 @@ impl DragableCard {
                         v,
                     ) => {
                         drag_source(ui, item_id, true, |ui| {
-                            add_basic_modifer(ui, "Increace Gravity", *v, modify_path, path);
+                            add_basic_modifer(ui, "Increace Gravity", *v, effect.get_hover_text(), modify_path, path);
                             path.push_back(0);
                             DragableCard::Direction(direction.clone()).draw_draggable(
                                 ui,
@@ -737,7 +737,7 @@ impl DragableCard {
                             SimpleStatusEffectType::Grow => "Grow",
                             SimpleStatusEffectType::IncreaseMaxHealth => "Increase Max Health",
                         };
-                        add_hoverable_basic_modifer(
+                        add_hoverable_draggable_basic_modifer(
                             ui,
                             item_id,
                             name,
@@ -747,7 +747,7 @@ impl DragableCard {
                             path,
                         )
                     }
-                    StatusEffect::Invincibility => add_hoverable_basic_modifer(
+                    StatusEffect::Invincibility => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Invincibility",
@@ -756,7 +756,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    StatusEffect::Lockout => add_hoverable_basic_modifer(
+                    StatusEffect::Lockout => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Lockout",
@@ -765,7 +765,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    StatusEffect::Trapped => add_hoverable_basic_modifer(
+                    StatusEffect::Trapped => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Trapped",
@@ -774,7 +774,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    StatusEffect::Stun => add_hoverable_basic_modifer(
+                    StatusEffect::Stun => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "Stun",
@@ -783,7 +783,7 @@ impl DragableCard {
                         modify_path,
                         path,
                     ),
-                    StatusEffect::None => add_hoverable_basic_modifer(
+                    StatusEffect::None => add_hoverable_draggable_basic_modifer(
                         ui,
                         item_id,
                         "None",
@@ -803,7 +803,7 @@ impl DragableCard {
                         match effect {
                             StatusEffect::OnHit(base_card) => {
                                 drag_source(ui, item_id, true, |ui| {
-                                    ui.label("On Hit");
+                                    add_basic_modifer(ui, "On Hit", "", effect.get_hover_text(), modify_path, path);
                                     path.push_back(0);
                                     draw_base_card(
                                         ui,
@@ -839,7 +839,7 @@ impl DragableCard {
                                     DirectionCard::Forward => "Forward",
                                     DirectionCard::Movement => "Movement",
                                 };
-                                add_basic_modifer(ui, name, "", modify_path, path);
+                                add_basic_modifer(ui, name, "", name.to_string(), modify_path, path);
                                 ui.add_space(CARD_UI_SPACING);
                             });
                         });
@@ -1053,9 +1053,9 @@ pub fn draw_base_card(
                     ui.add_space(CARD_UI_SPACING);
                     ui.label("Apply Effect");
                     match effect {
-                        Effect::Damage(v) => add_basic_modifer(ui, "Damage", *v, modify_path, path),
+                        Effect::Damage(v) => add_basic_modifer(ui, "Damage", *v, "Deal damage to anything".to_string(), modify_path, path),
                         Effect::Knockback(v, direction) => {
-                            add_basic_modifer(ui, "Knockback", *v, modify_path, path);
+                            add_basic_modifer(ui, "Knockback", *v, "Apply an impulse".to_string(), modify_path, path);
                             path.push_back(0);
                             DragableCard::Direction(direction.clone()).draw_draggable(
                                 ui,
@@ -1066,9 +1066,9 @@ pub fn draw_base_card(
                             );
                             path.pop_back();
                         }
-                        Effect::Cleanse => add_basic_modifer(ui, "Cleanse", "", modify_path, path),
+                        Effect::Cleanse => add_basic_modifer(ui, "Cleanse", "", "Clear status effects".to_string(), modify_path, path),
                         Effect::Teleport => {
-                            add_basic_modifer(ui, "Teleport", "", modify_path, path)
+                            add_basic_modifer(ui, "Teleport", "", "Teleport the active player to where this was activated".to_string(), modify_path, path)
                         }
                     }
                     ui.add_space(CARD_UI_SPACING);
@@ -1104,6 +1104,7 @@ pub fn draw_base_card(
                                     ui,
                                     "Apply Status Effects",
                                     *duration,
+                                    format!("Apply status effects for a duration of {}s", *duration as f32*BaseCard::EFFECT_LENGTH_SCALE),
                                     modify_path,
                                     path,
                                 );
@@ -1165,7 +1166,7 @@ pub fn draw_base_card(
                 ui.add_space(CARD_UI_SPACING);
                 ui.horizontal(|ui| {
                     ui.add_space(CARD_UI_SPACING);
-                    add_basic_modifer(ui, "Trigger", *id, modify_path, path);
+                    add_basic_modifer(ui, "Trigger", *id, "Cause on trigger evvents to activate".to_string(), modify_path, path);
                     ui.add_space(CARD_UI_SPACING);
                 });
                 ui.add_space(CARD_UI_SPACING);
@@ -1247,6 +1248,7 @@ pub fn add_basic_modifer(
     ui: &mut Ui,
     name: &str,
     count: impl std::fmt::Display,
+    hover_text: String,
     modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
     path: &mut VecDeque<u32>,
 ) {
@@ -1274,7 +1276,7 @@ pub fn add_basic_modifer(
     } else {
         Label::new(job)
     };
-    let response = ui.add(widget);
+    let response = ui.add(widget).on_hover_text(hover_text);
 
     if response.clicked() {
         if modify_path.is_none() {
@@ -1288,7 +1290,7 @@ pub fn add_basic_modifer(
     }
 }
 
-pub fn add_hoverable_basic_modifer(
+pub fn add_hoverable_draggable_basic_modifer(
     ui: &mut Ui,
     id: Id,
     name: &str,

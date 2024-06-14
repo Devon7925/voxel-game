@@ -12,7 +12,6 @@ use cgmath::{
     vec3, ElementWise, EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation,
     Rotation3, Vector2, Vector3,
 };
-use itertools::Itertools;
 use matchbox_socket::{PeerId, PeerState};
 use serde::{Deserialize, Serialize};
 use vulkano::{
@@ -23,7 +22,7 @@ use winit::event::{ElementState, WindowEvent};
 
 use crate::{
     card_system::{
-        BaseCard, CardManager, Cooldown, Deck, DirectionCard, ReferencedCooldown, ReferencedEffect,
+        BaseCard, CardManager, Deck, DirectionCard, ReferencedCooldown, ReferencedEffect,
         ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType,
         StateKeybind, StatusEffect, VoxelMaterial,
     },
@@ -1193,7 +1192,7 @@ impl PlayerSim for ReplayData {
         self.state.players.len()
     }
 
-    fn network_update(&mut self, _settings: &GameSettings, card_manager: &mut CardManager) {}
+    fn network_update(&mut self, _settings: &GameSettings, _card_manager: &mut CardManager) {}
 
     fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
         self.player_buffer.clone()
