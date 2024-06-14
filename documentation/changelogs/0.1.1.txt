@@ -14,6 +14,7 @@
             * Gravity
 * Card Editor
     * Add hovers for status effects and other missing cards
+    * Give reasoning for unreasonable decks
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync

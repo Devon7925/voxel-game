@@ -12,6 +12,7 @@ use cgmath::{
     vec3, ElementWise, EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation,
     Rotation3, Vector2, Vector3,
 };
+use itertools::Itertools;
 use matchbox_socket::{PeerId, PeerState};
 use serde::{Deserialize, Serialize};
 use vulkano::{
@@ -749,12 +750,16 @@ impl PlayerSim for RollbackData {
                                     let exited_ui = gui_state.menu_stack.last().unwrap();
                                     match exited_ui {
                                         GuiElement::CardEditor => {
-                                            if gui_state
+                                            let unreasonable_reason = Some(gui_state
                                                 .gui_deck
                                                 .cooldowns
                                                 .iter()
-                                                .all(|cd| cd.is_reasonable())
-                                            {
+                                                .filter_map(|cd| cd.get_unreasonable_reason())
+                                                .join(", "))
+                                                .filter(|s| !s.is_empty());
+                                            if let Some(unreasonable_reason) = unreasonable_reason {
+                                                gui_state.errors.push(format!("Unreasonable deck not saved: {}", unreasonable_reason));
+                                            } else {
                                                 self.player_deck = gui_state.gui_deck.clone();
                                                 self.controls = self
                                                     .player_deck
@@ -794,10 +799,6 @@ impl PlayerSim for RollbackData {
                                                         ),
                                                     );
                                                 }
-                                            } else {
-                                                gui_state.errors.push(
-                                                    "Unreasonable Deck not saved".to_string(),
-                                                );
                                             }
                                         }
                                         _ => (),
@@ -2267,7 +2268,14 @@ impl Entity {
                 } else {
                     18.0
                 };
-            self.vel += accel_speed * Vector3::new(player_stats[player_idx].speed, 1.0, player_stats[player_idx].speed).mul_element_wise(move_vec) * time_step;
+            self.vel += accel_speed
+                * Vector3::new(
+                    player_stats[player_idx].speed,
+                    1.0,
+                    player_stats[player_idx].speed,
+                )
+                .mul_element_wise(move_vec)
+                * time_step;
 
             if action.jump {
                 self.vel += player_stats[player_idx].speed

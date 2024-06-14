@@ -104,9 +104,12 @@ fn main() {
         start_puffin_server();
     }
 
-    let player_deck:Deck =
+    let player_deck: Deck =
         ron::from_str(fs::read_to_string(&settings.card_file).unwrap().as_str()).unwrap();
-    assert!(player_deck.cooldowns.iter().all(|cooldown| cooldown.is_reasonable()));
+    assert!(player_deck
+        .cooldowns
+        .iter()
+        .all(|cooldown| cooldown.get_unreasonable_reason().is_none()));
 
     // Create app with vulkano context.
     let mut app = RenderPipeline::new(&event_loop, settings);
@@ -330,7 +333,8 @@ fn handle_events(
                                     let exited_ui = gui_state.menu_stack.pop().unwrap();
                                     match exited_ui {
                                         GuiElement::CardEditor => {
-                                            let export = ron::to_string(&gui_state.gui_deck).unwrap();
+                                            let export =
+                                                ron::to_string(&gui_state.gui_deck).unwrap();
                                             fs::write(&app.settings.card_file, export)
                                                 .expect("failed to write card file");
                                         }
@@ -450,7 +454,7 @@ fn compute_then_render(
     } else {
         Matrix4::identity()
     };
-let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), 1.0, 0.1, RASTER_FAR_PLANE);
+    let proj = cgmath::perspective(Rad(std::f32::consts::FRAC_PI_2), 1.0, 0.1, RASTER_FAR_PLANE);
     // Start the frame.
     let future = if let Some(game) = app.game.as_mut() {
         if game.has_started {

@@ -3,6 +3,7 @@ use crate::{
     PLAYER_BASE_MAX_HEALTH,
 };
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
@@ -152,10 +153,12 @@ impl Cooldown {
         }
     }
 
-    pub fn is_reasonable(&self) -> bool {
-        self.abilities
+    pub fn get_unreasonable_reason(&self) -> Option<String> {
+        Some(self.abilities
             .iter()
-            .all(|ability| ability.card.is_reasonable())
+            .filter_map(|ability| ability.card.get_unreasonable_reason())
+            .join(", "))
+            .filter(|reason| !reason.is_empty())
     }
 
     pub fn generate_cooldown_cache(&mut self) -> bool {
@@ -670,6 +673,24 @@ impl StatusEffect {
                 }
             }
             _ => panic!("Invalid state"),
+        }
+    }
+
+    fn get_unreasonable_reason(&self) -> Option<String> {
+        match self {
+            StatusEffect::None => None,
+            StatusEffect::SimpleStatusEffect(_, stacks) => {
+                if stacks.abs() > 20 {
+                    Some(format!("Too many effect stacks ({} > 20)", stacks.abs()))
+                } else {
+                    None
+                }
+            }
+            StatusEffect::Invincibility => None,
+            StatusEffect::Trapped => None,
+            StatusEffect::Lockout => None,
+            StatusEffect::Stun => None,
+            StatusEffect::OnHit(card) => card.get_unreasonable_reason(),
         }
     }
 }
@@ -1388,7 +1409,7 @@ impl BaseCard {
         }
     }
 
-    pub fn is_reasonable(&self) -> bool {
+    pub fn get_unreasonable_reason(&self) -> Option<String> {
         match self {
             BaseCard::Projectile(modifiers) => {
                 for modifier in modifiers {
@@ -1398,38 +1419,42 @@ impl BaseCard {
                             SimpleProjectileModifierType::Speed,
                             _,
                         ) => {
-                            if modifier.get_effect_value().abs() > 400.0 {
-                                return false;
+                            let speed = modifier.get_effect_value().abs();
+                            if speed > 400.0 {
+                                return Some(format!(
+                                    "Projectile speed too high ({} > 400)",
+                                    speed
+                                ));
                             }
                         }
                         ProjectileModifier::SimpleModify(_, s) => {
                             if *s > 15 {
-                                return false;
+                                return Some(format!("Projectile modifier too high ({} > 15)", s));
                             }
                         }
                         ProjectileModifier::OnHit(card) => {
-                            if !card.is_reasonable() {
-                                return false;
+                            if let Some(reason) = card.get_unreasonable_reason() {
+                                return Some(reason);
                             }
                         }
                         ProjectileModifier::OnHeadshot(card) => {
-                            if !card.is_reasonable() {
-                                return false;
+                            if let Some(reason) = card.get_unreasonable_reason() {
+                                return Some(reason);
                             }
                         }
                         ProjectileModifier::OnExpiry(card) => {
-                            if !card.is_reasonable() {
-                                return false;
+                            if let Some(reason) = card.get_unreasonable_reason() {
+                                return Some(reason);
                             }
                         }
                         ProjectileModifier::OnTrigger(_, card) => {
-                            if !card.is_reasonable() {
-                                return false;
+                            if let Some(reason) = card.get_unreasonable_reason() {
+                                return Some(reason);
                             }
                         }
                         ProjectileModifier::Trail(_, card) => {
-                            if !card.is_reasonable() {
-                                return false;
+                            if let Some(reason) = card.get_unreasonable_reason() {
+                                return Some(reason);
                             }
                         }
                         ProjectileModifier::NoEnemyFire => {}
@@ -1441,56 +1466,66 @@ impl BaseCard {
                 }
             }
             BaseCard::MultiCast(cards, modifiers) => {
-                if !cards.iter().all(|card| card.is_reasonable()) {
-                    return false;
+                let mut unreasonable_reasons = vec![];
+                for card in cards {
+                    if let Some(reason) = card.get_unreasonable_reason() {
+                        unreasonable_reasons.push(reason);
+                    }
                 }
                 for modifier in modifiers.iter() {
                     match modifier {
                         MultiCastModifier::Duplication(duplication) => {
                             if *duplication > 12 {
-                                return false;
+                                return Some(format!(
+                                    "Multicast duplication too high ({} > 12)",
+                                    duplication
+                                ));
                             }
                         }
                         _ => {}
                     }
+                }
+                if unreasonable_reasons.len() > 0 {
+                    return Some(unreasonable_reasons.join(", "));
                 }
             }
             BaseCard::CreateMaterial(_) => {}
             BaseCard::Effect(effect) => match effect {
                 Effect::Damage(damage) => {
                     if damage.abs() >= 1024 {
-                        return false;
+                        return Some(format!("Damage too high ({} > 1024)", damage.abs()));
                     }
                 }
                 Effect::Knockback(knockback, _) => {
                     if knockback.abs() > 40 {
-                        return false;
+                        return Some(format!("Knockback too high ({} > 40)", knockback.abs()));
                     }
                 }
                 Effect::Cleanse => {}
                 Effect::Teleport => {}
             },
             BaseCard::StatusEffects(duration, effects) => {
+                let mut unreasonable_reason = vec![];
                 if *duration > 15 {
-                    return false;
+                    unreasonable_reason.push(format!(
+                        "Status effect duration too high ({} > 15)",
+                        duration
+                    ));
                 }
-                if !effects.iter().all(|effect| match effect {
-                    StatusEffect::None => true,
-                    StatusEffect::SimpleStatusEffect(_, stacks) => stacks.abs() <= 20,
-                    StatusEffect::Invincibility => true,
-                    StatusEffect::Trapped => true,
-                    StatusEffect::Lockout => true,
-                    StatusEffect::Stun => true,
-                    StatusEffect::OnHit(card) => card.is_reasonable(),
-                }) {
-                    return false;
+                for effect in effects.iter() {
+                    if let Some(reason) = effect.get_unreasonable_reason() {
+                        unreasonable_reason.push(reason);
+                    }
+                }
+                if unreasonable_reason.len() > 0 {
+                    return Some(unreasonable_reason.join(", "));
                 }
             }
             BaseCard::Trigger(_) => {}
             BaseCard::None => {}
             BaseCard::Palette(..) => panic!("Invalid state"),
         }
-        return true;
+        return None;
     }
 
     pub fn modify_from_path(
@@ -1960,7 +1995,10 @@ impl BaseCard {
                     assert!(path.pop_front().unwrap() == 0);
                     match effects[idx] {
                         StatusEffect::OnHit(ref mut card) => card.cleanup(path),
-                        StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), _) => {}
+                        StatusEffect::SimpleStatusEffect(
+                            SimpleStatusEffectType::IncreaseGravity(_),
+                            _,
+                        ) => {}
                         ref invalid => panic!(
                             "Invalid state: cannot follow path {} into {:?}",
                             idx, invalid

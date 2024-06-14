@@ -1,7 +1,5 @@
 * Card Editor
     * Add up/down arrows on hover for number cards for more intuitive editing
-    * Give reasoning for unreasonable decks
-    * Add a way to decrease impact of ability
     * Add a way to type in modifier values
 * Visuals
     * Hitmarkers
