@@ -12,15 +12,6 @@
     * Hurt visuals
     * Display time to next charge for multicharge cooldowns
     * Display recovery times
-* Cards
-    * Directions
-        * Add directions
-            * Up
-            * Facing
-            * Movement
-        * Add as parameter to
-            * Knockback
-            * Gravity
 * Balance
     * Nerf 1 shots
     * Nerf Low health shields

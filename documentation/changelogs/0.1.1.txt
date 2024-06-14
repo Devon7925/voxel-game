@@ -4,6 +4,14 @@
     * Added passives
     * Allow negatives for multiply impact modifier
     * Add cooldown modifier that makes all charges reload at once
+    * Directions
+        * Add directions
+            * Up
+            * Facing
+            * Movement
+        * Add as parameter to
+            * Knockback
+            * Gravity
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync

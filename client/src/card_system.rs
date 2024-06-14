@@ -18,8 +18,8 @@ pub struct Deck {
 impl Deck {
     pub fn get_total_impact(&self) -> f32 {
         let passive_value = BaseCard::StatusEffects(1, self.passive_effects.clone()).get_cooldown();
-        if passive_value > 0.5 {
-            return f32::MIN_POSITIVE;
+        if passive_value >= 0.5 {
+            return f32::MAX;
         }
         self.cooldowns
             .iter()
@@ -54,9 +54,16 @@ impl CooldownModifier {
 
     pub fn get_effect_value(&self) -> f32 {
         match self {
-            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => *s as f32,
-            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => *s as f32,
-            CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, s) => 1.25f32.powi(*s),
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => {
+                *s as f32
+            }
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => {
+                *s as f32
+            }
+            CooldownModifier::SignedSimpleCooldownModifier(
+                SignedSimpleCooldownModifier::DecreaseCooldown,
+                s,
+            ) => 1.25f32.powi(*s),
             CooldownModifier::Reloading => 1.0,
         }
     }
@@ -198,7 +205,7 @@ impl Cooldown {
                 }
                 CooldownModifier::SignedSimpleCooldownModifier(
                     SignedSimpleCooldownModifier::DecreaseCooldown,
-                    s,
+                    _,
                 ) => {
                     impact_multiplier *= modifier.get_effect_value();
                 }
@@ -281,7 +288,7 @@ impl Cooldown {
         }
     }
 
-    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {
+    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DragableCard {
         let type_idx = path.pop_front().unwrap() as usize;
         if type_idx == 0 {
             let idx = path.pop_front().unwrap() as usize;
@@ -289,14 +296,14 @@ impl Cooldown {
             let modifier = self.modifiers[idx].clone();
             self.modifiers[idx] =
                 CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, 0);
-            DraggableCard::CooldownModifier(modifier)
+            DragableCard::CooldownModifier(modifier)
         } else if type_idx == 1 {
             let idx = path.pop_front().unwrap() as usize;
             if path.is_empty() {
                 let ability_card = self.abilities[idx].card.clone();
                 self.abilities[idx].card = BaseCard::None;
                 self.abilities[idx].invalidate_cooldown_cache();
-                DraggableCard::BaseCard(ability_card)
+                DragableCard::BaseCard(ability_card)
             } else {
                 let result = self.abilities[idx].card.take_from_path(path);
                 self.abilities[idx].invalidate_cooldown_cache();
@@ -307,14 +314,14 @@ impl Cooldown {
         }
     }
 
-    pub fn insert_to_path(&mut self, path: &mut VecDeque<u32>, item: DraggableCard) {
+    pub fn insert_to_path(&mut self, path: &mut VecDeque<u32>, item: DragableCard) {
         if path.is_empty() {
-            if let DraggableCard::BaseCard(item) = item {
+            if let DragableCard::BaseCard(item) = item {
                 self.abilities.push(Ability {
                     card: item,
                     ..Default::default()
                 });
-            } else if let DraggableCard::CooldownModifier(modifier_item) = item {
+            } else if let DragableCard::CooldownModifier(modifier_item) = item {
                 let mut combined = false;
                 match modifier_item.clone() {
                     CooldownModifier::SimpleCooldownModifier(last_type, last_s) => {
@@ -420,7 +427,7 @@ pub enum BaseCard {
     Effect(Effect),
     StatusEffects(u32, Vec<StatusEffect>),
     Trigger(u32),
-    Palette(Vec<DraggableCard>),
+    Palette(Vec<DragableCard>),
     None,
 }
 
@@ -482,12 +489,31 @@ pub enum VoxelMaterial {
     UnloadedAir,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub enum DirectionCard {
+    None,
+    Forward,
+    Up,
+    Movement,
+}
+
+impl std::fmt::Display for DirectionCard {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            DirectionCard::None => write!(f, "None"),
+            DirectionCard::Forward => write!(f, "Forward"),
+            DirectionCard::Up => write!(f, "Up"),
+            DirectionCard::Movement => write!(f, "Movement"),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum Effect {
     Cleanse,
     Teleport,
     Damage(i32),
-    Knockback(i32),
+    Knockback(i32, DirectionCard),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -506,7 +532,7 @@ pub enum SimpleStatusEffectType {
     Speed,
     DamageOverTime,
     IncreaseDamageTaken,
-    IncreaseGravity,
+    IncreaseGravity(DirectionCard),
     Overheal,
     Grow,
     IncreaseMaxHealth,
@@ -523,7 +549,7 @@ impl StatusEffect {
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseDamageTaken, s) => {
                 1.25f32.powi(*s)
             }
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity, s) => {
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), s) => {
                 0.5 * *s as f32
             }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, s) => {
@@ -569,9 +595,9 @@ impl StatusEffect {
                     self.get_effect_value() * 100.0
                 )
             }
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity, _) => {
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), _) => {
                 format!(
-                    "Increase gravity (0.5x normal gravity per) {}b/s/s",
+                    "Increase gravity (0.5x normal gravity per) {}b/s/s in the chosen direction",
                     self.get_effect_value()
                 )
             }
@@ -614,19 +640,38 @@ impl StatusEffect {
         }
     }
 
-    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {
+    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DragableCard {
         match self {
             StatusEffect::OnHit(card) => {
                 assert!(path.pop_front().unwrap() == 0);
                 card.take_from_path(path)
             }
+            StatusEffect::SimpleStatusEffect(
+                SimpleStatusEffectType::IncreaseGravity(ref mut direction),
+                _,
+            ) => {
+                assert!(path.pop_front().unwrap() == 0);
+                let taken_direction = direction.clone();
+                *direction = DirectionCard::None;
+                DragableCard::Direction(taken_direction)
+            }
             _ => panic!("Invalid state"),
         }
     }
 
-    pub fn insert_to_path(&mut self, drop_path: &mut VecDeque<u32>, item: DraggableCard) {
+    pub fn insert_to_path(&mut self, drop_path: &mut VecDeque<u32>, item: DragableCard) {
         match self {
             StatusEffect::OnHit(ref mut card) => card.insert_to_path(drop_path, item),
+            StatusEffect::SimpleStatusEffect(
+                SimpleStatusEffectType::IncreaseGravity(direction),
+                _,
+            ) => {
+                if let DragableCard::Direction(new_direction) = item {
+                    *direction = new_direction;
+                } else {
+                    panic!("Invalid state");
+                }
+            }
             _ => panic!("Invalid state"),
         }
     }
@@ -1126,7 +1171,7 @@ impl BaseCard {
                         }]
                     }
                 }
-                Effect::Knockback(knockback) => vec![CardValue {
+                Effect::Knockback(knockback, _) => vec![CardValue {
                     damage: 0.0,
                     generic: 0.3 * (*knockback as f32).abs(),
                     range_probabilities: core::array::from_fn(
@@ -1215,7 +1260,7 @@ impl BaseCard {
                                         }
                                     }),
                                 }],
-                                SimpleStatusEffectType::IncreaseGravity => vec![CardValue {
+                                SimpleStatusEffectType::IncreaseGravity(_) => vec![CardValue {
                                     damage: 0.0,
                                     generic: 0.5 * true_duration * effect.get_effect_value().abs(),
                                     range_probabilities: core::array::from_fn(|idx| {
@@ -1420,7 +1465,7 @@ impl BaseCard {
                         return false;
                     }
                 }
-                Effect::Knockback(knockback) => {
+                Effect::Knockback(knockback, _) => {
                     if knockback.abs() > 40 {
                         return false;
                     }
@@ -1571,7 +1616,7 @@ impl BaseCard {
                         ModificationType::Add => *damage += 1,
                         ModificationType::Remove => *damage -= 1,
                     },
-                    Effect::Knockback(ref mut knockback) => match modification_type {
+                    Effect::Knockback(ref mut knockback, _) => match modification_type {
                         ModificationType::Add => *knockback += 1,
                         ModificationType::Remove => *knockback -= 1,
                     },
@@ -1592,9 +1637,9 @@ impl BaseCard {
         }
     }
 
-    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DraggableCard {
+    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DragableCard {
         if path.is_empty() {
-            let result = DraggableCard::BaseCard(self.clone());
+            let result = DragableCard::BaseCard(self.clone());
             *self = BaseCard::None;
             return result;
         }
@@ -1604,7 +1649,7 @@ impl BaseCard {
                 if path.is_empty() {
                     let value = modifiers[idx].clone();
                     modifiers[idx] = ProjectileModifier::None;
-                    DraggableCard::ProjectileModifier(value)
+                    DragableCard::ProjectileModifier(value)
                 } else {
                     assert!(path.pop_front().unwrap() == 0);
                     if path.is_empty() {
@@ -1619,7 +1664,7 @@ impl BaseCard {
                                 invalid_take_modifier
                             ),
                         };
-                        let result = DraggableCard::BaseCard(card_ref.clone());
+                        let result = DragableCard::BaseCard(card_ref.clone());
                         *card_ref = BaseCard::None;
                         result
                     } else {
@@ -1647,13 +1692,13 @@ impl BaseCard {
                     assert!(path.is_empty());
                     let multicast_modifier = modifiers[idx].clone();
                     modifiers[idx] = MultiCastModifier::Spread(0);
-                    DraggableCard::MultiCastModifier(multicast_modifier)
+                    DragableCard::MultiCastModifier(multicast_modifier)
                 } else if type_idx == 1 {
                     let idx = path.pop_front().unwrap() as usize;
                     if path.is_empty() {
                         let value = cards[idx].clone();
                         cards[idx] = BaseCard::None;
-                        DraggableCard::BaseCard(value)
+                        DragableCard::BaseCard(value)
                     } else {
                         cards[idx].take_from_path(path)
                     }
@@ -1661,10 +1706,6 @@ impl BaseCard {
                     panic!("Invalid state");
                 }
             }
-            // BaseCard::Effect(Effect::StatusEffect(StatusEffect::OnHit(card), _)) => {
-            //     assert!(path.pop_front().unwrap() == 0);
-            //     card.take_from_path(path)
-            // }
             BaseCard::StatusEffects(_, effects) => {
                 let Some(effect_idx) = path.pop_front() else {
                     panic!("Invalid state: path is empty");
@@ -1672,7 +1713,7 @@ impl BaseCard {
                 if path.is_empty() {
                     let effect = effects[effect_idx as usize].clone();
                     effects[effect_idx as usize] = StatusEffect::None;
-                    return DraggableCard::StatusEffect(effect);
+                    return DragableCard::StatusEffect(effect);
                 }
                 effects
                     .get_mut(effect_idx as usize)
@@ -1683,6 +1724,12 @@ impl BaseCard {
                 let card_idx = path.pop_front().unwrap() as usize;
                 cards[card_idx].clone()
             }
+            BaseCard::Effect(Effect::Knockback(_, direction)) => {
+                assert!(path.pop_front().unwrap() == 0);
+                let value = DragableCard::Direction(direction.clone());
+                *direction = DirectionCard::None;
+                value
+            }
             invalid_take @ (BaseCard::CreateMaterial(_)
             | BaseCard::None
             | BaseCard::Trigger(_)
@@ -1690,11 +1737,11 @@ impl BaseCard {
         }
     }
 
-    pub fn insert_to_path(&mut self, path: &mut VecDeque<u32>, item: DraggableCard) {
+    pub fn insert_to_path(&mut self, path: &mut VecDeque<u32>, item: DragableCard) {
         match self {
             BaseCard::Projectile(modifiers) => {
                 if path.is_empty() {
-                    let DraggableCard::ProjectileModifier(item) = item else {
+                    let DragableCard::ProjectileModifier(item) = item else {
                         panic!("Invalid state")
                     };
                     if let ProjectileModifier::SimpleModify(last_ty, last_s) = item.clone() {
@@ -1745,9 +1792,9 @@ impl BaseCard {
             }
             BaseCard::MultiCast(cards, modifiers) => {
                 if path.is_empty() {
-                    if let DraggableCard::BaseCard(item) = item {
+                    if let DragableCard::BaseCard(item) = item {
                         cards.push(item);
-                    } else if let DraggableCard::MultiCastModifier(modifier_item) = item {
+                    } else if let DragableCard::MultiCastModifier(modifier_item) = item {
                         let mut combined = false;
                         match modifier_item.clone() {
                             MultiCastModifier::Duplication(last_s) => {
@@ -1790,7 +1837,7 @@ impl BaseCard {
             }
             BaseCard::StatusEffects(_, effects) => {
                 if path.is_empty() {
-                    let DraggableCard::StatusEffect(item) = item else {
+                    let DragableCard::StatusEffect(item) = item else {
                         panic!("Invalid state")
                     };
                     if let StatusEffect::SimpleStatusEffect(last_ty, last_s) = item.clone() {
@@ -1824,18 +1871,26 @@ impl BaseCard {
                     effects[idx].insert_to_path(path, item);
                 }
             }
+            BaseCard::Effect(Effect::Knockback(_, ref mut direction)) => {
+                assert!(path.pop_front().unwrap() == 0);
+                if let DragableCard::Direction(new_direction) = item {
+                    *direction = new_direction;
+                } else {
+                    panic!("Invalid state")
+                }
+            }
             BaseCard::None => {
                 assert!(
                     path.is_empty(),
                     "Invalid state: should not have nonempty path {:?} when inserting into None",
                     path
                 );
-                let DraggableCard::BaseCard(item) = item else {
+                let DragableCard::BaseCard(item) = item else {
                     panic!("Invalid state")
                 };
                 *self = item;
             }
-            _ => panic!("Invalid state"),
+            c => panic!("Invalid state: Could not insert into {:?}", c),
         }
     }
 
@@ -1908,6 +1963,7 @@ impl BaseCard {
                     assert!(path.pop_front().unwrap() == 0);
                     match effects[idx] {
                         StatusEffect::OnHit(ref mut card) => card.cleanup(path),
+                        StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), _) => {}
                         ref invalid => panic!(
                             "Invalid state: cannot follow path {} into {:?}",
                             idx, invalid
@@ -1918,18 +1974,20 @@ impl BaseCard {
             BaseCard::None => {
                 assert!(path.is_empty(), "Invalid state");
             }
-            _ => panic!("Invalid state"),
+            BaseCard::Effect(Effect::Knockback(_, _)) => {}
+            c => panic!("Invalid state: Could cleanup {:?}", c),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DraggableCard {
+pub enum DragableCard {
     ProjectileModifier(ProjectileModifier),
     MultiCastModifier(MultiCastModifier),
     CooldownModifier(CooldownModifier),
     StatusEffect(StatusEffect),
     BaseCard(BaseCard),
+    Direction(DirectionCard),
 }
 
 impl Default for BaseCard {
@@ -2244,7 +2302,7 @@ pub struct ReferencedMulticast {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum ReferencedEffect {
     Damage(i32),
-    Knockback(i32),
+    Knockback(i32, DirectionCard),
     Cleanse,
     Teleport,
 }
@@ -2260,7 +2318,7 @@ pub enum ReferencedStatusEffect {
     Speed(i32),
     DamageOverTime(i32),
     IncreaseDamageTaken(i32),
-    IncreaseGravity(i32),
+    IncreaseGravity(DirectionCard, i32),
     Overheal(i32),
     Grow(i32),
     IncreaseMaxHealth(i32),
@@ -2503,7 +2561,9 @@ impl CardManager {
             BaseCard::Effect(effect) => {
                 let referenced_effect = match effect {
                     Effect::Damage(damage) => ReferencedEffect::Damage(damage),
-                    Effect::Knockback(knockback) => ReferencedEffect::Knockback(knockback),
+                    Effect::Knockback(knockback, direction) => {
+                        ReferencedEffect::Knockback(knockback, direction)
+                    }
                     Effect::Cleanse => ReferencedEffect::Cleanse,
                     Effect::Teleport => ReferencedEffect::Teleport,
                 };
@@ -2519,7 +2579,9 @@ impl CardManager {
                     effects: vec![],
                 };
                 for effect in effects {
-                    referenced_status_effects.effects.extend(self.register_status_effect(effect));
+                    referenced_status_effects
+                        .effects
+                        .extend(self.register_status_effect(effect));
                 }
                 self.referenced_status_effects
                     .push(referenced_status_effects);
@@ -2549,29 +2611,26 @@ impl CardManager {
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, stacks) => {
                 vec![ReferencedStatusEffect::Speed(stacks)]
             }
-            StatusEffect::SimpleStatusEffect(
-                SimpleStatusEffectType::DamageOverTime,
-                stacks,
-            ) => vec![ReferencedStatusEffect::DamageOverTime(stacks)],
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::DamageOverTime, stacks) => {
+                vec![ReferencedStatusEffect::DamageOverTime(stacks)]
+            }
             StatusEffect::SimpleStatusEffect(
                 SimpleStatusEffectType::IncreaseDamageTaken,
                 stacks,
             ) => vec![ReferencedStatusEffect::IncreaseDamageTaken(stacks)],
             StatusEffect::SimpleStatusEffect(
-                SimpleStatusEffectType::IncreaseGravity,
+                SimpleStatusEffectType::IncreaseGravity(direction),
                 stacks,
-            ) => vec![ReferencedStatusEffect::IncreaseGravity(stacks)],
-            StatusEffect::SimpleStatusEffect(
-                SimpleStatusEffectType::Overheal,
-                stacks,
-            ) => vec![ReferencedStatusEffect::Overheal(stacks)],
+            ) => vec![ReferencedStatusEffect::IncreaseGravity(direction, stacks)],
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, stacks) => {
+                vec![ReferencedStatusEffect::Overheal(stacks)]
+            }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, stacks) => {
                 vec![ReferencedStatusEffect::Grow(stacks)]
             }
-            StatusEffect::SimpleStatusEffect(
-                SimpleStatusEffectType::IncreaseMaxHealth,
-                stacks,
-            ) => vec![ReferencedStatusEffect::IncreaseMaxHealth(stacks)],
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, stacks) => {
+                vec![ReferencedStatusEffect::IncreaseMaxHealth(stacks)]
+            }
             StatusEffect::Invincibility => vec![ReferencedStatusEffect::Invincibility],
             StatusEffect::Trapped => vec![ReferencedStatusEffect::Trapped],
             StatusEffect::Lockout => vec![ReferencedStatusEffect::Lockout],
@@ -2586,7 +2645,7 @@ impl CardManager {
             }
         }
     }
-    
+
     pub fn get_effects_from_base_card(
         &self,
         card: ReferencedBaseCard,

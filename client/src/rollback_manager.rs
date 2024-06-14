@@ -23,7 +23,7 @@ use winit::event::{ElementState, WindowEvent};
 
 use crate::{
     card_system::{
-        BaseCard, CardManager, Cooldown, Deck, ReferencedCooldown, ReferencedEffect,
+        BaseCard, CardManager, Cooldown, Deck, DirectionCard, ReferencedCooldown, ReferencedEffect,
         ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType,
         StateKeybind, StatusEffect, VoxelMaterial,
     },
@@ -220,6 +220,7 @@ pub struct Entity {
     pub passive_abilities: Vec<ReferencedStatusEffect>,
     pub respawn_timer: f32,
     pub collision_vec: Vector3<i32>,
+    pub movement_direction: Vector3<f32>,
     pub status_effects: Vec<AppliedStatusEffect>,
     pub player_piercing_invincibility: f32,
 }
@@ -259,7 +260,7 @@ pub struct UploadPlayer {
 struct PlayerEffectStats {
     speed: f32,
     damage_taken: f32,
-    gravity: f32,
+    gravity: Vector3<f32>,
     size: f32,
     max_health: f32,
     invincible: bool,
@@ -309,6 +310,7 @@ impl Default for Entity {
             passive_abilities: Vec::new(),
             respawn_timer: 0.0,
             collision_vec: Vector3::new(0, 0, 0),
+            movement_direction: Vector3::new(0.0, 0.0, 0.0),
             status_effects: Vec::new(),
             player_piercing_invincibility: 0.0,
         }
@@ -1479,7 +1481,9 @@ impl WorldState {
                 }) {
                     if let Some(prev_collision) = collision.as_ref() {
                         if (projectile_pos - hitsphere.offset).to_vec().magnitude()
-                            > (projectile_pos - prev_collision.offset).to_vec().magnitude()
+                            > (projectile_pos - prev_collision.offset)
+                                .to_vec()
+                                .magnitude()
                         {
                             continue 'outer;
                         }
@@ -1515,31 +1519,29 @@ impl WorldState {
                     }
                     for card_ref in hit_cards {
                         let proj_rot = proj.dir;
-                        let proj_rot = Quaternion::new(
-                            proj_rot[3],
-                            proj_rot[0],
-                            proj_rot[1],
-                            proj_rot[2],
-                        );
-                        let (
-                            on_hit_projectiles,
-                            on_hit_voxels,
-                            effects,
-                            status_effects,
-                            triggers,
-                        ) = card_manager.get_effects_from_base_card(
-                            card_ref,
-                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
-                            &proj_rot,
-                            proj.owner,
-                            false,
-                        );
+                        let proj_rot =
+                            Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
+                        let (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) =
+                            card_manager.get_effects_from_base_card(
+                                card_ref,
+                                &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                                &proj_rot,
+                                proj.owner,
+                                false,
+                            );
                         new_projectiles.extend(on_hit_projectiles);
                         for (pos, material) in on_hit_voxels {
                             voxels_to_write.push((pos, material.to_memory()));
                         }
                         for effect in effects {
-                            new_effects.push((player_idx, Point3::from_vec(collision.offset), ((collision.offset-projectile_pos.to_vec()).normalize() + projectile_vectors[2] * proj.vel).normalize(), effect));
+                            new_effects.push((
+                                player_idx,
+                                Point3::from_vec(collision.offset),
+                                ((collision.offset - projectile_pos.to_vec()).normalize()
+                                    + projectile_vectors[2] * proj.vel)
+                                    .normalize(),
+                                effect,
+                            ));
                         }
                         for status_effects in status_effects {
                             new_status_effects.push((player_idx, status_effects));
@@ -1697,9 +1699,14 @@ impl WorldState {
                 ReferencedEffect::Damage(damage) => {
                     player.adjust_health(-player_stats[player_idx].damage_taken * damage as f32);
                 }
-                ReferencedEffect::Knockback(knockback) => {
+                ReferencedEffect::Knockback(knockback, direction) => {
                     let knockback = 10.0 * knockback as f32;
-                    let knockback_dir = effect_direction;
+                    let knockback_dir = match direction {
+                        DirectionCard::None => Vector3::new(0.0, 0.0, 0.0),
+                        DirectionCard::Forward => effect_direction,
+                        DirectionCard::Up => Vector3::new(0.0, 1.0, 0.0),
+                        DirectionCard::Movement => player.movement_direction,
+                    };
                     if knockback_dir.magnitude() > 0.0 {
                         player.vel += knockback * (knockback_dir).normalize();
                     } else {
@@ -1743,7 +1750,7 @@ impl WorldState {
             .map(|player| {
                 let mut speed = 1.0;
                 let mut damage_taken = 1.0;
-                let mut gravity = 1.0;
+                let mut gravity = Vector3::new(0.0, -1.0, 0.0);
                 let mut size = 1.0;
                 let mut max_health = PLAYER_BASE_MAX_HEALTH;
                 let mut invincible = false;
@@ -1773,12 +1780,24 @@ impl WorldState {
                             )
                             .get_effect_value();
                         }
-                        ReferencedStatusEffect::IncreaseGravity(stacks) => {
+                        ReferencedStatusEffect::IncreaseGravity(direction, stacks) => {
                             gravity += StatusEffect::SimpleStatusEffect(
-                                SimpleStatusEffectType::IncreaseGravity,
+                                SimpleStatusEffectType::IncreaseGravity(direction.clone()),
                                 *stacks,
                             )
-                            .get_effect_value();
+                            .get_effect_value()
+                                * match direction {
+                                    DirectionCard::Forward => player.dir,
+                                    DirectionCard::Up => Vector3::new(0.0, 1.0, 0.0),
+                                    DirectionCard::Movement => {
+                                        if player.movement_direction.magnitude() == 0.0 {
+                                            Vector3::new(0.0, 0.0, 0.0)
+                                        } else {
+                                            player.movement_direction.normalize()
+                                        }
+                                    }
+                                    DirectionCard::None => Vector3::new(0.0, 0.0, 0.0),
+                                };
                         }
                         ReferencedStatusEffect::Overheal(_) => {
                             // managed seperately
@@ -2242,14 +2261,14 @@ impl Entity {
             if move_vec.magnitude() > 0.0 {
                 move_vec = move_vec.normalize();
             }
+            self.movement_direction = move_vec;
             let accel_speed = speed_multiplier
-                * player_stats[player_idx].speed
                 * if self.collision_vec != Vector3::new(0, 0, 0) {
                     80.0
                 } else {
                     18.0
                 };
-            self.vel += accel_speed * move_vec * time_step;
+            self.vel += accel_speed * Vector3::new(player_stats[player_idx].speed, 1.0, player_stats[player_idx].speed).mul_element_wise(move_vec) * time_step;
 
             if action.jump {
                 self.vel += player_stats[player_idx].speed
@@ -2356,7 +2375,7 @@ impl Entity {
         directional_density /=
             self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
 
-        self.vel.y -= (PLAYER_DENSITY - nearby_density)
+        self.vel += (PLAYER_DENSITY - nearby_density)
             * player_stats[player_idx].gravity
             * 11.428571428571429
             * time_step;
