@@ -224,6 +224,7 @@ pub struct Entity {
     pub status_effects: Vec<AppliedStatusEffect>,
     pub player_piercing_invincibility: f32,
     pub hitmarker: (f32, f32),
+    pub hurtmarkers: Vec<(Vector3<f32>, f32, f32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -315,6 +316,7 @@ impl Default for Entity {
             status_effects: Vec::new(),
             player_piercing_invincibility: 0.0,
             hitmarker: (0.0, 0.0),
+            hurtmarkers: Vec::new(),
         }
     }
 }
@@ -1718,6 +1720,9 @@ impl WorldState {
             match effect {
                 ReferencedEffect::Damage(damage) => {
                     player.adjust_health(-player_stats[affected_idx].damage_taken * damage as f32);
+                    if damage > 0 {
+                        player.hurtmarkers.push((effect_direction, player_stats[affected_idx].damage_taken * damage as f32, 1.0));
+                    }
                     let actor = self.players.get_mut(actor_idx).unwrap();
                     if was_headshot {
                         actor.hitmarker.1 += damage as f32;
@@ -2365,6 +2370,10 @@ impl Entity {
         self.hitmarker.1 -= 3.0 * (10.0 + self.hitmarker.1) * time_step;
         self.hitmarker.0 = self.hitmarker.0.max(0.0);
         self.hitmarker.1 = self.hitmarker.1.max(0.0);
+        for hurtmarker in self.hurtmarkers.iter_mut() {
+            hurtmarker.2 -= time_step;
+        }
+        self.hurtmarkers.retain(|hurtmarker| hurtmarker.2 > 0.0);
 
         //volume effects
         let start_pos =

@@ -1,5 +1,3 @@
-* Visuals
-    * Hurt visuals
 * Balance
     * Nerf 1 shots
     * Nerf Low health shields

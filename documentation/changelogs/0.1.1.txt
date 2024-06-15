@@ -22,6 +22,7 @@
     * Hitmarkers
         * Regular hit
         * Headshot
+    * Hurt markers
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync
