@@ -1,6 +1,3 @@
-* Card Editor
-    * Add up/down arrows on hover for number cards for more intuitive editing
-    * Add a way to type in modifier values
 * Visuals
     * Hitmarkers
         * Regular hit

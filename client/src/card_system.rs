@@ -1,21 +1,26 @@
 use crate::{
-    gui::ModificationType, settings_manager::Control, voxel_sim_manager::Projectile,
+    settings_manager::Control, voxel_sim_manager::Projectile,
     PLAYER_BASE_MAX_HEALTH,
 };
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Deck {
     pub cooldowns: Vec<Cooldown>,
+    pub passive: PassiveCard,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PassiveCard {
     pub passive_effects: Vec<StatusEffect>,
 }
 
 impl Deck {
     pub fn get_total_impact(&self) -> f32 {
-        let passive_value = BaseCard::StatusEffects(1, self.passive_effects.clone()).get_cooldown();
+        let passive_value = BaseCard::StatusEffects(1, self.passive.passive_effects.clone()).get_cooldown();
         if passive_value >= 0.5 {
             return f32::MAX;
         }
@@ -31,10 +36,12 @@ impl Deck {
 pub struct Cooldown {
     pub modifiers: Vec<CooldownModifier>,
     pub abilities: Vec<Ability>,
+    pub cooldown_value: Option<(f32, Vec<f32>)>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum CooldownModifier {
+    None,
     SignedSimpleCooldownModifier(SignedSimpleCooldownModifier, i32),
     SimpleCooldownModifier(SimpleCooldownModifier, u32),
     Reloading,
@@ -43,6 +50,7 @@ pub enum CooldownModifier {
 impl CooldownModifier {
     pub fn get_hover_text(&self) -> String {
         match self {
+            CooldownModifier::None => "".to_string(),
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => format!("Add {} charges", s),
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => format!("Increase cooldown by {}s ({} per)", SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT*(*s as f32), SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT),
             CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increases the cooldown of all other abilities", self.get_effect_value()),
@@ -52,6 +60,7 @@ impl CooldownModifier {
 
     pub fn get_effect_value(&self) -> f32 {
         match self {
+            CooldownModifier::None => 0.0,
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => {
                 *s as f32
             }
@@ -64,6 +73,16 @@ impl CooldownModifier {
             ) => 1.25f32.powi(*s),
             CooldownModifier::Reloading => 1.0,
         }
+    }
+    
+    pub fn get_name(&self) -> String {
+        match self {
+            CooldownModifier::None => "None",
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, _) => "Add charge",
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, _) => "Add cooldown",
+            CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, _) => "Decrease cooldown",
+            CooldownModifier::Reloading => "Reloading",
+        }.to_string()
     }
 }
 
@@ -150,15 +169,18 @@ impl Cooldown {
         Cooldown {
             modifiers: vec![],
             abilities: vec![Ability::default()],
+            cooldown_value: None,
         }
     }
 
     pub fn get_unreasonable_reason(&self) -> Option<String> {
-        Some(self.abilities
-            .iter()
-            .filter_map(|ability| ability.card.get_unreasonable_reason())
-            .join(", "))
-            .filter(|reason| !reason.is_empty())
+        Some(
+            self.abilities
+                .iter()
+                .filter_map(|ability| ability.card.get_unreasonable_reason())
+                .join(", "),
+        )
+        .filter(|reason| !reason.is_empty())
     }
 
     pub fn generate_cooldown_cache(&mut self) -> bool {
@@ -194,6 +216,7 @@ impl Cooldown {
         let mut reloading = false;
         for modifier in self.modifiers.iter() {
             match modifier {
+                CooldownModifier::None => {}
                 CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => {
                     ability_charges += s;
                 }
@@ -253,158 +276,6 @@ impl Cooldown {
         impact_multiplier
     }
 
-    pub fn modify_from_path(
-        &mut self,
-        path: &mut VecDeque<u32>,
-        modification_type: &ModificationType,
-    ) {
-        let type_idx = path.pop_front().unwrap() as usize;
-        if type_idx == 0 {
-            let idx = path.pop_front().unwrap() as usize;
-            assert!(path.is_empty());
-            match &mut self.modifiers[idx] {
-                CooldownModifier::SimpleCooldownModifier(_, v) => match modification_type {
-                    ModificationType::Add => *v += 1,
-                    ModificationType::Remove => {
-                        if *v > 1 {
-                            *v -= 1
-                        }
-                    }
-                },
-                CooldownModifier::SignedSimpleCooldownModifier(_, v) => match modification_type {
-                    ModificationType::Add => *v += 1,
-                    ModificationType::Remove => *v -= 1,
-                },
-                _ => {}
-            }
-        } else if type_idx == 1 {
-            let idx = path.pop_front().unwrap() as usize;
-            self.abilities[idx]
-                .card
-                .modify_from_path(path, modification_type);
-            self.abilities[idx].invalidate_cooldown_cache();
-        } else {
-            panic!("Invalid state");
-        }
-    }
-
-    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DragableCard {
-        let type_idx = path.pop_front().unwrap() as usize;
-        if type_idx == 0 {
-            let idx = path.pop_front().unwrap() as usize;
-            assert!(path.is_empty());
-            let modifier = self.modifiers[idx].clone();
-            self.modifiers[idx] =
-                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, 0);
-            DragableCard::CooldownModifier(modifier)
-        } else if type_idx == 1 {
-            let idx = path.pop_front().unwrap() as usize;
-            if path.is_empty() {
-                let ability_card = self.abilities[idx].card.clone();
-                self.abilities[idx].card = BaseCard::None;
-                self.abilities[idx].invalidate_cooldown_cache();
-                DragableCard::BaseCard(ability_card)
-            } else {
-                let result = self.abilities[idx].card.take_from_path(path);
-                self.abilities[idx].invalidate_cooldown_cache();
-                result
-            }
-        } else {
-            panic!("Invalid state");
-        }
-    }
-
-    pub fn insert_to_path(&mut self, path: &mut VecDeque<u32>, item: DragableCard) {
-        if path.is_empty() {
-            if let DragableCard::BaseCard(item) = item {
-                self.abilities.push(Ability {
-                    card: item,
-                    ..Default::default()
-                });
-            } else if let DragableCard::CooldownModifier(modifier_item) = item {
-                let mut combined = false;
-                match modifier_item.clone() {
-                    CooldownModifier::SimpleCooldownModifier(last_type, last_s) => {
-                        for modifier in self.modifiers.iter_mut() {
-                            match modifier {
-                                CooldownModifier::SimpleCooldownModifier(current_type, s)
-                                    if *current_type == last_type =>
-                                {
-                                    *s += last_s;
-                                    combined = true;
-                                    break;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    CooldownModifier::SignedSimpleCooldownModifier(last_type, last_s) => {
-                        for modifier in self.modifiers.iter_mut() {
-                            match modifier {
-                                CooldownModifier::SignedSimpleCooldownModifier(current_type, s)
-                                    if *current_type == last_type =>
-                                {
-                                    *s += last_s;
-                                    combined = true;
-                                    break;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-
-                if !combined {
-                    self.modifiers.push(modifier_item.clone());
-                }
-            } else {
-                panic!("Invalid state")
-            }
-        } else {
-            assert!(path.pop_front().unwrap() == 1);
-            let idx = path.pop_front().unwrap() as usize;
-            self.abilities[idx].card.insert_to_path(path, item);
-            self.abilities[idx].invalidate_cooldown_cache();
-        }
-    }
-
-    pub fn cleanup(&mut self, path: &mut VecDeque<u32>) {
-        if path.is_empty() {
-            return;
-        }
-        let idx_type = path.pop_front().unwrap();
-        if idx_type == 0 {
-            let idx = path.pop_front().unwrap() as usize;
-            assert!(path.is_empty());
-            match self.modifiers[idx] {
-                CooldownModifier::SimpleCooldownModifier(_, s) => {
-                    if s == 0 {
-                        self.modifiers.remove(idx);
-                    }
-                }
-                CooldownModifier::SignedSimpleCooldownModifier(_, s) => {
-                    if s == 0 {
-                        self.modifiers.remove(idx);
-                    }
-                }
-                _ => {}
-            }
-        } else if idx_type == 1 {
-            let idx = path.pop_front().unwrap() as usize;
-            if path.is_empty() {
-                if matches!(self.abilities[idx].card, BaseCard::None) && self.abilities.len() > 1 {
-                    self.abilities.remove(idx);
-                }
-            } else {
-                self.abilities[idx].card.cleanup(path);
-                self.abilities[idx].invalidate_cooldown_cache();
-            }
-        } else {
-            panic!("Invalid state");
-        }
-    }
-
     pub fn ability_charges(&self) -> u32 {
         self.modifiers
             .iter()
@@ -461,17 +332,27 @@ pub enum SimpleProjectileModifierType {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum MultiCastModifier {
+    None,
     Spread(u32),
     Duplication(u32),
 }
 impl MultiCastModifier {
     pub fn get_hover_text(&self) -> String {
         match self {
+            MultiCastModifier::None => "".to_string(),
             MultiCastModifier::Spread(s) => format!("Increase spread by {}", s),
             MultiCastModifier::Duplication(s) => {
                 format!("Create {} copies of the projectile", 2_u32.pow(*s))
             }
         }
+    }
+    
+    pub fn get_name(&self) -> String {
+        match self {
+            MultiCastModifier::None => "None",
+            MultiCastModifier::Spread(_) => "Spread",
+            MultiCastModifier::Duplication(_) => "Duplication",
+        }.to_string()
     }
 }
 
@@ -514,6 +395,25 @@ pub enum Effect {
     Teleport,
     Damage(i32),
     Knockback(i32, DirectionCard),
+}
+impl Effect {
+    pub fn get_name(&self) -> String {
+        match self {
+            Effect::Cleanse => "Cleanse",
+            Effect::Teleport => "Teleport",
+            Effect::Damage(_) => "Damage",
+            Effect::Knockback(_, _) => "Knockback",
+        }.to_string()
+    }
+    
+    pub fn get_hover_text(&self) -> String {
+        match self {
+            Effect::Cleanse => "Clear status effects".to_string(),
+            Effect::Teleport => "Teleport the active player to where this was activated".to_string(),
+            Effect::Damage(damage) => format!("Deal {} damage to anything", damage),
+            Effect::Knockback(knockback, direction) => format!("Apply an impulse {} in the {} direction", knockback, direction),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -618,64 +518,6 @@ impl StatusEffect {
         }
     }
 
-    pub fn modify_from_path(
-        &mut self,
-        path: &mut VecDeque<u32>,
-        modification_type: &ModificationType,
-    ) {
-        match self {
-            StatusEffect::None => {}
-            StatusEffect::SimpleStatusEffect(_, ref mut stacks) => match modification_type {
-                ModificationType::Add => *stacks += 1,
-                ModificationType::Remove => *stacks -= 1,
-            },
-            StatusEffect::Invincibility => {}
-            StatusEffect::Trapped => {}
-            StatusEffect::Lockout => {}
-            StatusEffect::Stun => {}
-            StatusEffect::OnHit(ref mut card) => {
-                assert!(path.pop_front().unwrap() == 0);
-                card.modify_from_path(path, modification_type)
-            }
-        }
-    }
-
-    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DragableCard {
-        match self {
-            StatusEffect::OnHit(card) => {
-                assert!(path.pop_front().unwrap() == 0);
-                card.take_from_path(path)
-            }
-            StatusEffect::SimpleStatusEffect(
-                SimpleStatusEffectType::IncreaseGravity(ref mut direction),
-                _,
-            ) => {
-                assert!(path.pop_front().unwrap() == 0);
-                let taken_direction = direction.clone();
-                *direction = DirectionCard::None;
-                DragableCard::Direction(taken_direction)
-            }
-            _ => panic!("Invalid state"),
-        }
-    }
-
-    pub fn insert_to_path(&mut self, drop_path: &mut VecDeque<u32>, item: DragableCard) {
-        match self {
-            StatusEffect::OnHit(ref mut card) => card.insert_to_path(drop_path, item),
-            StatusEffect::SimpleStatusEffect(
-                SimpleStatusEffectType::IncreaseGravity(direction),
-                _,
-            ) => {
-                if let DragableCard::Direction(new_direction) = item {
-                    *direction = new_direction;
-                } else {
-                    panic!("Invalid state");
-                }
-            }
-            _ => panic!("Invalid state"),
-        }
-    }
-
     fn get_unreasonable_reason(&self) -> Option<String> {
         match self {
             StatusEffect::None => None,
@@ -692,6 +534,24 @@ impl StatusEffect {
             StatusEffect::Stun => None,
             StatusEffect::OnHit(card) => card.get_unreasonable_reason(),
         }
+    }
+    
+    pub fn get_name(&self) -> String {
+        match self {
+            StatusEffect::None => "None",
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, _) => "Speed",
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::DamageOverTime, _) => "Damage over time",
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseDamageTaken, _) => "Increase damage taken",
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), _) => "Increase gravity",
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, _) => "Overheal",
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, _) => "Grow",
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, _) => "Increase max health",
+            StatusEffect::Invincibility => "Invincibility",
+            StatusEffect::Trapped => "Trapped",
+            StatusEffect::Lockout => "Lockout",
+            StatusEffect::Stun => "Stun",
+            StatusEffect::OnHit(_) => "On hit",
+        }.to_string()
     }
 }
 
@@ -1091,6 +951,7 @@ impl BaseCard {
                 let mut spread = 0;
                 for modifier in modifiers.iter() {
                     match modifier {
+                        MultiCastModifier::None => {}
                         MultiCastModifier::Duplication(mod_duplication) => {
                             duplication *= 2_u32.pow(*mod_duplication);
                         }
@@ -1240,7 +1101,7 @@ impl BaseCard {
                                     if is_direct {
                                         vec![CardValue {
                                             damage: 0.0,
-                                            generic: -1.0
+                                            generic: -0.75
                                                 * effect.get_effect_value()
                                                 * true_duration,
                                             range_probabilities: core::array::from_fn(|idx| {
@@ -1269,7 +1130,7 @@ impl BaseCard {
                                 }
                                 SimpleStatusEffectType::IncreaseDamageTaken => vec![CardValue {
                                     damage: 0.0,
-                                    generic: true_duration * effect.get_effect_value(),
+                                    generic: true_duration * effect.get_effect_value().max(1.0/effect.get_effect_value()),
                                     range_probabilities: core::array::from_fn(|idx| {
                                         if idx == 0 {
                                             1.0
@@ -1345,7 +1206,7 @@ impl BaseCard {
                         }],
                         StatusEffect::Trapped => vec![CardValue {
                             damage: 0.0,
-                            generic: (if is_direct { -0.5 } else { 1.0 })
+                            generic: (if is_direct { -1.0 } else { 1.0 })
                                 * 1.0
                                 * true_duration.powi(2),
                             range_probabilities: core::array::from_fn(|idx| {
@@ -1358,7 +1219,7 @@ impl BaseCard {
                         }],
                         StatusEffect::Lockout => vec![CardValue {
                             damage: 0.0,
-                            generic: (if is_direct { -0.5 } else { 1.0 })
+                            generic: (if is_direct { -1.0 } else { 1.0 })
                                 * 1.0
                                 * true_duration.powi(2),
                             range_probabilities: core::array::from_fn(|idx| {
@@ -1371,7 +1232,7 @@ impl BaseCard {
                         }],
                         StatusEffect::Stun => vec![CardValue {
                             damage: 0.0,
-                            generic: (if is_direct { -0.5 } else { 1.0 })
+                            generic: (if is_direct { -1.0 } else { 1.0 })
                                 * 2.0
                                 * true_duration.powi(2),
                             range_probabilities: core::array::from_fn(|idx| {
@@ -1527,492 +1388,6 @@ impl BaseCard {
         }
         return None;
     }
-
-    pub fn modify_from_path(
-        &mut self,
-        path: &mut VecDeque<u32>,
-        modification_type: &ModificationType,
-    ) {
-        match self {
-            BaseCard::Projectile(modifiers) => {
-                let idx = path.pop_front().unwrap() as usize;
-                if path.is_empty() {
-                    match modifiers.get_mut(idx).unwrap() {
-                        ProjectileModifier::SimpleModify(_type, ref mut value) => {
-                            match modification_type {
-                                ModificationType::Add => *value += 1,
-                                ModificationType::Remove => *value -= 1,
-                            }
-                        }
-                        ProjectileModifier::Trail(ref mut frequency, _card) => {
-                            match modification_type {
-                                ModificationType::Add => *frequency += 1,
-                                ModificationType::Remove => {
-                                    if *frequency > 1 {
-                                        *frequency -= 1
-                                    }
-                                }
-                            }
-                        }
-                        ProjectileModifier::OnTrigger(ref mut id, _card) => match modification_type
-                        {
-                            ModificationType::Add => *id += 1,
-                            ModificationType::Remove => {
-                                if *id > 0 {
-                                    *id -= 1
-                                }
-                            }
-                        },
-                        ProjectileModifier::FriendlyFire
-                        | ProjectileModifier::LockToOwner
-                        | ProjectileModifier::NoEnemyFire
-                        | ProjectileModifier::PiercePlayers
-                        | ProjectileModifier::OnHeadshot(_)
-                        | ProjectileModifier::OnHit(_)
-                        | ProjectileModifier::OnExpiry(_)
-                        | ProjectileModifier::WallBounce
-                        | ProjectileModifier::None => {}
-                    }
-                } else {
-                    assert!(path.pop_front().unwrap() == 0);
-                    match modifiers[idx] {
-                        ProjectileModifier::OnHit(ref mut card) => {
-                            card.modify_from_path(path, modification_type)
-                        }
-                        ProjectileModifier::OnHeadshot(ref mut card) => {
-                            card.modify_from_path(path, modification_type)
-                        }
-                        ProjectileModifier::OnExpiry(ref mut card) => {
-                            card.modify_from_path(path, modification_type)
-                        }
-                        ProjectileModifier::OnTrigger(_, ref mut card) => {
-                            card.modify_from_path(path, modification_type)
-                        }
-                        ProjectileModifier::Trail(_freqency, ref mut card) => {
-                            card.modify_from_path(path, modification_type)
-                        }
-                        _ => panic!("Invalid state"),
-                    }
-                }
-            }
-            BaseCard::MultiCast(cards, modifiers) => {
-                let type_idx = path.pop_front().unwrap() as usize;
-                if type_idx == 0 {
-                    let idx = path.pop_front().unwrap() as usize;
-                    assert!(path.is_empty());
-                    match modifiers[idx] {
-                        MultiCastModifier::Spread(ref mut value) => match modification_type {
-                            ModificationType::Add => *value += 1,
-                            ModificationType::Remove => {
-                                if *value > 1 {
-                                    *value -= 1
-                                }
-                            }
-                        },
-                        MultiCastModifier::Duplication(ref mut value) => match modification_type {
-                            ModificationType::Add => *value += 1,
-                            ModificationType::Remove => {
-                                if *value > 1 {
-                                    *value -= 1
-                                }
-                            }
-                        },
-                    }
-                } else if type_idx == 1 {
-                    let idx = path.pop_front().unwrap() as usize;
-                    cards[idx].modify_from_path(path, modification_type)
-                } else {
-                    panic!("Invalid state");
-                }
-            }
-            BaseCard::CreateMaterial(_) => panic!("Invalid state"),
-            BaseCard::StatusEffects(duration, effects) => {
-                if path.is_empty() {
-                    match modification_type {
-                        ModificationType::Add => *duration += 1,
-                        ModificationType::Remove => {
-                            if *duration > 1 {
-                                *duration -= 1
-                            }
-                        }
-                    }
-                } else {
-                    let effect_idx = path.pop_front().unwrap() as usize;
-                    effects[effect_idx].modify_from_path(path, modification_type);
-                }
-            }
-            BaseCard::Effect(effect) => {
-                assert!(path.is_empty());
-                match effect {
-                    Effect::Damage(ref mut damage) => match modification_type {
-                        ModificationType::Add => *damage += 1,
-                        ModificationType::Remove => *damage -= 1,
-                    },
-                    Effect::Knockback(ref mut knockback, _) => match modification_type {
-                        ModificationType::Add => *knockback += 1,
-                        ModificationType::Remove => *knockback -= 1,
-                    },
-                    Effect::Cleanse => {}
-                    Effect::Teleport => {}
-                }
-            }
-            BaseCard::Trigger(ref mut id) => match modification_type {
-                ModificationType::Add => *id += 1,
-                ModificationType::Remove => {
-                    if *id > 0 {
-                        *id -= 1
-                    }
-                }
-            },
-            BaseCard::None => panic!("Invalid state"),
-            BaseCard::Palette(..) => {}
-        }
-    }
-
-    pub fn take_from_path(&mut self, path: &mut VecDeque<u32>) -> DragableCard {
-        if path.is_empty() {
-            let result = DragableCard::BaseCard(self.clone());
-            *self = BaseCard::None;
-            return result;
-        }
-        match self {
-            BaseCard::Projectile(modifiers) => {
-                let idx = path.pop_front().unwrap() as usize;
-                if path.is_empty() {
-                    let value = modifiers[idx].clone();
-                    modifiers[idx] = ProjectileModifier::None;
-                    DragableCard::ProjectileModifier(value)
-                } else {
-                    assert!(path.pop_front().unwrap() == 0);
-                    if path.is_empty() {
-                        let card_ref = match modifiers.get_mut(idx).unwrap() {
-                            ProjectileModifier::OnHit(ref mut card) => card,
-                            ProjectileModifier::OnHeadshot(ref mut card) => card,
-                            ProjectileModifier::OnExpiry(ref mut card) => card,
-                            ProjectileModifier::OnTrigger(_id, ref mut card) => card,
-                            ProjectileModifier::Trail(_freqency, ref mut card) => card,
-                            invalid_take_modifier => panic!(
-                                "Invalid state: cannot take from {:?}",
-                                invalid_take_modifier
-                            ),
-                        };
-                        let result = DragableCard::BaseCard(card_ref.clone());
-                        *card_ref = BaseCard::None;
-                        result
-                    } else {
-                        match modifiers[idx] {
-                            ProjectileModifier::OnHit(ref mut card) => card.take_from_path(path),
-                            ProjectileModifier::OnHeadshot(ref mut card) => {
-                                card.take_from_path(path)
-                            }
-                            ProjectileModifier::OnExpiry(ref mut card) => card.take_from_path(path),
-                            ProjectileModifier::OnTrigger(_, ref mut card) => {
-                                card.take_from_path(path)
-                            }
-                            ProjectileModifier::Trail(_freqency, ref mut card) => {
-                                card.take_from_path(path)
-                            }
-                            _ => panic!("Invalid state"),
-                        }
-                    }
-                }
-            }
-            BaseCard::MultiCast(cards, modifiers) => {
-                let type_idx = path.pop_front().unwrap() as usize;
-                if type_idx == 0 {
-                    let idx = path.pop_front().unwrap() as usize;
-                    assert!(path.is_empty());
-                    let multicast_modifier = modifiers[idx].clone();
-                    modifiers[idx] = MultiCastModifier::Spread(0);
-                    DragableCard::MultiCastModifier(multicast_modifier)
-                } else if type_idx == 1 {
-                    let idx = path.pop_front().unwrap() as usize;
-                    if path.is_empty() {
-                        let value = cards[idx].clone();
-                        cards[idx] = BaseCard::None;
-                        DragableCard::BaseCard(value)
-                    } else {
-                        cards[idx].take_from_path(path)
-                    }
-                } else {
-                    panic!("Invalid state");
-                }
-            }
-            BaseCard::StatusEffects(_, effects) => {
-                let Some(effect_idx) = path.pop_front() else {
-                    panic!("Invalid state: path is empty");
-                };
-                if path.is_empty() {
-                    let effect = effects[effect_idx as usize].clone();
-                    effects[effect_idx as usize] = StatusEffect::None;
-                    return DragableCard::StatusEffect(effect);
-                }
-                effects
-                    .get_mut(effect_idx as usize)
-                    .unwrap()
-                    .take_from_path(path)
-            }
-            BaseCard::Palette(cards) => {
-                let card_idx = path.pop_front().unwrap() as usize;
-                cards[card_idx].clone()
-            }
-            BaseCard::Effect(Effect::Knockback(_, direction)) => {
-                assert!(path.pop_front().unwrap() == 0);
-                let value = DragableCard::Direction(direction.clone());
-                *direction = DirectionCard::None;
-                value
-            }
-            invalid_take @ (BaseCard::CreateMaterial(_)
-            | BaseCard::None
-            | BaseCard::Trigger(_)
-            | BaseCard::Effect(_)) => panic!("Invalid state: cannot take from {:?}", invalid_take),
-        }
-    }
-
-    pub fn insert_to_path(&mut self, path: &mut VecDeque<u32>, item: DragableCard) {
-        match self {
-            BaseCard::Projectile(modifiers) => {
-                if path.is_empty() {
-                    let DragableCard::ProjectileModifier(item) = item else {
-                        panic!("Invalid state")
-                    };
-                    if let ProjectileModifier::SimpleModify(last_ty, last_s) = item.clone() {
-                        let mut combined = false;
-                        for modifier in modifiers.iter_mut() {
-                            match modifier {
-                                ProjectileModifier::SimpleModify(ty, s) => {
-                                    if last_ty == *ty {
-                                        *s += last_s;
-                                        combined = true;
-                                        break;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        if !combined {
-                            modifiers.push(item.clone());
-                        }
-                    } else {
-                        modifiers.push(item.clone());
-                    }
-
-                    modifiers.retain(|modifier| match modifier {
-                        ProjectileModifier::SimpleModify(_, s) => *s != 0,
-                        _ => true,
-                    });
-                } else {
-                    let idx = path.pop_front().unwrap() as usize;
-                    assert!(path.pop_front().unwrap() == 0);
-                    match modifiers[idx] {
-                        ProjectileModifier::OnHit(ref mut card) => card.insert_to_path(path, item),
-                        ProjectileModifier::OnHeadshot(ref mut card) => {
-                            card.insert_to_path(path, item)
-                        }
-                        ProjectileModifier::OnExpiry(ref mut card) => {
-                            card.insert_to_path(path, item)
-                        }
-                        ProjectileModifier::OnTrigger(_id, ref mut card) => {
-                            card.insert_to_path(path, item)
-                        }
-                        ProjectileModifier::Trail(_freqency, ref mut card) => {
-                            card.insert_to_path(path, item)
-                        }
-                        _ => panic!("Invalid state"),
-                    }
-                }
-            }
-            BaseCard::MultiCast(cards, modifiers) => {
-                if path.is_empty() {
-                    if let DragableCard::BaseCard(item) = item {
-                        cards.push(item);
-                    } else if let DragableCard::MultiCastModifier(modifier_item) = item {
-                        let mut combined = false;
-                        match modifier_item.clone() {
-                            MultiCastModifier::Duplication(last_s) => {
-                                for modifier in modifiers.iter_mut() {
-                                    match modifier {
-                                        MultiCastModifier::Duplication(s) => {
-                                            *s += last_s;
-                                            combined = true;
-                                            break;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            MultiCastModifier::Spread(last_s) => {
-                                for modifier in modifiers.iter_mut() {
-                                    match modifier {
-                                        MultiCastModifier::Spread(s) => {
-                                            *s += last_s;
-                                            combined = true;
-                                            break;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-
-                        if !combined {
-                            modifiers.push(modifier_item.clone());
-                        }
-                    } else {
-                        panic!("Invalid state")
-                    }
-                } else {
-                    assert!(path.pop_front().unwrap() == 1);
-                    let idx = path.pop_front().unwrap() as usize;
-                    cards[idx].insert_to_path(path, item)
-                }
-            }
-            BaseCard::StatusEffects(_, effects) => {
-                if path.is_empty() {
-                    let DragableCard::StatusEffect(item) = item else {
-                        panic!("Invalid state")
-                    };
-                    if let StatusEffect::SimpleStatusEffect(last_ty, last_s) = item.clone() {
-                        let mut combined = false;
-                        for effect in effects.iter_mut() {
-                            match effect {
-                                StatusEffect::SimpleStatusEffect(ty, s) => {
-                                    if last_ty == *ty {
-                                        *s += last_s;
-                                        combined = true;
-                                        break;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        if !combined {
-                            effects.push(item.clone());
-                        }
-                    } else {
-                        effects.push(item.clone());
-                    }
-
-                    effects.retain(|effect| match effect {
-                        StatusEffect::SimpleStatusEffect(_, s) => *s != 0,
-                        _ => true,
-                    });
-                } else {
-                    let idx = path.pop_front().unwrap() as usize;
-                    assert!(path.pop_front().unwrap() == 0);
-                    effects[idx].insert_to_path(path, item);
-                }
-            }
-            BaseCard::Effect(Effect::Knockback(_, ref mut direction)) => {
-                assert!(path.pop_front().unwrap() == 0);
-                if let DragableCard::Direction(new_direction) = item {
-                    *direction = new_direction;
-                } else {
-                    panic!("Invalid state")
-                }
-            }
-            BaseCard::None => {
-                assert!(
-                    path.is_empty(),
-                    "Invalid state: should not have nonempty path {:?} when inserting into None",
-                    path
-                );
-                let DragableCard::BaseCard(item) = item else {
-                    panic!("Invalid state")
-                };
-                *self = item;
-            }
-            c => panic!("Invalid state: Could not insert into {:?}", c),
-        }
-    }
-
-    pub fn cleanup(&mut self, path: &mut VecDeque<u32>) {
-        match self {
-            BaseCard::Projectile(modifiers) => {
-                if path.len() <= 1 {
-                    modifiers.retain(|modifier| match modifier {
-                        ProjectileModifier::None => false,
-                        _ => true,
-                    });
-                } else {
-                    let idx = path.pop_front().unwrap() as usize;
-                    assert!(path.pop_front().unwrap() == 0);
-                    match modifiers[idx] {
-                        ProjectileModifier::OnHit(ref mut card)
-                        | ProjectileModifier::OnHeadshot(ref mut card)
-                        | ProjectileModifier::OnExpiry(ref mut card)
-                        | ProjectileModifier::OnTrigger(_, ref mut card)
-                        | ProjectileModifier::Trail(_, ref mut card) => card.cleanup(path),
-                        ref invalid => panic!(
-                            "Invalid state: cannot follow path {} into {:?}",
-                            idx, invalid
-                        ),
-                    }
-                }
-            }
-            BaseCard::MultiCast(cards, modifiers) => {
-                if path.is_empty() {
-                    cards.retain(|card| !matches!(card, BaseCard::None));
-                } else {
-                    let idx_type = path.pop_front().unwrap();
-                    if idx_type == 0 {
-                        let idx = path.pop_front().unwrap() as usize;
-                        assert!(path.is_empty());
-                        match modifiers[idx] {
-                            MultiCastModifier::Duplication(s) => {
-                                if s == 0 {
-                                    modifiers.remove(idx);
-                                }
-                            }
-                            MultiCastModifier::Spread(s) => {
-                                if s == 0 {
-                                    modifiers.remove(idx);
-                                }
-                            }
-                        }
-                    } else if idx_type == 1 {
-                        let idx = path.pop_front().unwrap() as usize;
-                        if path.is_empty() {
-                            if matches!(cards[idx], BaseCard::None) {
-                                cards.remove(idx);
-                            }
-                        } else {
-                            cards[idx].cleanup(path);
-                        }
-                    } else {
-                        panic!("Invalid state");
-                    }
-                }
-            }
-            BaseCard::StatusEffects(_, effects) => {
-                if path.len() <= 1 {
-                    effects.retain(|effect| match effect {
-                        StatusEffect::None => false,
-                        _ => true,
-                    });
-                } else {
-                    let idx = path.pop_front().unwrap() as usize;
-                    assert!(path.pop_front().unwrap() == 0);
-                    match effects[idx] {
-                        StatusEffect::OnHit(ref mut card) => card.cleanup(path),
-                        StatusEffect::SimpleStatusEffect(
-                            SimpleStatusEffectType::IncreaseGravity(_),
-                            _,
-                        ) => {}
-                        ref invalid => panic!(
-                            "Invalid state: cannot follow path {} into {:?}",
-                            idx, invalid
-                        ),
-                    }
-                }
-            }
-            BaseCard::None => {
-                assert!(path.is_empty(), "Invalid state");
-            }
-            BaseCard::Effect(Effect::Knockback(_, _)) => {}
-            c => panic!("Invalid state: Could cleanup {:?}", c),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2139,6 +1514,32 @@ impl ProjectileModifier {
             ProjectileModifier::PiercePlayers => panic!(),
             ProjectileModifier::WallBounce => panic!(),
         }
+    }
+    
+    pub fn get_name(&self) -> String {
+        match self {
+            ProjectileModifier::None => "",
+            ProjectileModifier::SimpleModify(ty, _) => match ty {
+                SimpleProjectileModifierType::Speed => "Speed",
+                SimpleProjectileModifierType::Length => "Length",
+                SimpleProjectileModifierType::Width => "Width",
+                SimpleProjectileModifierType::Height => "Height",
+                SimpleProjectileModifierType::Size => "Size",
+                SimpleProjectileModifierType::Lifetime => "Lifetime",
+                SimpleProjectileModifierType::Gravity => "Gravity",
+                SimpleProjectileModifierType::Health => "Health",
+            },
+            ProjectileModifier::FriendlyFire => "Friendly Fire",
+            ProjectileModifier::NoEnemyFire => "No Enemy Fire",
+            ProjectileModifier::OnHit(_) => "On Hit",
+            ProjectileModifier::OnHeadshot(_) => "On Headshot",
+            ProjectileModifier::OnExpiry(_) => "On Expiry",
+            ProjectileModifier::OnTrigger(_, _) => "On Trigger",
+            ProjectileModifier::Trail(_, _) => "Trail",
+            ProjectileModifier::LockToOwner => "Lock To Owner",
+            ProjectileModifier::PiercePlayers => "Pierce Players",
+            ProjectileModifier::WallBounce => "Wall Bounce",
+        }.to_string()
     }
 }
 
@@ -2402,6 +1803,7 @@ impl CardManager {
         let mut is_reloading = false;
         for modifier in cooldown.modifiers {
             match modifier {
+                CooldownModifier::None => {}
                 CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, c) => {
                     add_charge += c
                 }
@@ -2565,6 +1967,7 @@ impl CardManager {
                 let mut duplication = 0;
                 for modifier in modifiers {
                     match modifier {
+                        MultiCastModifier::None => {}
                         MultiCastModifier::Spread(s) => spread += s,
                         MultiCastModifier::Duplication(d) => duplication += d,
                     }

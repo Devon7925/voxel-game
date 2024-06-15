@@ -335,7 +335,8 @@ pub fn abilities_from_cooldowns(
                 }
             })
             .collect(),
-        deck.passive_effects
+        deck.passive
+            .passive_effects
             .iter()
             .flat_map(|x| card_manager.register_status_effect(x.clone()))
             .collect(),
@@ -750,15 +751,20 @@ impl PlayerSim for RollbackData {
                                     let exited_ui = gui_state.menu_stack.last().unwrap();
                                     match exited_ui {
                                         GuiElement::CardEditor => {
-                                            let unreasonable_reason = Some(gui_state
-                                                .gui_deck
-                                                .cooldowns
-                                                .iter()
-                                                .filter_map(|cd| cd.get_unreasonable_reason())
-                                                .join(", "))
-                                                .filter(|s| !s.is_empty());
+                                            let unreasonable_reason = Some(
+                                                gui_state
+                                                    .gui_deck
+                                                    .cooldowns
+                                                    .iter()
+                                                    .filter_map(|cd| cd.get_unreasonable_reason())
+                                                    .join(", "),
+                                            )
+                                            .filter(|s| !s.is_empty());
                                             if let Some(unreasonable_reason) = unreasonable_reason {
-                                                gui_state.errors.push(format!("Unreasonable deck not saved: {}", unreasonable_reason));
+                                                gui_state.errors.push(format!(
+                                                    "Unreasonable deck not saved: {}",
+                                                    unreasonable_reason
+                                                ));
                                             } else {
                                                 self.player_deck = gui_state.gui_deck.clone();
                                                 self.controls = self
