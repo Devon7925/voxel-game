@@ -1,0 +1,41 @@
+90% of these have reasons why I'm hesitant to add them, this is mostly for brainstorming purposes
+* Ability Modifiers
+    * Consume multiple ability charges to increase the power of the ability
+    * Movement inaccuracy
+* Status Effects
+    * Disable hit markers
+    * Blinded
+    * Grappled
+        * Prevents motion away from the grapple point
+    * Slippery
+        * Reduced friction
+    * Poisoned
+        * DOT that can't kill
+    * Jump Boost
+    * Immortality
+        * Prevents damage that would kill the player
+    * Invisibility
+    * Deafened
+    * Walled
+        * Allows enemies to see this player through walls
+* Projectile Modifiers
+    * On timer
+    * On player hit
+    * Opaque
+    * Phasing
+        * Passes through walls
+    * Avoid walls
+        * Prevents collision with walls by redirecting the projectile in a direction parallel to the wall
+    * Starting direction modifier
+        * Changes the direction the projectile is fired in
+    * Physics
+    * Falloff
+* Effects
+    * Clone
+        * Creates a clone of the target that has added modifiers
+* Directions
+    * Add
+    * Cross
+    * Project
+    * Reflect
+    * Rotate

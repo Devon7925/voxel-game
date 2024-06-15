@@ -1,13 +1,7 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ops::{Add, Mul, Sub}};
 
 use egui_winit_vulkano::egui::{
-    self,
-    emath::{self, Numeric},
-    epaint, pos2,
-    text::LayoutJob,
-    vec2, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label, LayerId, Order,
-    Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke, TextFormat, TextStyle, Ui,
-    Vec2,
+    self, emath::{self, Numeric}, epaint::{self, PathShape}, pos2, text::LayoutJob, vec2, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label, LayerId, Order, Pos2, Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke, TextFormat, TextStyle, Ui, Vec2
 };
 use itertools::Itertools;
 
@@ -111,14 +105,71 @@ pub fn horizontal_centerer(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
     });
 }
 
+const TAU: f32 = std::f32::consts::TAU;
+pub fn lerp<T>(start: T, end: T, t: f32) -> T
+where
+    T: Add<T, Output = T> + Sub<T, Output = T> + Mul<f32, Output = T> + Copy,
+{
+    (end - start) * t.clamp(0.0, 1.0) + start
+}
+
+fn get_arc_points(
+    start: f32,
+    center: Pos2,
+    radius: f32,
+    value: f32,
+    max_arc_distance: f32,
+) -> Vec<Pos2> {
+    let start_turns: f32 = start;
+    let end_turns = start_turns + value;
+
+    let points = (value.abs() / max_arc_distance).ceil() as usize;
+    let points = points.max(1);
+    (0..=points)
+        .map(|i| {
+            let t = i as f32 / (points - 1) as f32;
+            let angle = lerp(start_turns * TAU, end_turns * TAU, t);
+            let x = radius * angle.cos();
+            let y = -radius * angle.sin();
+            pos2(x, y) + center.to_vec2()
+        })
+        .collect()
+}
+
+fn get_arc_shape(
+    start: f32,
+    center: Pos2,
+    radius: f32,
+    value: f32,
+    max_arc_distance: f32,
+    stroke: Stroke,
+) -> Shape {
+    Shape::Path(PathShape {
+        points: get_arc_points(
+            start,
+            center,
+            radius,
+            value,
+            0.03,
+        ),
+        closed: false,
+        fill: Color32::TRANSPARENT,
+        stroke,
+    })
+}
+
 fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -> egui::Response {
     let desired_size = ui.spacing().interact_size.y * egui::vec2(3.0, 3.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+    let recovery_bar_rect = rect.with_max_y(rect.min.y + 10.0).with_max_x(rect.min.x + rect.width() * ability.recovery / ability.value.1[ability_idx]);
 
     if ui.is_rect_visible(rect) {
         let font = egui::FontId::proportional(24.0);
         if ability.cooldown > ability.ability.add_charge as f32 * ability.value.0 {
-            ui.painter().rect_filled(rect, 0.0, Color32::DARK_GRAY);
+            ui.painter().rect_filled(rect, 5.0, Color32::DARK_GRAY);
+            if ability.recovery > 0.0 {
+                ui.painter().rect_filled(recovery_bar_rect, 5.0, Color32::GREEN);
+            }
             ui.painter().text(
                 rect.center(),
                 Align2::CENTER_CENTER,
@@ -132,7 +183,10 @@ fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -
             );
             return response;
         }
-        ui.painter().rect_filled(rect, 0.0, Color32::LIGHT_GRAY);
+        ui.painter().rect_filled(rect, 5.0, Color32::LIGHT_GRAY);
+        if ability.recovery > 0.0 {
+            ui.painter().rect_filled(recovery_bar_rect, 5.0, Color32::GREEN);
+        }
         {
             let keybind = &ability.ability.abilities[ability_idx].1;
             if let Some(key) = keybind.get_simple_representation() {
@@ -150,8 +204,10 @@ fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -
             let charge_count = ((1 + ability.ability.add_charge) as f32
                 - ability.cooldown / ability.value.0)
                 .floor() as i32;
+            let to_next_charge = 1.0 - (ability.cooldown / ability.value.0) % 1.0;
             ui.painter()
                 .circle_filled(rect.right_top(), 8.0, Color32::GRAY);
+            ui.painter().add(get_arc_shape(0.0, rect.right_top(), 8.0, to_next_charge, 0.03, Stroke::new(1.0, Color32::BLACK)));
             ui.painter().text(
                 rect.right_top(),
                 Align2::CENTER_CENTER,

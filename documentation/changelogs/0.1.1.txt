@@ -16,6 +16,9 @@
     * Add hovers for status effects and other missing cards
     * Give reasoning for unreasonable decks
     * Improve modifier value editing
+* Visuals
+    * Display time to next charge for multicharge cooldowns
+    * Display recovery times
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync

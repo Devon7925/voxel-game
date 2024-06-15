@@ -3,8 +3,6 @@
         * Regular hit
         * Headshot
     * Hurt visuals
-    * Display time to next charge for multicharge cooldowns
-    * Display recovery times
 * Balance
     * Nerf 1 shots
     * Nerf Low health shields
