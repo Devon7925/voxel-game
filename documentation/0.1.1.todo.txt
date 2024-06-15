@@ -1,7 +1,4 @@
 * Visuals
-    * Hitmarkers
-        * Regular hit
-        * Headshot
     * Hurt visuals
 * Balance
     * Nerf 1 shots

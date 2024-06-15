@@ -581,34 +581,73 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
             // Fill egui UI layout here
             if let Some(game) = game {
                 let spectate_player = &game.rollback_data.get_spectate_player();
-                if gui_state.menu_stack.is_empty() {
-                    egui::Area::new("crosshair")
-                        .anchor(Align2::LEFT_TOP, (0.0, 0.0))
-                        .show(&ctx, |ui| {
-                            let center = ui.available_rect_before_wrap().center();
-                            let thickness = 1.0;
-                            let color = Color32::from_additive_luminance(255);
-                            let crosshair_size = 10.0;
-
-                            ui.painter().add(epaint::Shape::line_segment(
-                                [
-                                    center + vec2(-crosshair_size, 0.0),
-                                    center + vec2(crosshair_size, 0.0),
-                                ],
-                                Stroke::new(thickness, color),
-                            ));
-                            ui.painter().add(epaint::Shape::line_segment(
-                                [
-                                    center + vec2(0.0, -crosshair_size),
-                                    center + vec2(0.0, crosshair_size),
-                                ],
-                                Stroke::new(thickness, color),
-                            ));
-                        });
-                }
 
                 if let Some(spectate_player) = spectate_player {
                     let corner_offset = 10.0;
+
+                    if gui_state.menu_stack.is_empty() {
+                        egui::Area::new("crosshair")
+                            .anchor(Align2::LEFT_TOP, (0.0, 0.0))
+                            .show(&ctx, |ui| {
+                                let center = ui.available_rect_before_wrap().center();
+                                
+                                if spectate_player.hitmarker.0 + spectate_player.hitmarker.1 > 0.0 {
+                                    let hitmarker_size = 0.5 * spectate_player.hitmarker.0;
+                                    let head_hitmarker_size = 0.5 * (spectate_player.hitmarker.0 + spectate_player.hitmarker.1);
+                                    let hitmarker_thickness = 1.5;
+                                    let head_hitmarker_color = Color32::RED;
+                                    let hitmarker_color = Color32::from_additive_luminance(255);
+                                    ui.painter().add(epaint::Shape::line_segment(
+                                        [
+                                            center + vec2(-head_hitmarker_size, -head_hitmarker_size),
+                                            center + vec2(head_hitmarker_size, head_hitmarker_size),
+                                        ],
+                                        Stroke::new(hitmarker_thickness, head_hitmarker_color),
+                                    ));
+                                    ui.painter().add(epaint::Shape::line_segment(
+                                        [
+                                            center + vec2(-head_hitmarker_size, head_hitmarker_size),
+                                            center + vec2(head_hitmarker_size, -head_hitmarker_size),
+                                        ],
+                                        Stroke::new(hitmarker_thickness, head_hitmarker_color),
+                                    ));
+                                    ui.painter().add(epaint::Shape::line_segment(
+                                        [
+                                            center + vec2(-hitmarker_size, -hitmarker_size),
+                                            center + vec2(hitmarker_size, hitmarker_size),
+                                        ],
+                                        Stroke::new(hitmarker_thickness, hitmarker_color),
+                                    ));
+                                    ui.painter().add(epaint::Shape::line_segment(
+                                        [
+                                            center + vec2(-hitmarker_size, hitmarker_size),
+                                            center + vec2(hitmarker_size, -hitmarker_size),
+                                        ],
+                                        Stroke::new(hitmarker_thickness, hitmarker_color),
+                                    ));
+                                }
+
+                                let thickness = 1.0;
+                                let color = Color32::from_additive_luminance(255);
+                                let crosshair_size = 10.0;
+    
+                                ui.painter().add(epaint::Shape::line_segment(
+                                    [
+                                        center + vec2(-crosshair_size, 0.0),
+                                        center + vec2(crosshair_size, 0.0),
+                                    ],
+                                    Stroke::new(thickness, color),
+                                ));
+                                ui.painter().add(epaint::Shape::line_segment(
+                                    [
+                                        center + vec2(0.0, -crosshair_size),
+                                        center + vec2(0.0, crosshair_size),
+                                    ],
+                                    Stroke::new(thickness, color),
+                                ));
+                            });
+                    }
+
                     healthbar(corner_offset, &ctx, spectate_player);
 
                     let respawn_time = spectate_player.respawn_timer;

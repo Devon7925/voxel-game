@@ -19,6 +19,9 @@
 * Visuals
     * Display time to next charge for multicharge cooldowns
     * Display recovery times
+    * Hitmarkers
+        * Regular hit
+        * Headshot
 * Fixes
     * Fix bullet - bullet collision
     * Try fixing water desync
