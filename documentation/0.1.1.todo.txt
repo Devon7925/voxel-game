@@ -1,6 +1,4 @@
 * Balance
-    * Nerf 1 shots
     * Nerf Low health shields
-    * Nerf Splash damage
 * Fix prebuilt decks
 * Move to github issues

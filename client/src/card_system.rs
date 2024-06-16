@@ -1,8 +1,6 @@
-use crate::{
-    settings_manager::Control, voxel_sim_manager::Projectile,
-    PLAYER_BASE_MAX_HEALTH,
-};
+use crate::{settings_manager::Control, voxel_sim_manager::Projectile, PLAYER_BASE_MAX_HEALTH};
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
+use core::time;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -20,7 +18,8 @@ pub struct PassiveCard {
 
 impl Deck {
     pub fn get_total_impact(&self) -> f32 {
-        let passive_value = BaseCard::StatusEffects(1, self.passive.passive_effects.clone()).get_cooldown();
+        let passive_value =
+            BaseCard::StatusEffects(1, self.passive.passive_effects.clone()).get_cooldown();
         if passive_value >= 0.5 {
             return f32::MAX;
         }
@@ -74,15 +73,23 @@ impl CooldownModifier {
             CooldownModifier::Reloading => 1.0,
         }
     }
-    
+
     pub fn get_name(&self) -> String {
         match self {
             CooldownModifier::None => "None",
-            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, _) => "Add charge",
-            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, _) => "Add cooldown",
-            CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, _) => "Decrease cooldown",
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, _) => {
+                "Add charge"
+            }
+            CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, _) => {
+                "Add cooldown"
+            }
+            CooldownModifier::SignedSimpleCooldownModifier(
+                SignedSimpleCooldownModifier::DecreaseCooldown,
+                _,
+            ) => "Decrease cooldown",
             CooldownModifier::Reloading => "Reloading",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -197,7 +204,7 @@ impl Cooldown {
         has_anything_changed
     }
 
-    const GLOBAL_COOLDOWN_MULTIPLIER: f32 = 0.3;
+    const GLOBAL_COOLDOWN_MULTIPLIER: f32 = 0.35;
     pub fn get_cooldown_recovery(&self, total_impact: f32) -> (f32, Vec<f32>) {
         let ability_values: Vec<f32> = self
             .abilities
@@ -240,8 +247,10 @@ impl Cooldown {
         let recovery: Vec<f32> = ability_values
             .iter()
             .map(|val| {
-                Self::GLOBAL_COOLDOWN_MULTIPLIER * 0.5 * added_cooldown as f32
-                    + val * (1.0 - (-(ability_charges as f32 / 10.0)).exp())
+                SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT * added_cooldown as f32
+                    + Self::GLOBAL_COOLDOWN_MULTIPLIER
+                        * val
+                        * (0.5 + 0.5 * (1.0 - (-(ability_charges as f32 / 10.0)).exp()))
                         / (impact_multiplier / total_impact)
             })
             .collect();
@@ -252,10 +261,10 @@ impl Cooldown {
             .clone();
         let mut cooldown = SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT * added_cooldown as f32
             + Self::GLOBAL_COOLDOWN_MULTIPLIER * (sum + 2.0 * max) / 3.0
-                * (2.0 - (-(ability_charges as f32 / 10.0)).exp())
+                * (1.0 + 0.75 * (1.0 - (-(ability_charges as f32 / 10.0)).exp()))
                 / (impact_multiplier / total_impact);
         if reloading && ability_charges > 0 {
-            cooldown = (1 + ability_charges) as f32 * (cooldown - max_recovery);
+            cooldown = 0.45 * (1 + ability_charges) as f32 * (cooldown - max_recovery);
         }
         (cooldown, recovery)
     }
@@ -346,13 +355,14 @@ impl MultiCastModifier {
             }
         }
     }
-    
+
     pub fn get_name(&self) -> String {
         match self {
             MultiCastModifier::None => "None",
             MultiCastModifier::Spread(_) => "Spread",
             MultiCastModifier::Duplication(_) => "Duplication",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -403,15 +413,21 @@ impl Effect {
             Effect::Teleport => "Teleport",
             Effect::Damage(_) => "Damage",
             Effect::Knockback(_, _) => "Knockback",
-        }.to_string()
+        }
+        .to_string()
     }
-    
+
     pub fn get_hover_text(&self) -> String {
         match self {
             Effect::Cleanse => "Clear status effects".to_string(),
-            Effect::Teleport => "Teleport the active player to where this was activated".to_string(),
+            Effect::Teleport => {
+                "Teleport the active player to where this was activated".to_string()
+            }
             Effect::Damage(damage) => format!("Deal {} damage to anything", damage),
-            Effect::Knockback(knockback, direction) => format!("Apply an impulse {} in the {} direction", knockback, direction),
+            Effect::Knockback(knockback, direction) => format!(
+                "Apply an impulse {} in the {} direction",
+                knockback, direction
+            ),
         }
     }
 }
@@ -535,23 +551,32 @@ impl StatusEffect {
             StatusEffect::OnHit(card) => card.get_unreasonable_reason(),
         }
     }
-    
+
     pub fn get_name(&self) -> String {
         match self {
             StatusEffect::None => "None",
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, _) => "Speed",
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::DamageOverTime, _) => "Damage over time",
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseDamageTaken, _) => "Increase damage taken",
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), _) => "Increase gravity",
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::DamageOverTime, _) => {
+                "Damage over time"
+            }
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseDamageTaken, _) => {
+                "Increase damage taken"
+            }
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), _) => {
+                "Increase gravity"
+            }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, _) => "Overheal",
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, _) => "Grow",
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, _) => "Increase max health",
+            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, _) => {
+                "Increase max health"
+            }
             StatusEffect::Invincibility => "Invincibility",
             StatusEffect::Trapped => "Trapped",
             StatusEffect::Lockout => "Lockout",
             StatusEffect::Stun => "Stun",
             StatusEffect::OnHit(_) => "On hit",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -619,14 +644,17 @@ impl VoxelMaterial {
 struct CardValue {
     damage: f32,
     generic: f32,
-    range_probabilities: [f32; 10],
+    range_probabilities: [f32; 15],
 }
 
-fn convolve_range_probabilities(a_probs: [f32; 10], b_props: [f32; 10]) -> [f32; 10] {
-    let mut new_range_probabilities = [0.0; 10];
-    for a_idx in 0..10 {
-        for b_idx in 0..10 {
-            if a_idx + b_idx >= 10 {
+fn convolve_range_probabilities<const COUNT: usize>(
+    a_probs: [f32; COUNT],
+    b_props: [f32; COUNT],
+) -> [f32; COUNT] {
+    let mut new_range_probabilities = [0.0; COUNT];
+    for a_idx in 0..COUNT {
+        for b_idx in 0..COUNT {
+            if a_idx + b_idx >= COUNT {
                 break;
             }
             new_range_probabilities[a_idx + b_idx] += a_probs[a_idx] * b_props[b_idx];
@@ -712,6 +740,14 @@ fn get_avg_ttk(
     }
 }
 
+fn error_function(x: f32) -> f32 {
+    let t = 1.0 / (1.0 + 0.3275911 * x);
+    1.0 - (0.254829592 * t - 0.284496736 * t * t + 1.421413741 * t.powi(3)
+        - 1.453152027 * t.powi(4)
+        + 1.061405429 * t.powi(5))
+        * (-x * x).exp()
+}
+
 impl BaseCard {
     pub const EFFECT_LENGTH_SCALE: f32 = 0.5;
     pub fn from_string(ron_string: &str) -> Self {
@@ -730,10 +766,11 @@ impl BaseCard {
                 if card_value.damage == 0.0 {
                     return card_value.generic;
                 }
+                println!("{:?}", card_value.range_probabilities);
                 let damage_value: f32 = card_value
                     .range_probabilities
                     .iter()
-                    .map(|accuracy| gen_cooldown_for_ttk(*accuracy, card_value.damage, 3.5))
+                    .map(|accuracy| gen_cooldown_for_ttk(*accuracy, card_value.damage, 5.0))
                     .sum::<f32>()
                     / card_value.range_probabilities.len() as f32;
                 damage_value + card_value.generic
@@ -742,7 +779,7 @@ impl BaseCard {
     }
 
     fn evaluate_value(&self, is_direct: bool) -> Vec<CardValue> {
-        const RANGE_PROBABILITIES_SCALE: f32 = 10.0;
+        const RANGE_PROBABILITIES_SCALE: f32 = 5.0;
         match self {
             BaseCard::Projectile(modifiers) => {
                 let mut hit_value = vec![];
@@ -848,26 +885,61 @@ impl BaseCard {
                 let health =
                     ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Health, health)
                         .get_effect_value();
+                let range_prob_evaluator = |idx: usize, target_width: f32, target_height: f32| {
+                    let distance = idx as f32 * RANGE_PROBABILITIES_SCALE;
+                    let time_traveled = distance / speed;
+                    let aim_std = 0.3 + 0.2 * time_traveled;
+                    if distance > speed.abs() * lifetime {
+                        return 0.0;
+                    }
+                    let mut result = 0.0;
+                    if speed.abs() > 0.0 && idx > 0 {
+                        let x_aim_area =
+                            (target_width + width + (target_width + length) / speed.abs())
+                                / distance;
+                        let y_aim_area =
+                            (target_height + height + (target_width + length) / speed.abs())
+                                / distance;
+                        result += error_function(x_aim_area / aim_std)
+                            * error_function(y_aim_area / aim_std);
+                    }
+
+                    if distance
+                        <= (target_width + length)
+                            .min(target_width + width)
+                            .min(target_height + height)
+                    {
+                        result += 0.1 * (target_width + length) * (target_width + width)
+                            + (target_height + height);
+                    } else {
+                        if distance <= (target_width + length) {
+                            result += 8.0 * (target_width + width)
+                                + (target_height + height)
+                                    / (4.0 * std::f32::consts::PI * distance * distance);
+                        }
+                        if distance <= (target_width + width) {
+                            result += 8.0 * (target_width + length)
+                                + (target_height + height)
+                                    / (4.0 * std::f32::consts::PI * distance * distance);
+                        }
+                        if distance <= (target_height + height) {
+                            result += 8.0 * (target_width + length)
+                                + (target_width + width)
+                                    / (4.0 * std::f32::consts::PI * distance * distance);
+                        }
+                    }
+                    result.min(2.0)
+                };
 
                 let range_probabilities = core::array::from_fn(|idx| {
-                    if RANGE_PROBABILITIES_SCALE * idx as f32 > speed.abs() * lifetime {
-                        return 0.0;
-                    }
-                    (0.06
-                        * (1.0 + speed.abs() / idx as f32).sqrt()
-                        * (1.0 + width * height + length)
-                        * (1.0 + health))
-                        .min(1.0)
+                    let target_width = 1.0;
+                    let target_height = 3.0;
+                    range_prob_evaluator(idx, target_width, target_height)
                 });
                 let headshot_range_probabilities = core::array::from_fn(|idx| {
-                    if RANGE_PROBABILITIES_SCALE * idx as f32 > speed.abs() * lifetime {
-                        return 0.0;
-                    }
-                    (0.02
-                        * (1.0 + speed.abs() / idx as f32).sqrt()
-                        * (1.0 + width * height + length)
-                        * (1.0 + health))
-                        .min(1.0)
+                    let target_width = 0.5;
+                    let target_height = 0.5;
+                    range_prob_evaluator(idx, target_width, target_height)
                 });
                 let mut value = vec![];
                 if enemy_fire {
@@ -913,7 +985,7 @@ impl BaseCard {
                         headshot_value.range_probabilities,
                     ),
                 }));
-                let expiry_range_probabilities: [f32; 10] = core::array::from_fn(|idx| {
+                let expiry_range_probabilities: [f32; 15] = core::array::from_fn(|idx| {
                     if idx == (lifetime * speed / RANGE_PROBABILITIES_SCALE) as usize {
                         1.0
                     } else {
@@ -928,7 +1000,7 @@ impl BaseCard {
                         expiry_value.range_probabilities,
                     ),
                 }));
-                let trigger_range_probabilities: [f32; 10] = core::array::from_fn(|idx| {
+                let trigger_range_probabilities: [f32; 15] = core::array::from_fn(|idx| {
                     if idx <= (lifetime * speed / RANGE_PROBABILITIES_SCALE) as usize {
                         1.0
                     } else {
@@ -1130,7 +1202,10 @@ impl BaseCard {
                                 }
                                 SimpleStatusEffectType::IncreaseDamageTaken => vec![CardValue {
                                     damage: 0.0,
-                                    generic: true_duration * effect.get_effect_value().max(1.0/effect.get_effect_value()),
+                                    generic: true_duration
+                                        * effect
+                                            .get_effect_value()
+                                            .max(1.0 / effect.get_effect_value()),
                                     range_probabilities: core::array::from_fn(|idx| {
                                         if idx == 0 {
                                             1.0
@@ -1244,7 +1319,7 @@ impl BaseCard {
                             }),
                         }],
                         StatusEffect::OnHit(card) => {
-                            let range_probabilities: [f32; 10] = core::array::from_fn(|idx| {
+                            let range_probabilities: [f32; 15] = core::array::from_fn(|idx| {
                                 (0.1 * (10.0 - idx as f32 / true_duration)).min(1.0)
                             });
                             let hit_value = card.evaluate_value(false);
@@ -1480,7 +1555,7 @@ impl ProjectileModifier {
         match self {
             ProjectileModifier::None => 0.0,
             ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Speed, s) => {
-                8.0 * (*s as f32 + 3.0)
+                8.0 * (*s as f32 + 5.0)
             }
             ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Length, s) => {
                 1.25f32.powi(*s)
@@ -1515,7 +1590,7 @@ impl ProjectileModifier {
             ProjectileModifier::WallBounce => panic!(),
         }
     }
-    
+
     pub fn get_name(&self) -> String {
         match self {
             ProjectileModifier::None => "",
@@ -1539,7 +1614,8 @@ impl ProjectileModifier {
             ProjectileModifier::LockToOwner => "Lock To Owner",
             ProjectileModifier::PiercePlayers => "Pierce Players",
             ProjectileModifier::WallBounce => "Wall Bounce",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 

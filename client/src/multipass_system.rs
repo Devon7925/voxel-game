@@ -595,8 +595,8 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     let hitmarker_size = 0.5 * spectate_player.hitmarker.0;
                                     let head_hitmarker_size = 0.5 * (spectate_player.hitmarker.0 + spectate_player.hitmarker.1);
                                     let hitmarker_thickness = 1.5;
-                                    let head_hitmarker_color = Color32::RED.gamma_multiply(0.5);
-                                    let hitmarker_color = Color32::from_additive_luminance(255).gamma_multiply(0.5);
+                                    let head_hitmarker_color = Color32::RED;
+                                    let hitmarker_color = Color32::from_additive_luminance(255);
                                     ui.painter().add(epaint::Shape::line_segment(
                                         [
                                             center + vec2(-head_hitmarker_size, -head_hitmarker_size),

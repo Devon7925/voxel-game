@@ -2674,6 +2674,9 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             }
 
                             if let Some((mut modify_path, modification_type)) = modify_path {
+                                for cooldown in gui_state.gui_deck.cooldowns.iter_mut() {
+                                    cooldown.cooldown_value = None;
+                                }
                                 let modify_action_idx = modify_path.pop_front().unwrap() as usize;
                                 if modify_action_idx == 1 {
                                     gui_state.gui_deck.passive.modify_from_path(
@@ -2694,6 +2697,9 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             }
                             if let Some((source_path, source_type)) = source_path.as_mut() {
                                 if let Some((drop_path, drop_type)) = dest_path.as_mut() {
+                                    for cooldown in gui_state.gui_deck.cooldowns.iter_mut() {
+                                        cooldown.cooldown_value = None;
+                                    }
                                     let source_action_idx =
                                         source_path.pop_front().unwrap() as usize;
                                     let drop_action_idx = drop_path.pop_front().unwrap() as usize;

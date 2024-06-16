@@ -27,3 +27,6 @@
     * Fix bullet - bullet collision
     * Try fixing water desync
     * Fix player render far plane
+* Balance
+    * Improved projectile balance
+    * Improved ability charge balance
