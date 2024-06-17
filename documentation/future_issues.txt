@@ -22,3 +22,4 @@ Sounds should be played when players activate abilities in pvp
     What about impact sounds
         All the same problems as ability sounds
         not all abilities should have impact sounds
+    Same problems for animations

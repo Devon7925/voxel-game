@@ -1,12 +1,8 @@
 projectile health system problems
-    most projectiles dont need health and health(-10) is repetitive
     some eat abilities basically need infinite health
 projectile lifetime problems
     some projectiles (turrets) lifetime should not be limited
     some projectiles (ex. projectiles) only need to exist for 1 simulation frame, but should be visible to the player
 damage taken modifiers modify healing as well
 Tiny fast projectiles are hard to see
-Tiny fast projectiles can sometimes pass through players without colliding
-
-Voxel mixing makes looking through a transparent voxel to a neighbor voxel look wrong
 AIR_OOB chunks can use a lot of iterations along their borders

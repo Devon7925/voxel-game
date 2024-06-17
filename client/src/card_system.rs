@@ -1428,7 +1428,20 @@ impl BaseCard {
                     return Some(unreasonable_reasons.join(", "));
                 }
             }
-            BaseCard::CreateMaterial(_) => {}
+            BaseCard::CreateMaterial(material) => match material {
+                VoxelMaterial::Air
+                | VoxelMaterial::Stone
+                | VoxelMaterial::Dirt
+                | VoxelMaterial::Grass
+                | VoxelMaterial::Ice
+                | VoxelMaterial::Water => {}
+                VoxelMaterial::Projectile
+                | VoxelMaterial::Unloaded
+                | VoxelMaterial::Player
+                | VoxelMaterial::UnloadedAir => {
+                    return Some(format!("Invalid Material {:?}", material));
+                }
+            },
             BaseCard::Effect(effect) => match effect {
                 Effect::Damage(damage) => {
                     if damage.abs() >= 1024 {
