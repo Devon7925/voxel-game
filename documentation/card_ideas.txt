@@ -21,6 +21,8 @@
 * Projectile Modifiers
     * On timer
     * On player hit
+    * On wall hit
+    * On floor hit
     * Opaque
     * Phasing
         * Passes through walls
@@ -30,6 +32,8 @@
         * Changes the direction the projectile is fired in
     * Physics
     * Falloff
+    * Singular
+        * Only one instance of the projectile can exist at a time
 * Effects
     * Clone
         * Creates a clone of the target that has added modifiers

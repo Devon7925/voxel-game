@@ -165,7 +165,7 @@ fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -
 
     if ui.is_rect_visible(rect) {
         let font = egui::FontId::proportional(24.0);
-        if ability.cooldown > ability.ability.add_charge as f32 * ability.value.0 {
+        if ability.cooldown > 0.0 && ability.remaining_charges == 0 {
             ui.painter().rect_filled(rect, 5.0, Color32::DARK_GRAY);
             if ability.recovery > 0.0 {
                 ui.painter().rect_filled(recovery_bar_rect, 5.0, Color32::GREEN);
@@ -175,7 +175,7 @@ fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -
                 Align2::CENTER_CENTER,
                 format!(
                     "{}",
-                    (ability.cooldown - ability.ability.add_charge as f32 * ability.value.0).ceil()
+                    ability.cooldown.ceil()
                         as i32
                 ),
                 font.clone(),
@@ -199,19 +199,16 @@ fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -
                 );
             }
         }
-        if ability.ability.add_charge > 0 {
+        if ability.ability.max_charges > 1 {
             let font = egui::FontId::proportional(12.0);
-            let charge_count = ((1 + ability.ability.add_charge) as f32
-                - ability.cooldown / ability.value.0)
-                .floor() as i32;
-            let to_next_charge = 1.0 - (ability.cooldown / ability.value.0) % 1.0;
+            let to_next_charge = 1.0 - ability.cooldown / ability.value.0;
             ui.painter()
                 .circle_filled(rect.right_top(), 8.0, Color32::GRAY);
             ui.painter().add(get_arc_shape(0.0, rect.right_top(), 8.0, to_next_charge, 0.03, Stroke::new(1.0, Color32::BLACK)));
             ui.painter().text(
                 rect.right_top(),
                 Align2::CENTER_CENTER,
-                format!("{}", charge_count),
+                format!("{}", ability.remaining_charges),
                 font,
                 Color32::BLACK,
             );

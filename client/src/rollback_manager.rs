@@ -245,6 +245,7 @@ pub struct PlayerAbility {
     pub value: (f32, Vec<f32>),
     pub cooldown: f32,
     pub recovery: f32,
+    pub remaining_charges: u32,
 }
 
 #[derive(Clone, Copy, Zeroable, Debug, Pod)]
@@ -334,8 +335,9 @@ pub fn abilities_from_cooldowns(
                 PlayerAbility {
                     value: cooldown_time.clone(),
                     ability: card_manager.register_cooldown(cooldown.clone()),
-                    cooldown: cooldown_time.0 * cooldown.ability_charges() as f32,
+                    cooldown: cooldown_time.0,
                     recovery: 0.0,
+                    remaining_charges: 0,
                 }
             })
             .collect(),
@@ -1453,11 +1455,11 @@ impl WorldState {
             {
                 let proj = self.projectiles.get(*i).unwrap();
                 let hit_cards = card_manager
-                        .get_referenced_proj(proj.proj_card_idx as usize)
-                        .on_hit
-                        .iter()
-                        .map(|x| (x.clone(), false))
-                        .collect::<Vec<_>>();
+                    .get_referenced_proj(proj.proj_card_idx as usize)
+                    .on_hit
+                    .iter()
+                    .map(|x| (x.clone(), false))
+                    .collect::<Vec<_>>();
                 for (card_ref, _was_headshot) in hit_cards {
                     let proj_rot = proj.dir;
                     let proj_rot =
@@ -1482,11 +1484,11 @@ impl WorldState {
             {
                 let proj = self.projectiles.get(*j).unwrap();
                 let hit_cards = card_manager
-                        .get_referenced_proj(proj.proj_card_idx as usize)
-                        .on_hit
-                        .iter()
-                        .map(|x| (x.clone(), false))
-                        .collect::<Vec<_>>();
+                    .get_referenced_proj(proj.proj_card_idx as usize)
+                    .on_hit
+                    .iter()
+                    .map(|x| (x.clone(), false))
+                    .collect::<Vec<_>>();
                 for (card_ref, _was_headshot) in hit_cards {
                     let proj_rot = proj.dir;
                     let proj_rot =
@@ -1592,7 +1594,9 @@ impl WorldState {
                     self.projectiles
                         .iter()
                         .enumerate()
-                        .filter(|(idx, _)| collision_pairs.contains(&(*proj_idx.min(idx), *proj_idx.max(idx))))
+                        .filter(|(idx, _)| {
+                            collision_pairs.contains(&(*proj_idx.min(idx), *proj_idx.max(idx)))
+                        })
                         .all(|(_, proj2)| {
                             let mut adj_vec_start = vec_start;
                             let mut adj_vec_end = vec_end;
@@ -1619,14 +1623,23 @@ impl WorldState {
                             ));
 
                             let vec_dir = adj_vec_end - adj_vec_start;
-                            let (t_min, t_max) = (0..3).map(|i| (
-                                (-1.0 - adj_vec_start[i]) / vec_dir[i],
-                                (1.0 - adj_vec_start[i]) / vec_dir[i],
-                            )).map(|t| (t.0.min(t.1), t.0.max(t.1)))
-                            .reduce(|(t_min1, t_max1), (t_min2, t_max2)| (t_min1.max(t_min2), t_max1.min(t_max2))).unwrap();
+                            let (t_min, t_max) = (0..3)
+                                .map(|i| {
+                                    (
+                                        (-1.0 - adj_vec_start[i]) / vec_dir[i],
+                                        (1.0 - adj_vec_start[i]) / vec_dir[i],
+                                    )
+                                })
+                                .map(|t| (t.0.min(t.1), t.0.max(t.1)))
+                                .reduce(|(t_min1, t_max1), (t_min2, t_max2)| {
+                                    (t_min1.max(t_min2), t_max1.min(t_max2))
+                                })
+                                .unwrap();
                             !(t_min < 1.0 && t_max > 0.0 && t_min < t_max)
                         })
-                }).collect_vec().iter()
+                })
+                .collect_vec()
+                .iter()
                 .for_each(|(proj_idx, _, collision)| {
                     let proj = self.projectiles.get_mut(*proj_idx).unwrap();
                     let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
@@ -2472,7 +2485,7 @@ impl Entity {
             }
 
             for (cooldown_idx, cooldown) in self.abilities.iter_mut().enumerate() {
-                if cooldown.cooldown <= cooldown.value.0 * cooldown.ability.add_charge as f32
+                if cooldown.remaining_charges > 0
                     && cooldown.recovery <= 0.0
                 {
                     for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
@@ -2483,7 +2496,7 @@ impl Entity {
                             .unwrap_or(&false)
                             && !player_stats[player_idx].lockout
                         {
-                            cooldown.cooldown += cooldown.value.0;
+                            cooldown.remaining_charges -= 1;
                             cooldown.recovery = cooldown.value.1[ability_idx];
                             let (proj_effects, vox_effects, effects, status_effects, triggers) =
                                 card_manager.get_effects_from_base_card(
@@ -2518,13 +2531,17 @@ impl Entity {
         }
         for ability in self.abilities.iter_mut() {
             if ability.ability.is_reloading {
-                if ability.cooldown >= ability.value.0 * (1 + ability.ability.add_charge) as f32 {
+                if ability.remaining_charges == 0 {
                     ability.cooldown = 0.0;
+                    ability.remaining_charges = ability.ability.max_charges;
                     ability.recovery += ability.value.0;
                 }
             } else {
-                if ability.cooldown > 0.0 {
+                if ability.cooldown > 0.0 && ability.remaining_charges < ability.ability.max_charges {
                     ability.cooldown -= time_step;
+                } else if ability.remaining_charges < ability.ability.max_charges {
+                    ability.cooldown = ability.value.0;
+                    ability.remaining_charges += 1;
                 }
             }
             if ability.recovery > 0.0 {

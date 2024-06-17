@@ -24,6 +24,13 @@
         * make normal into an uint type ex 0 = vec3(1, 0, 0)
 * Add a way to peek at other player's decks
 * Improve the experience of picking from prebuilt decks
+* Disable collision between LockToOwner cards with no OnHit effects and terrain
 * Cards
     * Make sure negative overhealth works
     * Fix onhit and overheal passive effects
+    * Make passive max health increase starting health
+    * Add direction to LockToOwner
+* Card Editor
+    * Make full screen
+    * Disable normal rendering while open
+    * Add padding to sides

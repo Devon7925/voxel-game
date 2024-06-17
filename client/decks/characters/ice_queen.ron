@@ -1,73 +1,83 @@
-[
-    Cooldown(
-        modifiers: [SimpleCooldownModifier(AddCharge, 149)],
-        abilities: [
-            (
-                keybind: Pressed(Mouse(Left)),
-                card: Projectile([
-                    SimpleModify(Speed,-1),
-                    SimpleModify(Size,-3),
-                    SimpleModify(Lifetime,-5),
-                    SimpleModify(Health,-10),
-                    PiercePlayers,
-                    OnHit(Effect(StatusEffect(DamageOverTime, 1))),
-                    OnHit(Effect(StatusEffect(DamageOverTime, 1))),
-                    OnHit(Effect(StatusEffect(Slow, 1))),
-                ]),
-            ),
-            (
-                keybind: Pressed(Mouse(Right)),
-                card: Projectile([
-                    SimpleModify(Speed,1),
-                    SimpleModify(Size,-5),
-                    SimpleModify(Length,2),
-                    SimpleModify(Lifetime,1),
-                    SimpleModify(Health,-10),
-                    OnHit(Effect(Damage(38))),
-                    OnHeadshot(Effect(Damage(38))),
-                ]),
-            ),
-        ]
+(
+    cooldowns: [
+        (
+            modifiers: [
+                SimpleCooldownModifier(AddCharge, 9),
+                Reloading,
+            ],
+            abilities: [
+                (
+                    card: Projectile([
+                        SimpleModify(Size, -3),
+                        SimpleModify(Lifetime, -5),
+                        PiercePlayers,
+                        OnHit(StatusEffects(1, [
+                            SimpleStatusEffect(DamageOverTime, 2),
+                            SimpleStatusEffect(Speed, -1),
+                        ])),
+                    ]),
+                    keybind: Pressed(Mouse(Left)),
+                ),
+                (
+                    card: Projectile([
+                        SimpleModify(Speed, 24),
+                        SimpleModify(Size, -5),
+                        SimpleModify(Length, 2),
+                        SimpleModify(Lifetime, 1),
+                        OnHit(Effect(Damage(38))),
+                        OnHeadshot(Effect(Damage(38))),
+                    ]),
+                    keybind: Pressed(Mouse(Right)),
+                ),
+            ],
+        ),
+        (
+            modifiers: [
+                SignedSimpleCooldownModifier(DecreaseCooldown, 2),
+            ],
+            abilities: [
+                (
+                    card: Projectile([
+                        SimpleModify(Speed, 45),
+                        SimpleModify(Size, -5),
+                        SimpleModify(Height, 10),
+                        SimpleModify(Lifetime, -3),
+                        OnHit(MultiCast([
+                            Projectile([
+                                SimpleModify(Size, -8),
+                                SimpleModify(Lifetime, -6),
+                                OnExpiry(CreateMaterial(Dirt)),
+                                PiercePlayers,
+                            ]),
+                        ], [
+                            Spread(10),
+                            Duplication(6),
+                        ])),
+                        PiercePlayers,
+                    ]),
+                    keybind: Pressed(Key(E)),
+                ),
+            ],
+        ),
+        (
+            modifiers: [
+                SignedSimpleCooldownModifier(DecreaseCooldown, 2),
+            ],
+            abilities: [
+                (
+                    card: StatusEffects(10, [
+                        Stun,
+                        Invincibility,
+                        SimpleStatusEffect(DamageOverTime, -1),
+                    ]),
+                    keybind: OnPressed(Key(LShift)),
+                ),
+            ],
+        ),
+    ],
+    passive: (
+        passive_effects: [
+            SimpleStatusEffect(IncreaseMaxHealth, 2),
+        ],
     ),
-    Cooldown(
-        modifiers: [],
-        abilities: [
-            (
-                keybind: Pressed(Key(E)),
-                card: Projectile([
-                    SimpleModify(Speed,4),
-                    SimpleModify(Size,-5),
-                    SimpleModify(Height,8),
-                    SimpleModify(Lifetime,-3),
-                    SimpleModify(Health,-10),
-                    OnHit(MultiCast([
-                        Projectile([
-                            SimpleModify(Size,-5),
-                            SimpleModify(Lifetime,-6),
-                            SimpleModify(Health,-10),
-                            PiercePlayers,
-                            OnExpiry(CreateMaterial(Stone)),
-                        ]),
-                    ],[
-                        Spread(10),
-                        Duplication(5),
-                    ])),
-                ]),
-            ),
-        ]
-    ),
-    Cooldown(
-        modifiers: [],
-        abilities: [
-            (
-                keybind: OnPressed(Key(LShift)),
-                card: MultiCast([
-                    Effect(Cleanse),
-                    Effect(StatusEffect(Stun, 10)),
-                    Effect(StatusEffect(Invincibility, 10)),
-                    Effect(StatusEffect(HealOverTime, 10)),
-                ],[]),
-            ),
-        ]
-    ),
-]
+)

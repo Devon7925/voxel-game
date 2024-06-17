@@ -35,6 +35,7 @@ impl Deck {
 pub struct Cooldown {
     pub modifiers: Vec<CooldownModifier>,
     pub abilities: Vec<Ability>,
+    #[serde(skip_serializing, default)]
     pub cooldown_value: Option<(f32, Vec<f32>)>,
 }
 
@@ -112,10 +113,11 @@ impl SimpleCooldownModifier {
 pub struct Ability {
     pub card: BaseCard,
     pub keybind: Keybind,
+    #[serde(skip_serializing, default)]
     pub cached_cooldown: Option<f32>,
-    #[serde(default)]
+    #[serde(skip_serializing, default)]
     pub is_cache_valid: bool,
-    #[serde(default)]
+    #[serde(skip_serializing, default)]
     pub is_keybind_selected: bool,
 }
 
@@ -941,7 +943,7 @@ impl BaseCard {
                     range_prob_evaluator(idx, target_width, target_height)
                 });
                 let mut value = vec![];
-                if enemy_fire && health > 1.0{
+                if enemy_fire && health > 1.0 {
                     value.push(CardValue {
                         damage: 0.0,
                         generic: 0.01
@@ -949,7 +951,9 @@ impl BaseCard {
                             * (width * height + length * height + length * width).sqrt()
                             * (30.0 + health)
                             * if friendly_fire { 1.0 } else { 2.0 },
-                            range_probabilities: core::array::from_fn(|idx| if idx == 0 { 1.0 } else { 0.0 }),
+                        range_probabilities: core::array::from_fn(
+                            |idx| if idx == 0 { 1.0 } else { 0.0 },
+                        ),
                     });
                 }
                 value.extend(trail_value.into_iter().flat_map(|(value, freq)| {
@@ -1061,13 +1065,13 @@ impl BaseCard {
             BaseCard::CreateMaterial(material) => {
                 let material_value = match material {
                     VoxelMaterial::Air => 0.0,
-                    VoxelMaterial::Stone => 1.0,
+                    VoxelMaterial::Stone => 0.25,
                     VoxelMaterial::Unloaded => panic!("Invalid state"),
-                    VoxelMaterial::Dirt => 0.5,
-                    VoxelMaterial::Grass => 0.5,
+                    VoxelMaterial::Dirt => 0.15,
+                    VoxelMaterial::Grass => 0.15,
                     VoxelMaterial::Projectile => panic!("Invalid state"),
-                    VoxelMaterial::Ice => 2.0,
-                    VoxelMaterial::Water => 0.75,
+                    VoxelMaterial::Ice => 0.5,
+                    VoxelMaterial::Water => 0.15,
                     VoxelMaterial::Player => panic!("Invalid state"),
                     VoxelMaterial::UnloadedAir => panic!("Invalid state"),
                 };
@@ -1172,7 +1176,7 @@ impl BaseCard {
                                     if is_direct {
                                         vec![CardValue {
                                             damage: 0.0,
-                                            generic: -0.75
+                                            generic: -0.5
                                                 * effect.get_effect_value()
                                                 * true_duration,
                                             range_probabilities: core::array::from_fn(|idx| {
@@ -1226,8 +1230,8 @@ impl BaseCard {
                                 }],
                                 SimpleStatusEffectType::Overheal => vec![CardValue {
                                     damage: 0.0,
-                                    generic: 5.0
-                                        * (2.0 - (-(true_duration)).exp())
+                                    generic: 1.0
+                                        * (1.0 - (-true_duration).exp())
                                         * effect.get_effect_value(),
                                     range_probabilities: core::array::from_fn(|idx| {
                                         if idx == 0 {
@@ -1525,7 +1529,7 @@ impl ProjectileModifier {
             ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Health, _) => {
                 format!("Projectile Health (+50% per) {}", self.get_effect_value())
             }
-            ProjectileModifier::FriendlyFire => format!("Prevents hitting friendly entities"),
+            ProjectileModifier::FriendlyFire => format!("Allows hitting friendly entities"),
             ProjectileModifier::NoEnemyFire => format!("Prevents hitting enemy entities"),
             ProjectileModifier::OnHit(_) => format!("On hit activate the following card"),
             ProjectileModifier::OnHeadshot(_) => format!("On headshot activate the following card"),
@@ -1749,7 +1753,7 @@ impl From<Keybind> for StateKeybind {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReferencedCooldown {
-    pub add_charge: u32,
+    pub max_charges: u32,
     pub add_cooldown: u32,
     pub abilities: Vec<(ReferencedBaseCard, Keybind)>,
     pub is_reloading: bool,
@@ -1873,14 +1877,14 @@ impl CardManager {
                 ability.keybind.into(),
             ));
         }
-        let mut add_charge = 0;
+        let mut max_charges = 1;
         let mut add_cooldown = 0;
         let mut is_reloading = false;
         for modifier in cooldown.modifiers {
             match modifier {
                 CooldownModifier::None => {}
                 CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, c) => {
-                    add_charge += c
+                    max_charges += c
                 }
                 CooldownModifier::SimpleCooldownModifier(
                     SimpleCooldownModifier::AddCooldown,
@@ -1894,7 +1898,7 @@ impl CardManager {
             }
         }
         ReferencedCooldown {
-            add_charge,
+            max_charges,
             add_cooldown,
             abilities,
             is_reloading,

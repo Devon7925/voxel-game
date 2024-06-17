@@ -333,8 +333,12 @@ fn handle_events(
                                     let exited_ui = gui_state.menu_stack.pop().unwrap();
                                     match exited_ui {
                                         GuiElement::CardEditor => {
-                                            let export =
-                                                ron::to_string(&gui_state.gui_deck).unwrap();
+                                            let config = ron::ser::PrettyConfig::default();
+                                            let export = ron::ser::to_string_pretty(
+                                                &gui_state.gui_deck,
+                                                config,
+                                            )
+                                            .unwrap();
                                             fs::write(&app.settings.card_file, export)
                                                 .expect("failed to write card file");
                                         }
