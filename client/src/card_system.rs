@@ -766,7 +766,6 @@ impl BaseCard {
                 if card_value.damage == 0.0 {
                     return card_value.generic;
                 }
-                println!("{:?}", card_value.range_probabilities);
                 let damage_value: f32 = card_value
                     .range_probabilities
                     .iter()
@@ -942,15 +941,15 @@ impl BaseCard {
                     range_prob_evaluator(idx, target_width, target_height)
                 });
                 let mut value = vec![];
-                if enemy_fire {
+                if enemy_fire && health > 1.0{
                     value.push(CardValue {
                         damage: 0.0,
-                        generic: 0.02
+                        generic: 0.01
                             * lifetime
-                            * (width * height + length * height + length * width)
-                            * (1.0 + health)
+                            * (width * height + length * height + length * width).sqrt()
+                            * (30.0 + health)
                             * if friendly_fire { 1.0 } else { 2.0 },
-                        range_probabilities,
+                            range_probabilities: core::array::from_fn(|idx| if idx == 0 { 1.0 } else { 0.0 }),
                     });
                 }
                 value.extend(trail_value.into_iter().flat_map(|(value, freq)| {
@@ -1524,7 +1523,7 @@ impl ProjectileModifier {
                 format!("Gravity (+2 per) {}b/s/s", self.get_effect_value())
             }
             ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Health, _) => {
-                format!("Entity Health (+50% per) {}", self.get_effect_value())
+                format!("Projectile Health (+50% per) {}", self.get_effect_value())
             }
             ProjectileModifier::FriendlyFire => format!("Prevents hitting friendly entities"),
             ProjectileModifier::NoEnemyFire => format!("Prevents hitting enemy entities"),
@@ -1576,7 +1575,7 @@ impl ProjectileModifier {
                 2.0 * (*s as f32)
             }
             ProjectileModifier::SimpleModify(SimpleProjectileModifierType::Health, s) => {
-                10.0 * 1.5f32.powi(*s)
+                1.5f32.powi(*s)
             }
             ProjectileModifier::FriendlyFire => panic!(),
             ProjectileModifier::NoEnemyFire => panic!(),

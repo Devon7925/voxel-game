@@ -1335,7 +1335,14 @@ impl ReplayData {
 struct NewEffects {
     new_projectiles: Vec<Projectile>,
     voxels_to_write: Vec<(Point3<u32>, u32)>,
-    new_effects: Vec<(usize, usize, bool, Point3<f32>, Vector3<f32>, ReferencedEffect)>,
+    new_effects: Vec<(
+        usize,
+        usize,
+        bool,
+        Point3<f32>,
+        Vector3<f32>,
+        ReferencedEffect,
+    )>,
     new_status_effects: Vec<(usize, ReferencedStatusEffects)>,
     step_triggers: Vec<(ReferencedTrigger, u32)>,
 }
@@ -1424,26 +1431,21 @@ impl WorldState {
         }
 
         self.projectiles.iter_mut().for_each(|proj| {
-            proj.simple_step(
-                &self.players,
-                card_manager,
-                time_step,
-                &mut new_effects,
-            )
+            proj.simple_step(&self.players, card_manager, time_step, &mut new_effects)
         });
 
         let collision_pairs = self.get_collision_pairs(card_manager, time_step);
 
-        for (i, j) in collision_pairs {
-            let damage_1 = self.projectiles.get(i).unwrap().damage;
-            let damage_2 = self.projectiles.get(j).unwrap().damage;
+        for (i, j) in collision_pairs.iter() {
+            let damage_1 = self.projectiles.get(*i).unwrap().damage;
+            let damage_2 = self.projectiles.get(*j).unwrap().damage;
             {
-                let proj1_mut = self.projectiles.get_mut(j).unwrap();
+                let proj1_mut = self.projectiles.get_mut(*j).unwrap();
                 proj1_mut.health -= damage_2;
                 proj1_mut.health -= damage_1;
             }
             {
-                let proj2_mut = self.projectiles.get_mut(i).unwrap();
+                let proj2_mut = self.projectiles.get_mut(*i).unwrap();
                 proj2_mut.health -= damage_1;
                 proj2_mut.health -= damage_2;
             }
@@ -1456,8 +1458,9 @@ impl WorldState {
 
             // check piercing invincibility at start to prevent order from mattering
             let player_piercing_invincibility = player.player_piercing_invincibility > 0.0;
+            let mut proj_collisions = Vec::new();
             // check for collision with projectiles
-            for proj in self.projectiles.iter_mut() {
+            for (proj_idx, proj) in self.projectiles.iter_mut().enumerate() {
                 if player_idx as u32 == proj.owner && proj.lifetime < 1.0 && proj.is_from_head == 1
                 {
                     continue;
@@ -1518,6 +1521,66 @@ impl WorldState {
                     collision = Some(hitsphere.clone());
                 }
                 if let Some(collision) = collision {
+                    proj_collisions.push((proj_idx, projectile_pos, collision));
+                }
+            }
+
+            proj_collisions
+                .iter()
+                .filter(|(proj_idx, damage_source_location, collision)| {
+                    let vec_start = damage_source_location.to_vec();
+                    let vec_end = collision.offset;
+                    self.projectiles
+                        .iter()
+                        .enumerate()
+                        .filter(|(idx, _)| collision_pairs.contains(&(*proj_idx.min(idx), *proj_idx.max(idx))))
+                        .all(|(_, proj2)| {
+                            let mut adj_vec_start = vec_start;
+                            let mut adj_vec_end = vec_end;
+                            adj_vec_start -= Vector3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
+                            adj_vec_end -= Vector3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
+                            let proj2_rot = Quaternion::new(
+                                proj2.dir[3],
+                                proj2.dir[0],
+                                proj2.dir[1],
+                                proj2.dir[2],
+                            );
+                            let proj2_rot_inv = proj2_rot.invert();
+                            adj_vec_start = proj2_rot_inv.rotate_vector(adj_vec_start);
+                            adj_vec_end = proj2_rot_inv.rotate_vector(adj_vec_end);
+                            adj_vec_start.div_assign_element_wise(Vector3::new(
+                                proj2.size[0],
+                                proj2.size[1],
+                                proj2.size[2],
+                            ));
+                            adj_vec_end.div_assign_element_wise(Vector3::new(
+                                proj2.size[0],
+                                proj2.size[1],
+                                proj2.size[2],
+                            ));
+
+                            let vec_dir = adj_vec_end - adj_vec_start;
+                            let (t_min, t_max) = (0..3).map(|i| (
+                                (-1.0 - adj_vec_start[i]) / vec_dir[i],
+                                (1.0 - adj_vec_start[i]) / vec_dir[i],
+                            )).map(|t| (t.0.min(t.1), t.0.max(t.1)))
+                            .reduce(|(t_min1, t_max1), (t_min2, t_max2)| (t_min1.max(t_min2), t_max1.min(t_max2))).unwrap();
+                            !(t_min < 1.0 && t_max > 0.0 && t_min < t_max)
+                        })
+                }).collect_vec().iter()
+                .for_each(|(proj_idx, _, collision)| {
+                    let proj = self.projectiles.get_mut(*proj_idx).unwrap();
+                    let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
+
+                    let projectile_rot =
+                        Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
+                    let projectile_vectors = [
+                        projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0)),
+                        projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0)),
+                        projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
+                    ];
+                    let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
+
                     if !proj_card.pierce_players {
                         proj.health = 0.0;
                     } else {
@@ -1526,13 +1589,16 @@ impl WorldState {
                     let mut hit_cards = card_manager
                         .get_referenced_proj(proj.proj_card_idx as usize)
                         .on_hit
-                        .iter().map(|x| (x.clone(), false)).collect::<Vec<_>>();
+                        .iter()
+                        .map(|x| (x.clone(), false))
+                        .collect::<Vec<_>>();
                     if collision.headshot {
                         hit_cards.extend(
                             card_manager
                                 .get_referenced_proj(proj.proj_card_idx as usize)
                                 .on_headshot
-                                .iter().map(|x| (x.clone(), true)),
+                                .iter()
+                                .map(|x| (x.clone(), true)),
                         );
                     }
                     for (card_ref, was_headshot) in hit_cards {
@@ -1549,7 +1615,9 @@ impl WorldState {
                             );
                         new_effects.new_projectiles.extend(on_hit_projectiles);
                         for (pos, material) in on_hit_voxels {
-                            new_effects.voxels_to_write.push((pos, material.to_memory()));
+                            new_effects
+                                .voxels_to_write
+                                .push((pos, material.to_memory()));
                         }
                         for effect in effects {
                             new_effects.new_effects.push((
@@ -1564,12 +1632,13 @@ impl WorldState {
                             ));
                         }
                         for status_effects in status_effects {
-                            new_effects.new_status_effects.push((player_idx, status_effects));
+                            new_effects
+                                .new_status_effects
+                                .push((player_idx, status_effects));
                         }
                         new_effects.step_triggers.extend(triggers);
                     }
-                }
-            }
+                });
         }
 
         let mut player_player_collision_pairs: Vec<(usize, usize)> = vec![];
@@ -1642,10 +1711,19 @@ impl WorldState {
             {
                 new_effects.new_projectiles.extend(on_hit_projectiles);
                 for (pos, material) in on_hit_voxels {
-                    new_effects.voxels_to_write.push((pos, material.to_memory()));
+                    new_effects
+                        .voxels_to_write
+                        .push((pos, material.to_memory()));
                 }
                 for effect in effects {
-                    new_effects.new_effects.push((j, i, false, player1_pos, player2_pos - player1_pos, effect));
+                    new_effects.new_effects.push((
+                        j,
+                        i,
+                        false,
+                        player1_pos,
+                        player2_pos - player1_pos,
+                        effect,
+                    ));
                 }
                 for status_effects in status_effects {
                     new_effects.new_status_effects.push((j, status_effects));
@@ -1684,7 +1762,9 @@ impl WorldState {
                             );
                         new_effects.new_projectiles.extend(proj_effects);
                         for (pos, material) in vox_effects {
-                            new_effects.voxels_to_write.push((pos, material.to_memory()));
+                            new_effects
+                                .voxels_to_write
+                                .push((pos, material.to_memory()));
                         }
                         for effect in effects {
                             new_effects.new_effects.push((
@@ -1697,7 +1777,9 @@ impl WorldState {
                             ));
                         }
                         for status_effects in status_effects {
-                            new_effects.new_status_effects.push((proj.owner as usize, status_effects));
+                            new_effects
+                                .new_status_effects
+                                .push((proj.owner as usize, status_effects));
                         }
                     }
                 }
@@ -1715,13 +1797,19 @@ impl WorldState {
             }
         }
 
-        for (affected_idx, actor_idx, was_headshot, effect_pos, effect_direction, effect) in new_effects.new_effects {
+        for (affected_idx, actor_idx, was_headshot, effect_pos, effect_direction, effect) in
+            new_effects.new_effects
+        {
             let player = self.players.get_mut(affected_idx).unwrap();
             match effect {
                 ReferencedEffect::Damage(damage) => {
                     player.adjust_health(-player_stats[affected_idx].damage_taken * damage as f32);
                     if damage > 0 {
-                        player.hurtmarkers.push((effect_direction, player_stats[affected_idx].damage_taken * damage as f32, 1.0));
+                        player.hurtmarkers.push((
+                            effect_direction,
+                            player_stats[affected_idx].damage_taken * damage as f32,
+                            1.0,
+                        ));
                     }
                     let actor = self.players.get_mut(actor_idx).unwrap();
                     if was_headshot {
@@ -1927,6 +2015,11 @@ impl WorldState {
             .collect::<Vec<_>>();
             'second_proj_loop: for j in i + 1..self.projectiles.len() {
                 let proj2 = self.projectiles.get(j).unwrap();
+
+                if proj1.health <= 1.0 || proj2.health <= 1.0 {
+                    continue;
+                }
+
                 let proj2_card = card_manager.get_referenced_proj(proj2.proj_card_idx as usize);
 
                 if (proj1_card.no_friendly_fire || proj2_card.no_friendly_fire)
@@ -2082,7 +2175,9 @@ impl Projectile {
                     );
                 new_effects.new_projectiles.extend(proj_effects);
                 for (pos, material) in vox_effects {
-                    new_effects.voxels_to_write.push((pos, material.to_memory()));
+                    new_effects
+                        .voxels_to_write
+                        .push((pos, material.to_memory()));
                 }
                 for effect in effects {
                     new_effects.new_effects.push((
@@ -2095,7 +2190,9 @@ impl Projectile {
                     ));
                 }
                 for status_effects in status_effects {
-                    new_effects.new_status_effects.push((self.owner as usize, status_effects));
+                    new_effects
+                        .new_status_effects
+                        .push((self.owner as usize, status_effects));
                 }
                 new_effects.step_triggers.extend(triggers);
             }
@@ -2113,7 +2210,9 @@ impl Projectile {
                     );
                 new_effects.new_projectiles.extend(proj_effects);
                 for (pos, material) in vox_effects {
-                    new_effects.voxels_to_write.push((pos, material.to_memory()));
+                    new_effects
+                        .voxels_to_write
+                        .push((pos, material.to_memory()));
                 }
                 for effect in effects {
                     new_effects.new_effects.push((
@@ -2126,7 +2225,9 @@ impl Projectile {
                     ));
                 }
                 for status_effects in status_effects {
-                    new_effects.new_status_effects.push((self.owner as usize, status_effects));
+                    new_effects
+                        .new_status_effects
+                        .push((self.owner as usize, status_effects));
                 }
                 new_effects.step_triggers.extend(triggers);
             }
@@ -2335,13 +2436,19 @@ impl Entity {
                                 );
                             new_effects.new_projectiles.extend(proj_effects);
                             for (pos, material) in vox_effects {
-                                new_effects.voxels_to_write.push((pos, material.to_memory()));
+                                new_effects
+                                    .voxels_to_write
+                                    .push((pos, material.to_memory()));
                             }
                             for effect in effects {
-                                new_effects.new_effects.push((player_idx, player_idx, false, self.pos, self.dir, effect));
+                                new_effects.new_effects.push((
+                                    player_idx, player_idx, false, self.pos, self.dir, effect,
+                                ));
                             }
                             for status_effects in status_effects {
-                                new_effects.new_status_effects.push((player_idx, status_effects));
+                                new_effects
+                                    .new_status_effects
+                                    .push((player_idx, status_effects));
                             }
                             new_effects.step_triggers.extend(triggers);
                             break;

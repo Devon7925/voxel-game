@@ -30,3 +30,5 @@
 * Balance
     * Improved projectile balance
     * Improved ability charge balance
+    * Adjusted shield balance
+    * Made new large projectiles not damage through shields

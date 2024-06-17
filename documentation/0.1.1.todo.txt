@@ -1,4 +1,2 @@
-* Balance
-    * Nerf Low health shields
 * Fix prebuilt decks
 * Move to github issues
