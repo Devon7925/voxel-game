@@ -433,6 +433,7 @@ impl VoxelComputePipeline {
         for i in 0..self.upload_projectile_count {
             let projectile = projectiles_buffer[i];
             if projectile.health == 0.0 && projectile.chunk_update_pos[3] == 1 {
+                let proj_card = card_manager.get_referenced_proj(projectile.proj_card_idx as usize);
                 {
                     let chunk_location = [
                         (projectile.chunk_update_pos[0] as usize * SUB_CHUNK_COUNT / CHUNK_SIZE)
@@ -452,8 +453,7 @@ impl VoxelComputePipeline {
                             .push_with_priority(chunk_location, 1);
                     }
                 };
-                for card_ref in card_manager
-                    .get_referenced_proj(projectile.proj_card_idx as usize)
+                for card_ref in proj_card
                     .on_hit
                     .clone()
                 {
@@ -469,6 +469,9 @@ impl VoxelComputePipeline {
                     );
                     projectiles.extend(effects.0);
                     new_voxels.extend(effects.1);
+                }
+                if proj_card.pierce_players {
+                    projectiles.push(projectile);
                 }
                 continue;
             }

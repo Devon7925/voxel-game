@@ -1449,6 +1449,65 @@ impl WorldState {
                 proj2_mut.health -= damage_1;
                 proj2_mut.health -= damage_2;
             }
+            // trigger on hit effects
+            {
+                let proj = self.projectiles.get(*i).unwrap();
+                let hit_cards = card_manager
+                        .get_referenced_proj(proj.proj_card_idx as usize)
+                        .on_hit
+                        .iter()
+                        .map(|x| (x.clone(), false))
+                        .collect::<Vec<_>>();
+                for (card_ref, _was_headshot) in hit_cards {
+                    let proj_rot = proj.dir;
+                    let proj_rot =
+                        Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
+                    let (on_hit_projectiles, on_hit_voxels, _effects, _status_effects, triggers) =
+                        card_manager.get_effects_from_base_card(
+                            card_ref,
+                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                            &proj_rot,
+                            proj.owner,
+                            false,
+                        );
+                    new_effects.new_projectiles.extend(on_hit_projectiles);
+                    for (pos, material) in on_hit_voxels {
+                        new_effects
+                            .voxels_to_write
+                            .push((pos, material.to_memory()));
+                    }
+                    new_effects.step_triggers.extend(triggers);
+                }
+            }
+            {
+                let proj = self.projectiles.get(*j).unwrap();
+                let hit_cards = card_manager
+                        .get_referenced_proj(proj.proj_card_idx as usize)
+                        .on_hit
+                        .iter()
+                        .map(|x| (x.clone(), false))
+                        .collect::<Vec<_>>();
+                for (card_ref, _was_headshot) in hit_cards {
+                    let proj_rot = proj.dir;
+                    let proj_rot =
+                        Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
+                    let (on_hit_projectiles, on_hit_voxels, _effects, _status_effects, triggers) =
+                        card_manager.get_effects_from_base_card(
+                            card_ref,
+                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                            &proj_rot,
+                            proj.owner,
+                            false,
+                        );
+                    new_effects.new_projectiles.extend(on_hit_projectiles);
+                    for (pos, material) in on_hit_voxels {
+                        new_effects
+                            .voxels_to_write
+                            .push((pos, material.to_memory()));
+                    }
+                    new_effects.step_triggers.extend(triggers);
+                }
+            }
         }
 
         for (player_idx, player) in self.players.iter_mut().enumerate() {
@@ -2016,18 +2075,18 @@ impl WorldState {
             'second_proj_loop: for j in i + 1..self.projectiles.len() {
                 let proj2 = self.projectiles.get(j).unwrap();
 
-                if proj1.health <= 1.0 || proj2.health <= 1.0 {
+                if proj1.health <= 1.0 && proj2.health <= 1.0 {
                     continue;
                 }
 
                 let proj2_card = card_manager.get_referenced_proj(proj2.proj_card_idx as usize);
 
-                if (proj1_card.no_friendly_fire || proj2_card.no_friendly_fire)
+                if (proj1_card.no_friendly_fire && proj2_card.no_friendly_fire)
                     && proj1.owner == proj2.owner
                 {
                     continue;
                 }
-                if (proj1_card.no_enemy_fire || proj2_card.no_enemy_fire)
+                if (proj1_card.no_enemy_fire && proj2_card.no_enemy_fire)
                     && proj1.owner != proj2.owner
                 {
                     continue;
