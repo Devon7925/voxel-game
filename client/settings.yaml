@@ -64,7 +64,7 @@ create_lobby_settings:
     name: "Standard Open Multiplayer"
     delta_time: 0.03
     is_remote: true
-    rollback_buffer_size: 15
+    rollback_buffer_size: 25
     player_count: 2
     render_size:
       x: 32

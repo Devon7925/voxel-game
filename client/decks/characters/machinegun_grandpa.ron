@@ -20,7 +20,7 @@
         ),
         (
             modifiers: [
-                SignedSimpleCooldownModifier(DecreaseCooldown, -10),
+                SignedSimpleCooldownModifier(DecreaseCooldown, -7),
             ],
             abilities: [
                 (
@@ -49,7 +49,7 @@
         ),
         (
             modifiers: [
-                SignedSimpleCooldownModifier(DecreaseCooldown, -16),
+                SignedSimpleCooldownModifier(DecreaseCooldown, -1),
             ],
             abilities: [
                 (
@@ -85,7 +85,7 @@
         ),
         (
             modifiers: [
-                SignedSimpleCooldownModifier(DecreaseCooldown, -4),
+                SignedSimpleCooldownModifier(DecreaseCooldown, -2),
             ],
             abilities: [
                 (

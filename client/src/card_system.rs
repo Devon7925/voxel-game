@@ -1,6 +1,5 @@
 use crate::{settings_manager::Control, voxel_sim_manager::Projectile, PLAYER_BASE_MAX_HEALTH};
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
-use core::time;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -53,7 +52,7 @@ impl CooldownModifier {
             CooldownModifier::None => "".to_string(),
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => format!("Add {} charges", s),
             CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCooldown, s) => format!("Increase cooldown by {}s ({} per)", SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT*(*s as f32), SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT),
-            CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, s) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increases the cooldown of all other abilities", self.get_effect_value()),
+            CooldownModifier::SignedSimpleCooldownModifier(SignedSimpleCooldownModifier::DecreaseCooldown, _) => format!("Multiply impact by {}, this lowers the cooldown of this abiliy, but increases the cooldown of all other abilities", self.get_effect_value()),
             CooldownModifier::Reloading => "For multicharge cooldowns, only start cooldown once all charges are depleted".to_string(),
         }
     }
@@ -206,7 +205,6 @@ impl Cooldown {
         has_anything_changed
     }
 
-    const GLOBAL_COOLDOWN_MULTIPLIER: f32 = 0.35;
     pub fn get_cooldown_recovery(&self, total_impact: f32) -> (f32, Vec<f32>) {
         let ability_values: Vec<f32> = self
             .abilities
@@ -250,9 +248,7 @@ impl Cooldown {
             .iter()
             .map(|val| {
                 SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT * added_cooldown as f32
-                    + Self::GLOBAL_COOLDOWN_MULTIPLIER
-                        * val
-                        * (0.5 + 0.5 * (1.0 - (-(ability_charges as f32 / 10.0)).exp()))
+                    + val * (0.5 + 0.5 * (1.0 - (-(ability_charges as f32 / 5.0)).exp()))
                         / (impact_multiplier / total_impact)
             })
             .collect();
@@ -262,11 +258,11 @@ impl Cooldown {
             .unwrap()
             .clone();
         let mut cooldown = SimpleCooldownModifier::ADD_COOLDOWN_AMOUNT * added_cooldown as f32
-            + Self::GLOBAL_COOLDOWN_MULTIPLIER * (sum + 2.0 * max) / 3.0
-                * (1.0 + 0.75 * (1.0 - (-(ability_charges as f32 / 10.0)).exp()))
+            + (sum + 2.0 * max) / 3.0
+                * (1.0 + 0.75 * (1.0 - (-(ability_charges as f32 / 5.0)).exp()))
                 / (impact_multiplier / total_impact);
         if reloading && ability_charges > 0 {
-            cooldown = 0.45 * (1 + ability_charges) as f32 * (cooldown - max_recovery);
+            cooldown = 0.55 * (1 + ability_charges) as f32 * (cooldown - max_recovery);
         }
         (cooldown, recovery)
     }
@@ -277,7 +273,7 @@ impl Cooldown {
             match modifier {
                 CooldownModifier::SignedSimpleCooldownModifier(
                     SignedSimpleCooldownModifier::DecreaseCooldown,
-                    s,
+                    _,
                 ) => {
                     impact_multiplier *= modifier.get_effect_value();
                 }
@@ -665,22 +661,29 @@ fn convolve_range_probabilities<const COUNT: usize>(
     new_range_probabilities
 }
 
-const SCALE: i32 = 10;
-const SCALED_PLAYER_BASE_MAX_HEALTH: i32 = (PLAYER_BASE_MAX_HEALTH * SCALE as f32) as i32;
-fn gen_cooldown_for_ttk(accuracy: f32, damage: f32, goal_ttk: f32) -> f32 {
+const DAMAGE_CALCULATION_FLOAT_SCALE: f32 = 5.0;
+const SCALED_PLAYER_BASE_MAX_HEALTH: i32 =
+    (PLAYER_BASE_MAX_HEALTH * DAMAGE_CALCULATION_FLOAT_SCALE) as i32;
+const TIME_TO_FIRST_SHOT: f32 = 0.5;
+const HEALING_RATE: f32 = 12.8;
+fn gen_cooldown_for_ttk(damage_profile: Vec<(f32, f32)>, goal_ttk: f32) -> f32 {
+    let minimum_damage = damage_profile.get(0).unwrap().0;
+    if minimum_damage >= PLAYER_BASE_MAX_HEALTH {
+        return 120.0;
+    }
     let mut healing = 128;
     let mut delta = healing;
     while delta > 1 {
         delta /= 2;
-        if get_avg_ttk(
-            accuracy,
-            (damage * SCALE as f32) as i32,
+        if (get_avg_ttk(
+            &damage_profile,
             healing,
             SCALED_PLAYER_BASE_MAX_HEALTH,
             100,
             &mut HashMap::new(),
-        ) * healing as f32
-            / 128.0
+        ) - TIME_TO_FIRST_SHOT)
+            * healing as f32
+            / HEALING_RATE / DAMAGE_CALCULATION_FLOAT_SCALE
             > goal_ttk
         {
             healing -= delta;
@@ -688,12 +691,11 @@ fn gen_cooldown_for_ttk(accuracy: f32, damage: f32, goal_ttk: f32) -> f32 {
             healing += delta;
         }
     }
-    healing as f32 / SCALE as f32 / 12.8
+    healing as f32 / DAMAGE_CALCULATION_FLOAT_SCALE / HEALING_RATE
 }
 
 fn get_avg_ttk(
-    accuracy: f32,
-    damage: i32,
+    damage_profile: &Vec<(f32, f32)>,
     healing: i32,
     current_health: i32,
     iterations: usize,
@@ -705,8 +707,7 @@ fn get_avg_ttk(
         0.0
     } else if current_health > SCALED_PLAYER_BASE_MAX_HEALTH {
         get_avg_ttk(
-            accuracy,
-            damage,
+            damage_profile,
             healing,
             SCALED_PLAYER_BASE_MAX_HEALTH,
             iterations,
@@ -719,24 +720,20 @@ fn get_avg_ttk(
             }
         }
         let result = 1.0
-            + accuracy
-                * get_avg_ttk(
-                    accuracy,
-                    damage,
-                    healing,
-                    current_health - damage + healing,
-                    iterations - 1,
-                    table,
-                )
-            + (1.0 - accuracy)
-                * get_avg_ttk(
-                    accuracy,
-                    damage,
-                    healing,
-                    current_health + healing,
-                    iterations - 1,
-                    table,
-                );
+            + (0..damage_profile.len())
+                .map(|idx| {
+                    damage_profile[idx].1
+                        * get_avg_ttk(
+                            damage_profile,
+                            healing,
+                            current_health
+                                - (damage_profile[idx].0 * DAMAGE_CALCULATION_FLOAT_SCALE) as i32
+                                + healing,
+                            iterations - 1,
+                            table,
+                        )
+                })
+                .sum::<f32>();
         table.insert(current_health, (result, iterations));
         result
     }
@@ -750,6 +747,11 @@ fn error_function(x: f32) -> f32 {
         * (-x * x).exp()
 }
 
+fn normal_pdf(x: f32, mu: f32, sigma: f32) -> f32 {
+    (-(x - mu).powi(2) / (2.0 * sigma.powi(2))).exp() / (sigma * (2.0 * std::f32::consts::PI).sqrt())
+}
+
+const RANGE_PROBABILITIES_SCALE: f32 = 5.0;
 impl BaseCard {
     pub const EFFECT_LENGTH_SCALE: f32 = 0.5;
     pub fn from_string(ron_string: &str) -> Self {
@@ -761,26 +763,85 @@ impl BaseCard {
     }
 
     pub fn get_cooldown(&self) -> f32 {
-        let card_value = self.evaluate_value(true);
-        card_value
+        let card_values = self.evaluate_value(true);
+        let generic_value = card_values
             .iter()
-            .map(|card_value| {
-                if card_value.damage == 0.0 {
-                    return card_value.generic;
+            .map(|card_value| card_value.generic)
+            .sum::<f32>();
+        if card_values.iter().all(|card_value| card_value.damage == 0.0) {
+            return generic_value;
+        }
+
+        let ranged_damage_profiles: Vec<Vec<(f32, f32)>> = (0..15)
+            .map(|idx| {
+                let mut damage_profile = vec![(0.0, 1.0)];
+                for card_value in card_values.iter() {
+                    let damage = card_value.damage;
+                    if damage == 0.0 {
+                        continue;
+                    }
+                    let range_probability = card_value.range_probabilities[idx].min(1.0);
+                    if range_probability == 0.0 {
+                        continue;
+                    }
+                    let mut new_damage_profile = vec![];
+                    for (profile_damage, profile_probability) in damage_profile.iter_mut() {
+                        if range_probability < 1.0 {
+                            new_damage_profile.push((
+                                *profile_damage,
+                                *profile_probability * (1.0 - range_probability),
+                            ));
+                        }
+                        new_damage_profile.push((
+                            *profile_damage + damage,
+                            *profile_probability * range_probability,
+                        ));
+                    }
+                    damage_profile = new_damage_profile;
                 }
-                let damage_value: f32 = card_value
-                    .range_probabilities
-                    .iter()
-                    .map(|accuracy| gen_cooldown_for_ttk(*accuracy, card_value.damage, 5.0))
-                    .sum::<f32>()
-                    / card_value.range_probabilities.len() as f32;
-                damage_value + card_value.generic
+                damage_profile.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                damage_profile.chunk_by(|(a, _), (b, _)| a == b)
+                    .map(|group| {
+                        let damage = group.first().unwrap().0;
+                        let probability = group.iter().map(|(_, p)| p).sum::<f32>();
+                        (damage, probability)
+                    })
+                    .collect()
             })
+            .collect();
+
+        let range_cds = ranged_damage_profiles
+            .into_iter()
+            .map(|damage_profile| gen_cooldown_for_ttk(damage_profile, 3.5))
+            .collect_vec();
+        let average_cd = range_cds.iter().sum::<f32>() / range_cds.len() as f32;
+        let std_cd = (range_cds
+            .iter()
+            .map(|cd| (cd - average_cd).powi(2))
             .sum::<f32>()
+            / range_cds.len() as f32)
+            .sqrt();
+        let range_cd_weights = range_cds
+            .iter()
+            .map(|cd| ((cd - average_cd) / std_cd).exp())
+            .collect_vec();
+        let range_cd_weights_sum = range_cd_weights.iter().sum::<f32>();
+        const RANGE_CONTROL: f32 = 1.0/20.0;
+        let range_cd_weights = range_cd_weights
+            .iter()
+            .enumerate()
+            .map(|(idx, weight)| RANGE_CONTROL * weight / range_cd_weights_sum + (1.0 - RANGE_CONTROL) * RANGE_PROBABILITIES_SCALE * normal_pdf(idx as f32 * RANGE_PROBABILITIES_SCALE, 25.0, 15.0))
+            .collect_vec();
+        let damage_value = range_cds
+            .iter()
+            .zip(range_cd_weights.iter())
+            .map(|(cd, weight)| cd * weight)
+            .sum::<f32>()
+            / range_cd_weights.iter().sum::<f32>();
+        damage_value + generic_value
     }
 
     fn evaluate_value(&self, is_direct: bool) -> Vec<CardValue> {
-        const RANGE_PROBABILITIES_SCALE: f32 = 5.0;
         match self {
             BaseCard::Projectile(modifiers) => {
                 let mut hit_value = vec![];
@@ -890,7 +951,10 @@ impl BaseCard {
                     let distance = idx as f32 * RANGE_PROBABILITIES_SCALE;
                     let time_traveled = distance / speed;
                     let aim_std = 0.3 + 0.2 * time_traveled;
-                    if distance > speed.abs() * lifetime {
+                    let max_size = (target_width + length)
+                        .max(target_width + width)
+                        .max(target_height + height);
+                    if distance > speed.abs() * lifetime + max_size {
                         return 0.0;
                     }
                     let mut result = 0.0;
@@ -946,7 +1010,7 @@ impl BaseCard {
                 if enemy_fire && health > 1.0 {
                     value.push(CardValue {
                         damage: 0.0,
-                        generic: 0.01
+                        generic: 0.0035
                             * lifetime
                             * (width * height + length * height + length * width).sqrt()
                             * (30.0 + health)
@@ -1022,28 +1086,30 @@ impl BaseCard {
                 value
             }
             BaseCard::MultiCast(cards, modifiers) => {
-                let mut duplication = 1;
+                let mut duplication = 0;
                 let mut spread = 0;
                 for modifier in modifiers.iter() {
                     match modifier {
                         MultiCastModifier::None => {}
                         MultiCastModifier::Duplication(mod_duplication) => {
-                            duplication *= 2_u32.pow(*mod_duplication);
+                            duplication += *mod_duplication;
                         }
                         MultiCastModifier::Spread(mod_spread) => {
                             spread += *mod_spread;
                         }
                     }
                 }
+                let duplicate_amount = 2u32.pow(duplication);
                 cards
                     .iter()
                     .flat_map(|card| card.evaluate_value(is_direct))
                     .flat_map(|card_value| {
                         let mut values = vec![card_value.clone()];
-                        if duplication > 1 {
+                        for dup_idx in 1..duplicate_amount {
+                            let offset = dup_idx as f32 * spread as f32 / duplicate_amount as f32;
                             values.push(CardValue {
-                                damage: (duplication - 1) as f32 * card_value.damage,
-                                generic: (duplication - 1) as f32 * card_value.generic,
+                                damage: card_value.damage,
+                                generic: card_value.generic,
                                 range_probabilities: if spread > 0 {
                                     let mut i = -1;
                                     card_value.range_probabilities.map(|prob| {
@@ -1051,7 +1117,7 @@ impl BaseCard {
                                         if i == 0 {
                                             return prob;
                                         }
-                                        prob / (i as f32 * spread as f32).powi(2)
+                                        prob / (RANGE_PROBABILITIES_SCALE * i as f32 * offset).powi(2)
                                     })
                                 } else {
                                     card_value.range_probabilities
@@ -1065,13 +1131,13 @@ impl BaseCard {
             BaseCard::CreateMaterial(material) => {
                 let material_value = match material {
                     VoxelMaterial::Air => 0.0,
-                    VoxelMaterial::Stone => 0.25,
+                    VoxelMaterial::Stone => 0.0875,
                     VoxelMaterial::Unloaded => panic!("Invalid state"),
-                    VoxelMaterial::Dirt => 0.15,
-                    VoxelMaterial::Grass => 0.15,
+                    VoxelMaterial::Dirt => 0.0525,
+                    VoxelMaterial::Grass => 0.0525,
                     VoxelMaterial::Projectile => panic!("Invalid state"),
-                    VoxelMaterial::Ice => 0.5,
-                    VoxelMaterial::Water => 0.15,
+                    VoxelMaterial::Ice => 0.175,
+                    VoxelMaterial::Water => 0.0525,
                     VoxelMaterial::Player => panic!("Invalid state"),
                     VoxelMaterial::UnloadedAir => panic!("Invalid state"),
                 };
@@ -1089,7 +1155,7 @@ impl BaseCard {
                         if is_direct {
                             vec![CardValue {
                                 damage: 0.0,
-                                generic: -1.0 * *damage as f32,
+                                generic: -0.35 * *damage as f32,
                                 range_probabilities: core::array::from_fn(|idx| {
                                     if idx == 0 {
                                         1.0
@@ -1114,7 +1180,7 @@ impl BaseCard {
                     } else {
                         vec![CardValue {
                             damage: 0.0,
-                            generic: -*damage as f32,
+                            generic: -0.35 * *damage as f32,
                             range_probabilities: core::array::from_fn(|idx| {
                                 if idx == 0 {
                                     1.0
@@ -1127,21 +1193,21 @@ impl BaseCard {
                 }
                 Effect::Knockback(knockback, _) => vec![CardValue {
                     damage: 0.0,
-                    generic: 0.3 * (*knockback as f32).abs(),
+                    generic: 0.1 * (*knockback as f32).abs(),
                     range_probabilities: core::array::from_fn(
                         |idx| if idx == 0 { 1.0 } else { 0.0 },
                     ),
                 }],
                 Effect::Cleanse => vec![CardValue {
                     damage: 0.0,
-                    generic: 7.0,
+                    generic: 2.4,
                     range_probabilities: core::array::from_fn(
                         |idx| if idx == 0 { 1.0 } else { 0.0 },
                     ),
                 }],
                 Effect::Teleport => vec![CardValue {
                     damage: 0.0,
-                    generic: 12.0,
+                    generic: 4.0,
                     range_probabilities: core::array::from_fn(
                         |idx| if idx == 0 { 1.0 } else { 0.0 },
                     ),
@@ -1158,11 +1224,11 @@ impl BaseCard {
                                 &SimpleStatusEffectType::Speed => vec![CardValue {
                                     damage: 0.0,
                                     generic: if stacks < &0 {
-                                        0.3 * (1.0 - effect.get_effect_value())
+                                        0.1 * (1.0 - effect.get_effect_value())
                                             * true_duration
                                             * (if is_direct { -1.0 } else { 1.0 })
                                     } else {
-                                        0.5 * true_duration * effect.get_effect_value()
+                                        0.17 * true_duration * effect.get_effect_value()
                                     },
                                     range_probabilities: core::array::from_fn(|idx| {
                                         if idx == 0 {
@@ -1176,7 +1242,7 @@ impl BaseCard {
                                     if is_direct {
                                         vec![CardValue {
                                             damage: 0.0,
-                                            generic: -0.5
+                                            generic: -0.17
                                                 * effect.get_effect_value()
                                                 * true_duration,
                                             range_probabilities: core::array::from_fn(|idx| {
@@ -1187,12 +1253,26 @@ impl BaseCard {
                                                 }
                                             }),
                                         }]
-                                    } else {
+                                    } else if stacks > &0 {
                                         vec![CardValue {
                                             damage: true_duration
                                                 * effect.get_effect_value()
-                                                * 0.9f32.powf(true_duration),
+                                                * 0.9,
                                             generic: 0.0,
+                                            range_probabilities: core::array::from_fn(|idx| {
+                                                if idx == 0 {
+                                                    1.0
+                                                } else {
+                                                    0.0
+                                                }
+                                            }),
+                                        }]
+                                    } else {
+                                        vec![CardValue {
+                                            damage: 0.0,
+                                            generic: 0.06
+                                                * effect.get_effect_value().abs()
+                                                * true_duration,
                                             range_probabilities: core::array::from_fn(|idx| {
                                                 if idx == 0 {
                                                     1.0
@@ -1205,7 +1285,8 @@ impl BaseCard {
                                 }
                                 SimpleStatusEffectType::IncreaseDamageTaken => vec![CardValue {
                                     damage: 0.0,
-                                    generic: true_duration
+                                    generic: 0.35
+                                        * true_duration
                                         * effect
                                             .get_effect_value()
                                             .max(1.0 / effect.get_effect_value()),
@@ -1219,7 +1300,7 @@ impl BaseCard {
                                 }],
                                 SimpleStatusEffectType::IncreaseGravity(_) => vec![CardValue {
                                     damage: 0.0,
-                                    generic: 0.5 * true_duration * effect.get_effect_value().abs(),
+                                    generic: 0.17 * true_duration * effect.get_effect_value().abs(),
                                     range_probabilities: core::array::from_fn(|idx| {
                                         if idx == 0 {
                                             1.0
@@ -1230,7 +1311,7 @@ impl BaseCard {
                                 }],
                                 SimpleStatusEffectType::Overheal => vec![CardValue {
                                     damage: 0.0,
-                                    generic: 1.0
+                                    generic: 0.35
                                         * (1.0 - (-true_duration).exp())
                                         * effect.get_effect_value(),
                                     range_probabilities: core::array::from_fn(|idx| {
@@ -1244,7 +1325,7 @@ impl BaseCard {
                                 SimpleStatusEffectType::Grow => vec![CardValue {
                                     damage: 0.0,
                                     generic: (if is_direct && stacks > &0 { -0.5 } else { 1.0 })
-                                        * 0.3
+                                        * 0.1
                                         * true_duration
                                         * effect.get_effect_value(),
                                     range_probabilities: core::array::from_fn(|idx| {
@@ -1258,7 +1339,7 @@ impl BaseCard {
                                 SimpleStatusEffectType::IncreaseMaxHealth => vec![CardValue {
                                     damage: 0.0,
                                     generic: (if is_direct && stacks < &0 { -0.5 } else { 1.0 })
-                                        * 0.01
+                                        * 0.0035
                                         * true_duration
                                         * effect.get_effect_value().abs(),
                                     range_probabilities: core::array::from_fn(|idx| {
@@ -1273,7 +1354,7 @@ impl BaseCard {
                         }
                         StatusEffect::Invincibility => vec![CardValue {
                             damage: 0.0,
-                            generic: 10.0 * true_duration,
+                            generic: 3.5 * true_duration,
                             range_probabilities: core::array::from_fn(|idx| {
                                 if idx == 0 {
                                     1.0
@@ -1285,7 +1366,7 @@ impl BaseCard {
                         StatusEffect::Trapped => vec![CardValue {
                             damage: 0.0,
                             generic: (if is_direct { -1.0 } else { 1.0 })
-                                * 1.0
+                                * 0.35
                                 * true_duration.powi(2),
                             range_probabilities: core::array::from_fn(|idx| {
                                 if idx == 0 {
@@ -1298,7 +1379,7 @@ impl BaseCard {
                         StatusEffect::Lockout => vec![CardValue {
                             damage: 0.0,
                             generic: (if is_direct { -1.0 } else { 1.0 })
-                                * 1.0
+                                * 0.35
                                 * true_duration.powi(2),
                             range_probabilities: core::array::from_fn(|idx| {
                                 if idx == 0 {
@@ -1311,7 +1392,7 @@ impl BaseCard {
                         StatusEffect::Stun => vec![CardValue {
                             damage: 0.0,
                             generic: (if is_direct { -1.0 } else { 1.0 })
-                                * 2.0
+                                * 0.7
                                 * true_duration.powi(2),
                             range_probabilities: core::array::from_fn(|idx| {
                                 if idx == 0 {
