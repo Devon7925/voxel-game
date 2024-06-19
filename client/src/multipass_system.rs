@@ -801,7 +801,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                         });
                 }
                 Some(&GuiElement::CardEditor) => {
-                    card_editor(&ctx, gui_state);
+                    card_editor(&ctx, gui_state, game);
                 }
 
                 Some(&GuiElement::MultiplayerMenu) => {

@@ -82,6 +82,7 @@ pub trait PlayerSim {
     fn get_render_projectiles(&self) -> &Vec<Projectile>;
     fn get_players(&self) -> &Vec<Entity>;
     fn player_count(&self) -> usize;
+    fn get_entity_metadata(&self) -> &Vec<EntityMetaData>;
 
     fn visable_projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]>;
     fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]>;
@@ -121,14 +122,14 @@ impl Action {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum EntityMetaData {
-    Player(VecDeque<Action>),
+    Player(Deck, VecDeque<Action>),
     TrainingBot,
 }
 
 impl EntityMetaData {
     fn step(&mut self) {
         match self {
-            EntityMetaData::Player(actions) => {
+            EntityMetaData::Player(_, actions) => {
                 let latest = actions.pop_front();
                 assert!(latest.is_some());
                 actions.push_back(Action::empty());
@@ -139,7 +140,7 @@ impl EntityMetaData {
 
     fn get_action(&self, rollback_offset: u64) -> Action {
         match self {
-            EntityMetaData::Player(actions) => actions
+            EntityMetaData::Player(_, actions) => actions
                 .get(rollback_offset as usize)
                 .unwrap_or_else(|| {
                     panic!(
@@ -182,6 +183,7 @@ pub struct ReplayData {
     pub current_time: u64,
     pub delta_time: f32,
     pub state: WorldState,
+    pub entity_metadata: Vec<EntityMetaData>,
     pub actions: VecDeque<Vec<Action>>,
     pub projectile_buffer: Subbuffer<[Projectile; 1024]>,
     pub player_buffer: Subbuffer<[UploadPlayer; 128]>,
@@ -555,6 +557,10 @@ impl PlayerSim for RollbackData {
         self.rollback_state.players.len()
     }
 
+    fn get_entity_metadata(&self) -> &Vec<EntityMetaData> {
+        &self.entity_metadata
+    }
+
     fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager) {
         let Some(network_connection) = self.network_connection.as_mut() else {
             return;
@@ -596,13 +602,21 @@ impl PlayerSim for RollbackData {
                         Action {
                             primary_action: None,
                             meta_action: Some(MetaAction {
-                                deck_update: Some(cards),
+                                deck_update: Some(cards.clone()),
                                 ..Default::default()
                             }),
                         },
                         player_idx.unwrap().clone(),
                         time,
                     );
+                    let EntityMetaData::Player(deck, _) = self
+                        .entity_metadata
+                        .get_mut(player_idx.unwrap().clone())
+                        .unwrap()
+                    else {
+                        panic!("cannot update deck of non player");
+                    };
+                    *deck = cards;
                 }
                 NetworkPacket::Join(cards) => {
                     self.player_idx_map
@@ -616,12 +630,13 @@ impl PlayerSim for RollbackData {
                         abilities_from_cooldowns(&cards, card_manager);
 
                     self.rollback_state.players.push(new_player);
-                    self.entity_metadata
-                        .push(EntityMetaData::Player(VecDeque::from(vec![
+                    self.entity_metadata.push(EntityMetaData::Player(
+                        cards.clone(),
+                        VecDeque::from(vec![
                             Action::empty();
-                            (self.current_time - self.rollback_time + 15)
-                                as usize
-                        ])));
+                            (self.current_time - self.rollback_time + 15) as usize
+                        ]),
+                    ));
 
                     if let Some(replay_file) = self.replay_file.as_mut() {
                         write!(replay_file, "PLAYER DECK ").unwrap();
@@ -929,7 +944,7 @@ impl RollbackData {
         (first_player.abilities, first_player.passive_abilities) =
             abilities_from_cooldowns(deck, card_manager);
         rollback_state.players.push(first_player.clone());
-        entity_metadata.push(EntityMetaData::Player(VecDeque::from(vec![
+        entity_metadata.push(EntityMetaData::Player(deck.clone(), VecDeque::from(vec![
             Action::empty();
             game_settings.rollback_buffer_size
                 as usize
@@ -1031,7 +1046,7 @@ impl RollbackData {
             return;
         }
         let time_idx = time_stamp - self.rollback_time;
-        let EntityMetaData::Player(actions) =
+        let EntityMetaData::Player(_, actions) =
             self.entity_metadata.get_mut(player_idx).unwrap_or_else(|| {
                 panic!(
                     "cannot access entity index {} on sending with timestamp {}",
@@ -1205,6 +1220,10 @@ impl PlayerSim for ReplayData {
         self.state.players.len()
     }
 
+    fn get_entity_metadata(&self) -> &Vec<EntityMetaData> {
+        &self.entity_metadata
+    }
+
     fn network_update(&mut self, _settings: &GameSettings, _card_manager: &mut CardManager) {}
 
     fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
@@ -1288,6 +1307,7 @@ impl ReplayData {
         let current_time: u64 = 0;
 
         let mut state = WorldState::new();
+        let mut entity_metadata = Vec::new();
         let mut actions = VecDeque::new();
         while let Some(line) = replay_lines.next() {
             let Ok(line) = line else {
@@ -1305,6 +1325,7 @@ impl ReplayData {
                 (new_player.abilities, new_player.passive_abilities) =
                     abilities_from_cooldowns(&deck, card_manager);
                 state.players.push(new_player);
+                entity_metadata.push(EntityMetaData::Player(deck.clone(), VecDeque::new()));
 
                 if matches!(game_settings.world_gen, WorldGenSettings::PracticeRange) {
                     let bot = Entity {
@@ -1313,6 +1334,7 @@ impl ReplayData {
                         ..Default::default()
                     };
                     state.players.push(bot.clone());
+                    entity_metadata.push(EntityMetaData::TrainingBot);
                 }
             } else if let Some(_time_stamp_string) = line.strip_prefix("TIME ") {
                 let actions_string = replay_lines.next().unwrap().unwrap();
@@ -1327,6 +1349,7 @@ impl ReplayData {
             current_time,
             delta_time: game_settings.delta_time,
             state,
+            entity_metadata,
             actions,
             player_buffer,
             projectile_buffer,
@@ -2485,9 +2508,7 @@ impl Entity {
             }
 
             for (cooldown_idx, cooldown) in self.abilities.iter_mut().enumerate() {
-                if cooldown.remaining_charges > 0
-                    && cooldown.recovery <= 0.0
-                {
+                if cooldown.remaining_charges > 0 && cooldown.recovery <= 0.0 {
                     for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
                         if *action
                             .activate_ability
@@ -2537,7 +2558,8 @@ impl Entity {
                     ability.recovery += ability.value.0;
                 }
             } else {
-                if ability.cooldown > 0.0 && ability.remaining_charges < ability.ability.max_charges {
+                if ability.cooldown > 0.0 && ability.remaining_charges < ability.ability.max_charges
+                {
                     ability.cooldown -= time_step;
                 } else if ability.remaining_charges < ability.ability.max_charges {
                     ability.cooldown = ability.value.0;

@@ -128,6 +128,8 @@ fn main() {
         menu_stack: vec![GuiElement::MainMenu],
         errors: Vec::new(),
         gui_deck: player_deck.clone(),
+        render_deck: player_deck.clone(),
+        render_deck_idx: 0,
         dock_cards: vec![],
         cooldown_cache_refresh_delay: 0.0,
         palette_state: PaletteState::BaseCards,
@@ -596,7 +598,9 @@ fn compute_then_render(
                 }
                 Pass::Lighting(mut lighting) => {
                     if let Some(game) = app.game.as_mut() {
-                        lighting.raytrace(&game, &app.settings);
+                        if gui_state.menu_stack.last() != Some(&GuiElement::CardEditor) {
+                            lighting.raytrace(&game, &app.settings);
+                        }
                     }
                     lighting.gui(
                         &mut app.game,

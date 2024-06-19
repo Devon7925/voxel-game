@@ -1,7 +1,17 @@
-use std::{collections::VecDeque, ops::{Add, Mul, Sub}};
+use std::{
+    collections::VecDeque,
+    ops::{Add, Mul, Sub},
+};
 
 use egui_winit_vulkano::egui::{
-    self, emath::{self, Numeric}, epaint::{self, PathShape}, pos2, text::LayoutJob, vec2, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label, LayerId, Order, Pos2, Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke, TextFormat, TextStyle, Ui, Vec2
+    self,
+    emath::{self, Numeric},
+    epaint::{self, PathShape},
+    pos2,
+    text::LayoutJob,
+    vec2, Align2, Color32, ComboBox, CursorIcon, DragValue, FontId, Id, InnerResponse, Label,
+    LayerId, Layout, Order, Pos2, Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke,
+    TextFormat, TextStyle, Ui, Vec2,
 };
 use itertools::Itertools;
 
@@ -12,8 +22,9 @@ use crate::{
         SignedSimpleCooldownModifier, SimpleCooldownModifier, SimpleProjectileModifierType,
         SimpleStatusEffectType, StatusEffect, VoxelMaterial,
     },
+    game_manager::Game,
     lobby_browser::LobbyBrowser,
-    rollback_manager::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
+    rollback_manager::{AppliedStatusEffect, Entity, EntityMetaData, HealthSection, PlayerAbility},
     settings_manager::Control,
     utils::{translate_egui_key_code, translate_egui_pointer_button},
 };
@@ -47,6 +58,8 @@ pub struct GuiState {
     pub menu_stack: Vec<GuiElement>,
     pub errors: Vec<String>,
     pub gui_deck: Deck,
+    pub render_deck: Deck,
+    pub render_deck_idx: usize,
     pub dock_cards: Vec<DragableCard>,
     pub cooldown_cache_refresh_delay: f32,
     pub palette_state: PaletteState,
@@ -145,13 +158,7 @@ fn get_arc_shape(
     stroke: Stroke,
 ) -> Shape {
     Shape::Path(PathShape {
-        points: get_arc_points(
-            start,
-            center,
-            radius,
-            value,
-            0.03,
-        ),
+        points: get_arc_points(start, center, radius, value, max_arc_distance),
         closed: false,
         fill: Color32::TRANSPARENT,
         stroke,
@@ -161,23 +168,22 @@ fn get_arc_shape(
 fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -> egui::Response {
     let desired_size = ui.spacing().interact_size.y * egui::vec2(3.0, 3.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
-    let recovery_bar_rect = rect.with_max_y(rect.min.y + 10.0).with_max_x(rect.min.x + rect.width() * ability.recovery / ability.value.1[ability_idx]);
+    let recovery_bar_rect = rect
+        .with_max_y(rect.min.y + 10.0)
+        .with_max_x(rect.min.x + rect.width() * ability.recovery / ability.value.1[ability_idx]);
 
     if ui.is_rect_visible(rect) {
         let font = egui::FontId::proportional(24.0);
         if ability.cooldown > 0.0 && ability.remaining_charges == 0 {
             ui.painter().rect_filled(rect, 5.0, Color32::DARK_GRAY);
             if ability.recovery > 0.0 {
-                ui.painter().rect_filled(recovery_bar_rect, 5.0, Color32::GREEN);
+                ui.painter()
+                    .rect_filled(recovery_bar_rect, 5.0, Color32::GREEN);
             }
             ui.painter().text(
                 rect.center(),
                 Align2::CENTER_CENTER,
-                format!(
-                    "{}",
-                    ability.cooldown.ceil()
-                        as i32
-                ),
+                format!("{}", ability.cooldown.ceil() as i32),
                 font.clone(),
                 Color32::WHITE,
             );
@@ -185,7 +191,8 @@ fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -
         }
         ui.painter().rect_filled(rect, 5.0, Color32::LIGHT_GRAY);
         if ability.recovery > 0.0 {
-            ui.painter().rect_filled(recovery_bar_rect, 5.0, Color32::GREEN);
+            ui.painter()
+                .rect_filled(recovery_bar_rect, 5.0, Color32::GREEN);
         }
         {
             let keybind = &ability.ability.abilities[ability_idx].1;
@@ -204,7 +211,14 @@ fn cooldown_ui(ui: &mut egui::Ui, ability: &PlayerAbility, ability_idx: usize) -
             let to_next_charge = 1.0 - ability.cooldown / ability.value.0;
             ui.painter()
                 .circle_filled(rect.right_top(), 8.0, Color32::GRAY);
-            ui.painter().add(get_arc_shape(0.0, rect.right_top(), 8.0, to_next_charge, 0.03, Stroke::new(1.0, Color32::BLACK)));
+            ui.painter().add(get_arc_shape(
+                0.0,
+                rect.right_top(),
+                8.0,
+                to_next_charge,
+                0.03,
+                Stroke::new(1.0, Color32::BLACK),
+            ));
             ui.painter().text(
                 rect.right_top(),
                 Align2::CENTER_CENTER,
@@ -363,6 +377,7 @@ impl DrawableCard for Cooldown {
         source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         drop_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     ) {
         let can_accept_what_is_being_dragged = true;
         let Cooldown {
@@ -379,7 +394,13 @@ impl DrawableCard for Cooldown {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
                     ui.add_space(CARD_UI_SPACING);
-                    ui.label("Cooldown");
+                    draw_label(
+                        ui,
+                        "Cooldown",
+                        "A set of abilities that can be used once the timer is up".to_string(),
+                        modify_path,
+                        path,
+                    );
                     if let Some(cooldown_value) = cooldown_value {
                         ui.label(format!("{:.2}s", cooldown_value.0))
                             .on_hover_text(format!(
@@ -394,16 +415,11 @@ impl DrawableCard for Cooldown {
                     path.push_back(0);
                     for (mod_idx, modifier) in modifiers.iter_mut().enumerate() {
                         path.push_back(mod_idx as u32);
-                        modifier.draw(ui, path, source_path, drop_path, modify_path);
+                        modifier.draw(ui, path, source_path, drop_path, modify_path, edit_mode);
                         path.pop_back();
                     }
                     path.pop_back();
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                        if ui.button("X").clicked() {
-                            *modify_path = Some((path.clone(), ModificationType::Remove));
-                        }
-                        ui.add_space(CARD_UI_SPACING);
-                    });
+                    ui.add_space(CARD_UI_SPACING);
                 });
                 path.push_back(1);
                 for (ability_idx, mut ability) in abilities.iter_mut().enumerate() {
@@ -412,7 +428,7 @@ impl DrawableCard for Cooldown {
                         draw_keybind(ui, &mut ability);
                         ability
                             .card
-                            .draw(ui, path, source_path, drop_path, modify_path);
+                            .draw(ui, path, source_path, drop_path, modify_path, edit_mode);
                     });
                     path.pop_back();
                 }
@@ -431,6 +447,18 @@ impl DrawableCard for Cooldown {
             });
         })
         .response;
+        if matches!(edit_mode, EditMode::FullEditing) {
+            let mut x_ui = ui.child_ui(
+                response.rect.shrink(CARD_UI_SPACING),
+                Layout::right_to_left(egui::Align::Min),
+            );
+
+            x_ui.visuals_mut().widgets.inactive.bg_stroke =
+                Stroke::new(0.5, Color32::from_rgb(255, 255, 255));
+            if x_ui.button("X").clicked() {
+                *modify_path = Some((path.clone(), ModificationType::Remove));
+            }
+        }
 
         if drop_path.is_none() {
             let is_being_dragged = ui.memory(|mem| mem.is_anything_being_dragged());
@@ -640,6 +668,7 @@ trait DrawableCard {
         source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     );
 
     fn modify_from_path(&mut self, path: &mut VecDeque<u32>, modification_type: ModificationType);
@@ -656,6 +685,7 @@ impl DrawableCard for CooldownModifier {
         _source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         _dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     ) {
         let item_id = egui::Id::new(ID_SOURCE).with(path.clone());
         let hover_text = self.get_hover_text();
@@ -670,6 +700,7 @@ impl DrawableCard for CooldownModifier {
                 true,
                 modify_path,
                 path,
+                edit_mode,
             ),
             CooldownModifier::SignedSimpleCooldownModifier(_, ref mut v) => draw_modifier(
                 ui,
@@ -680,6 +711,7 @@ impl DrawableCard for CooldownModifier {
                 true,
                 modify_path,
                 path,
+                edit_mode,
             ),
             CooldownModifier::None | CooldownModifier::Reloading => draw_modifier(
                 ui,
@@ -690,6 +722,7 @@ impl DrawableCard for CooldownModifier {
                 true,
                 modify_path,
                 path,
+                edit_mode,
             ),
         }
     }
@@ -735,6 +768,7 @@ impl DrawableCard for PassiveCard {
         source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     ) {
         let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
         ui.vertical(|ui| {
@@ -763,14 +797,21 @@ impl DrawableCard for PassiveCard {
                                     continue;
                                 }
                                 path.push_back(effect_idx as u32);
-                                effect.draw(ui, path, source_path, dest_path, modify_path);
+                                effect.draw(
+                                    ui,
+                                    path,
+                                    source_path,
+                                    dest_path,
+                                    modify_path,
+                                    edit_mode,
+                                );
                                 path.pop_back();
                             }
                         });
 
                         for (modifier_idx, modifier) in advanced_effects.into_iter() {
                             path.push_back(modifier_idx as u32);
-                            modifier.draw(ui, path, source_path, dest_path, modify_path);
+                            modifier.draw(ui, path, source_path, dest_path, modify_path, edit_mode);
                             path.pop_back();
                         }
                         ui.add_space(CARD_UI_SPACING);
@@ -888,6 +929,7 @@ impl DrawableCard for MultiCastModifier {
         _source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         _dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     ) {
         let item_id = egui::Id::new(ID_SOURCE).with(path.clone());
         let hover_text = self.get_hover_text();
@@ -904,6 +946,7 @@ impl DrawableCard for MultiCastModifier {
                     true,
                     modify_path,
                     path,
+                    edit_mode,
                 )
             }
         }
@@ -954,6 +997,7 @@ impl DrawableCard for ProjectileModifier {
         source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     ) {
         let item_id = egui::Id::new(ID_SOURCE).with(path.clone());
         let mut advanced_modifier = false;
@@ -969,6 +1013,7 @@ impl DrawableCard for ProjectileModifier {
                 true,
                 modify_path,
                 path,
+                edit_mode,
             ),
             ProjectileModifier::NoEnemyFire
             | ProjectileModifier::FriendlyFire
@@ -984,6 +1029,7 @@ impl DrawableCard for ProjectileModifier {
                 true,
                 modify_path,
                 path,
+                edit_mode,
             ),
             ref modifier if modifier.is_advanced() => {
                 advanced_modifier = true;
@@ -999,7 +1045,7 @@ impl DrawableCard for ProjectileModifier {
                     ProjectileModifier::OnHit(ref mut base_card)
                     | ProjectileModifier::OnHeadshot(ref mut base_card)
                     | ProjectileModifier::OnExpiry(ref mut base_card) => {
-                        drag_source(ui, item_id, true, |ui| {
+                        drag_source(ui, item_id, edit_mode.can_drag_modifiers(), |ui| {
                             draw_modifier(
                                 ui,
                                 item_id,
@@ -1009,15 +1055,23 @@ impl DrawableCard for ProjectileModifier {
                                 false,
                                 modify_path,
                                 path,
+                                edit_mode,
                             );
                             path.push_back(0);
-                            base_card.draw(ui, path, source_path, dest_path, modify_path);
+                            base_card.draw(
+                                ui,
+                                path,
+                                source_path,
+                                dest_path,
+                                modify_path,
+                                edit_mode,
+                            );
                             path.pop_back();
                         });
                     }
                     ProjectileModifier::OnTrigger(frequency, ref mut base_card)
                     | ProjectileModifier::Trail(frequency, ref mut base_card) => {
-                        drag_source(ui, item_id, true, |ui| {
+                        drag_source(ui, item_id, edit_mode.can_drag_modifiers(), |ui| {
                             draw_modifier(
                                 ui,
                                 item_id,
@@ -1027,9 +1081,17 @@ impl DrawableCard for ProjectileModifier {
                                 false,
                                 modify_path,
                                 path,
+                                edit_mode,
                             );
                             path.push_back(0);
-                            base_card.draw(ui, path, source_path, dest_path, modify_path);
+                            base_card.draw(
+                                ui,
+                                path,
+                                source_path,
+                                dest_path,
+                                modify_path,
+                                edit_mode,
+                            );
                             path.pop_back();
                         });
                     }
@@ -1169,6 +1231,7 @@ impl DrawableCard for StatusEffect {
         source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     ) {
         let item_id = egui::Id::new(ID_SOURCE).with(path.clone());
         let mut advanced_effect = false;
@@ -1179,7 +1242,7 @@ impl DrawableCard for StatusEffect {
                 SimpleStatusEffectType::IncreaseGravity(direction),
                 v,
             ) => {
-                drag_source(ui, item_id, true, |ui| {
+                drag_source(ui, item_id, edit_mode.can_drag_modifiers(), |ui| {
                     draw_modifier(
                         ui,
                         item_id,
@@ -1189,9 +1252,10 @@ impl DrawableCard for StatusEffect {
                         false,
                         modify_path,
                         path,
+                        edit_mode,
                     );
                     path.push_back(0);
-                    direction.draw(ui, path, source_path, dest_path, modify_path);
+                    direction.draw(ui, path, source_path, dest_path, modify_path, edit_mode);
                     path.pop_back();
                 });
             }
@@ -1204,6 +1268,7 @@ impl DrawableCard for StatusEffect {
                 true,
                 modify_path,
                 path,
+                edit_mode,
             ),
             StatusEffect::Invincibility
             | StatusEffect::Lockout
@@ -1218,6 +1283,7 @@ impl DrawableCard for StatusEffect {
                 true,
                 modify_path,
                 path,
+                edit_mode,
             ),
             ref modifier if modifier.is_advanced() => {
                 advanced_effect = true;
@@ -1230,10 +1296,17 @@ impl DrawableCard for StatusEffect {
                 let hover_text = self.get_hover_text();
                 match self {
                     StatusEffect::OnHit(base_card) => {
-                        drag_source(ui, item_id, true, |ui| {
+                        drag_source(ui, item_id, edit_mode.can_drag_modifiers(), |ui| {
                             draw_label(ui, "On Hit", hover_text, modify_path, path);
                             path.push_back(0);
-                            base_card.draw(ui, path, source_path, dest_path, modify_path);
+                            base_card.draw(
+                                ui,
+                                path,
+                                source_path,
+                                dest_path,
+                                modify_path,
+                                edit_mode,
+                            );
                             path.pop_back();
                         });
                     }
@@ -1315,9 +1388,10 @@ impl DrawableCard for DirectionCard {
         source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     ) {
         let item_id = egui::Id::new(ID_SOURCE).with(path.clone());
-        let is_draggable = !matches!(self, DirectionCard::None);
+        let is_draggable = !matches!(self, DirectionCard::None) && edit_mode.can_drag_modifiers();
         let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
         drag_source(ui, item_id, is_draggable, |ui| {
             ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(0.5, Color32::TRANSPARENT);
@@ -1403,9 +1477,11 @@ impl DrawableCard for BaseCard {
         source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     ) {
         let item_id = egui::Id::new(ID_SOURCE).with(path.clone());
-        let is_draggable = !matches!(self, BaseCard::None | BaseCard::Palette(_));
+        let is_draggable = !matches!(self, BaseCard::None | BaseCard::Palette(_))
+            && edit_mode.can_drag_base_cards();
         let can_accept_what_is_being_dragged = true; // We accept anything being dragged (for now) ¯\_(ツ)_/¯
         drag_source(ui, item_id, is_draggable, |ui| match self {
             BaseCard::Projectile(modifiers) => {
@@ -1435,6 +1511,7 @@ impl DrawableCard for BaseCard {
                                             source_path,
                                             dest_path,
                                             modify_path,
+                                            edit_mode,
                                         );
                                         path.pop_back();
                                     }
@@ -1442,7 +1519,14 @@ impl DrawableCard for BaseCard {
 
                                 for (modifier_idx, modifier) in advanced_modifiers.into_iter() {
                                     path.push_back(modifier_idx as u32);
-                                    modifier.draw(ui, path, source_path, dest_path, modify_path);
+                                    modifier.draw(
+                                        ui,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                        edit_mode,
+                                    );
                                     path.pop_back();
                                 }
                                 ui.add_space(CARD_UI_SPACING);
@@ -1496,6 +1580,7 @@ impl DrawableCard for BaseCard {
                                             source_path,
                                             dest_path,
                                             modify_path,
+                                            edit_mode,
                                         );
                                         path.pop_back();
                                     }
@@ -1504,7 +1589,14 @@ impl DrawableCard for BaseCard {
                                 path.push_back(1);
                                 for (card_idx, card) in cards.iter_mut().enumerate() {
                                     path.push_back(card_idx as u32);
-                                    card.draw(ui, path, source_path, dest_path, modify_path);
+                                    card.draw(
+                                        ui,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                        edit_mode,
+                                    );
                                     path.pop_back();
                                 }
                                 path.pop_back();
@@ -1583,6 +1675,7 @@ impl DrawableCard for BaseCard {
                                 false,
                                 modify_path,
                                 path,
+                                edit_mode,
                             ),
                             Effect::Knockback(v, direction) => {
                                 draw_modifier(
@@ -1594,9 +1687,17 @@ impl DrawableCard for BaseCard {
                                     false,
                                     modify_path,
                                     path,
+                                    edit_mode,
                                 );
                                 path.push_back(0);
-                                direction.draw(ui, path, source_path, dest_path, modify_path);
+                                direction.draw(
+                                    ui,
+                                    path,
+                                    source_path,
+                                    dest_path,
+                                    modify_path,
+                                    edit_mode,
+                                );
                                 path.pop_back();
                             }
                             Effect::Cleanse | Effect::Teleport => draw_modifier(
@@ -1608,6 +1709,7 @@ impl DrawableCard for BaseCard {
                                 false,
                                 modify_path,
                                 path,
+                                edit_mode,
                             ),
                         }
                         ui.add_space(CARD_UI_SPACING);
@@ -1653,6 +1755,7 @@ impl DrawableCard for BaseCard {
                                         false,
                                         modify_path,
                                         path,
+                                        edit_mode,
                                     );
                                     for (effect_idx, effect) in effects.iter_mut().enumerate() {
                                         if effect.is_advanced() {
@@ -1660,14 +1763,28 @@ impl DrawableCard for BaseCard {
                                             continue;
                                         }
                                         path.push_back(effect_idx as u32);
-                                        effect.draw(ui, path, source_path, dest_path, modify_path);
+                                        effect.draw(
+                                            ui,
+                                            path,
+                                            source_path,
+                                            dest_path,
+                                            modify_path,
+                                            edit_mode,
+                                        );
                                         path.pop_back();
                                     }
                                 });
 
                                 for (modifier_idx, modifier) in advanced_effects.into_iter() {
                                     path.push_back(modifier_idx as u32);
-                                    modifier.draw(ui, path, source_path, dest_path, modify_path);
+                                    modifier.draw(
+                                        ui,
+                                        path,
+                                        source_path,
+                                        dest_path,
+                                        modify_path,
+                                        edit_mode,
+                                    );
                                     path.pop_back();
                                 }
                                 ui.add_space(CARD_UI_SPACING);
@@ -1714,6 +1831,7 @@ impl DrawableCard for BaseCard {
                             false,
                             modify_path,
                             path,
+                            edit_mode,
                         );
                         ui.add_space(CARD_UI_SPACING);
                     });
@@ -1762,7 +1880,14 @@ impl DrawableCard for BaseCard {
                         ui.set_row_height(ui.spacing().interact_size.y);
                         for (card_idx, card) in palette_cards.iter_mut().enumerate() {
                             path.push_back(card_idx as u32);
-                            card.draw_draggable(ui, path, source_path, dest_path, modify_path);
+                            card.draw_draggable(
+                                ui,
+                                path,
+                                source_path,
+                                dest_path,
+                                modify_path,
+                                edit_mode,
+                            );
                             path.pop_back();
                         }
                     });
@@ -2153,32 +2278,33 @@ impl DragableCard {
         }
     }
 
-    pub fn draw_draggable(
+    fn draw_draggable(
         &mut self,
         ui: &mut Ui,
         path: &mut VecDeque<u32>,
         source_path: &mut Option<(VecDeque<u32>, DragableType)>,
         dest_path: &mut Option<(VecDeque<u32>, DropableType)>,
         modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
+        edit_mode: &EditMode,
     ) {
         match self {
             DragableCard::BaseCard(card) => {
-                card.draw(ui, path, source_path, dest_path, modify_path)
+                card.draw(ui, path, source_path, dest_path, modify_path, &edit_mode)
             }
             DragableCard::CooldownModifier(modifier) => {
-                modifier.draw(ui, path, source_path, dest_path, modify_path)
+                modifier.draw(ui, path, source_path, dest_path, modify_path, edit_mode)
             }
             DragableCard::MultiCastModifier(modifier) => {
-                modifier.draw(ui, path, source_path, dest_path, modify_path)
+                modifier.draw(ui, path, source_path, dest_path, modify_path, edit_mode)
             }
             DragableCard::ProjectileModifier(modifier) => {
-                modifier.draw(ui, path, source_path, dest_path, modify_path)
+                modifier.draw(ui, path, source_path, dest_path, modify_path, edit_mode)
             }
             DragableCard::StatusEffect(effect) => {
-                effect.draw(ui, path, source_path, dest_path, modify_path)
+                effect.draw(ui, path, source_path, dest_path, modify_path, edit_mode)
             }
             DragableCard::Direction(direction) => {
-                direction.draw(ui, path, source_path, dest_path, modify_path)
+                direction.draw(ui, path, source_path, dest_path, modify_path, edit_mode)
             }
         }
     }
@@ -2219,7 +2345,7 @@ pub fn draw_label(
     }
 }
 
-pub fn draw_modifier<T: std::fmt::Display + Numeric + Copy>(
+fn draw_modifier<T: std::fmt::Display + Numeric + Copy>(
     ui: &mut Ui,
     id: Id,
     name: String,
@@ -2228,6 +2354,7 @@ pub fn draw_modifier<T: std::fmt::Display + Numeric + Copy>(
     handle_drag: bool,
     modify_path: &mut Option<(VecDeque<u32>, ModificationType)>,
     path: &mut VecDeque<u32>,
+    edit_mode: &EditMode,
 ) {
     ui.style_mut().wrap = Some(false);
     let mut job = LayoutJob::default();
@@ -2285,7 +2412,13 @@ pub fn draw_modifier<T: std::fmt::Display + Numeric + Copy>(
             let response = ui.add(Label::new(job)).on_hover_text(hover_text);
             if let Some(count) = count {
                 ui.vertical(|ui| {
-                    if ui.add(DragValue::new(count).speed(0.1)).changed() {
+                    if ui
+                        .add_enabled(
+                            edit_mode.can_edit_modifiers(),
+                            DragValue::new(count).speed(0.1),
+                        )
+                        .changed()
+                    {
                         if modify_path.is_none() {
                             *modify_path = Some((path.clone(), ModificationType::Other));
                         }
@@ -2298,12 +2431,13 @@ pub fn draw_modifier<T: std::fmt::Display + Numeric + Copy>(
     };
     let is_being_dragged = ui.memory(|mem| mem.is_being_dragged(id));
 
-    if !is_being_dragged || !handle_drag {
+    let can_be_dragged = edit_mode.can_drag_modifiers() && handle_drag;
+    if !is_being_dragged || !can_be_dragged {
         let prev_frame_area: Option<Rect> = ui.data(|d| d.get_temp(id));
         let mut size = vec2(0.0, 0.0);
         //load from previous frame
         if let Some(area) = prev_frame_area {
-            if handle_drag {
+            if can_be_dragged {
                 // Check for drags:
                 let response = ui.interact(area, id, Sense::drag());
                 if response.hovered() {
@@ -2350,34 +2484,100 @@ pub fn draw_modifier<T: std::fmt::Display + Numeric + Copy>(
     }
 }
 
-pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
+enum EditMode {
+    FullEditing,
+    Readonly,
+}
+impl EditMode {
+    fn can_edit_modifiers(&self) -> bool {
+        match self {
+            EditMode::FullEditing => true,
+            EditMode::Readonly => false,
+        }
+    }
+
+    fn can_drag_modifiers(&self) -> bool {
+        match self {
+            EditMode::FullEditing => true,
+            EditMode::Readonly => false,
+        }
+    }
+
+    fn can_drag_base_cards(&self) -> bool {
+        match self {
+            EditMode::FullEditing => true,
+            EditMode::Readonly => false,
+        }
+    }
+}
+
+pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Option<Game>) {
+    const PADDING: f32 = 10.0;
     egui::Area::new("card editor")
         .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
         .show(&ctx, |ui| {
-            ui.painter().rect_filled(
-                ui.available_rect_before_wrap(),
-                0.0,
-                Color32::BLACK.gamma_multiply(0.5),
-            );
+            ui.painter()
+                .rect_filled(ui.available_rect_before_wrap(), 0.0, Color32::BLACK);
 
-            let menu_size = Rect::from_center_size(
-                ui.available_rect_before_wrap().center(),
-                ui.available_rect_before_wrap().size() * egui::vec2(0.75, 0.75),
-            );
+            let menu_size = ui.available_rect_before_wrap().shrink2(vec2(PADDING, 0.0));
+
+            let edit_mode = if game.is_some() {
+                EditMode::Readonly
+            } else {
+                EditMode::FullEditing
+            };
 
             ui.allocate_ui_at_rect(menu_size, |ui| {
-                ui.painter()
-                    .rect_filled(ui.available_rect_before_wrap(), 0.0, Color32::BLACK);
+                ui.scope(|ui| {
+                    ui.add_space(PADDING);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new("Card Editor").color(Color32::WHITE));
+                        if let Some(game) = game {
+                            egui::ComboBox::from_label("Decks")
+                                .selected_text(format!("Player {}", gui_state.render_deck_idx))
+                                .show_ui(ui, |ui| {
+                                    for (idx, metadata) in
+                                        game.rollback_data.get_entity_metadata().iter().enumerate()
+                                    {
+                                        if let EntityMetaData::Player(deck, _) = metadata {
+                                            if ui
+                                                .selectable_value(
+                                                    &mut gui_state.render_deck_idx,
+                                                    idx,
+                                                    format!("Player {}", idx),
+                                                )
+                                                .clicked()
+                                            {
+                                                gui_state.render_deck = deck.clone();
+                                            }
+                                        } else {
+                                            if ui
+                                                .selectable_value(
+                                                    &mut gui_state.render_deck_idx,
+                                                    idx,
+                                                    format!("Player {}", idx),
+                                                )
+                                                .clicked()
+                                            {
+                                                gui_state.render_deck = Deck {
+                                                    cooldowns: vec![],
+                                                    passive: PassiveCard {
+                                                        passive_effects: vec![],
+                                                    },
+                                                };
+                                            }
+                                        }
+                                    }
+                                });
+                        } else {
+                            gui_state.render_deck = gui_state.gui_deck.clone();
+                        }
+                        if ui.button("Export to Clipboard").clicked() {
+                            let export = ron::to_string(&gui_state.render_deck).unwrap();
+                            ui.output_mut(|o| o.copied_text = export);
+                        }
 
-                let selector_height = ui
-                    .scope(|ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label(RichText::new("Card Editor").color(Color32::WHITE));
-                            if ui.button("Export to Clipboard").clicked() {
-                                let export = ron::to_string(&gui_state.gui_deck).unwrap();
-                                ui.output_mut(|o| o.copied_text = export);
-                            }
-
+                        if matches!(edit_mode, EditMode::FullEditing) {
                             if ui.button("Import from Clipboard").clicked() {
                                 let mut clipboard = clippers::Clipboard::get();
                                 let import: Option<Deck> = match clipboard.read() {
@@ -2394,15 +2594,17 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                     }
                                 };
                                 if let Some(import) = import {
-                                    gui_state.gui_deck = import;
+                                    gui_state.render_deck = import;
                                 }
                             }
 
                             if ui.button("Clear Dock").clicked() {
                                 gui_state.dock_cards = vec![];
                             }
-                        });
+                        }
+                    });
 
+                    if matches!(edit_mode, EditMode::FullEditing) {
                         ui.horizontal_wrapped(|ui| {
                             ui.selectable_value(
                                 &mut gui_state.palette_state,
@@ -2449,11 +2651,9 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                 PaletteState::Dock,
                                 "Dock",
                             );
-                        })
-                    })
-                    .response
-                    .rect
-                    .height();
+                        });
+                    }
+                });
 
                 let mut source_path = None;
                 let mut dest_path = None;
@@ -2598,8 +2798,8 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                     PaletteState::Dock => gui_state.dock_cards.clone(),
                 });
 
-                let palette_height = ui
-                    .scope(|ui| {
+                if matches!(edit_mode, EditMode::FullEditing) {
+                    ui.scope(|ui| {
                         ui.visuals_mut().override_text_color = Some(Color32::WHITE);
                         palette_card.draw(
                             ui,
@@ -2607,15 +2807,11 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             &mut source_path,
                             &mut dest_path,
                             &mut modify_path,
+                            &edit_mode,
                         );
-                    })
-                    .response
-                    .rect
-                    .height();
-                let scroll_area = Rect::from_min_max(
-                    menu_size.min + vec2(0.0, palette_height + selector_height),
-                    menu_size.max,
-                );
+                    });
+                }
+                ui.separator();
                 ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .scroll_bar_visibility(
@@ -2624,28 +2820,28 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                     .drag_to_scroll(false)
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
-                            ui.set_clip_rect(scroll_area);
-                            let total_impact = gui_state.gui_deck.get_total_impact();
+                            let total_impact = gui_state.render_deck.get_total_impact();
 
                             if gui_state.cooldown_cache_refresh_delay <= 0.0 {
-                                for cooldown in gui_state.gui_deck.cooldowns.iter_mut() {
+                                for cooldown in gui_state.render_deck.cooldowns.iter_mut() {
                                     if cooldown.generate_cooldown_cache() {
                                         gui_state.cooldown_cache_refresh_delay = 0.5;
                                     }
                                 }
                             }
                             ui.horizontal_top(|ui| {
-                                gui_state.gui_deck.passive.draw(
+                                gui_state.render_deck.passive.draw(
                                     ui,
                                     &mut vec![1].into(),
                                     &mut source_path,
                                     &mut dest_path,
                                     &mut modify_path,
+                                    &edit_mode,
                                 );
                             });
 
                             for (ability_idx, cooldown) in
-                                gui_state.gui_deck.cooldowns.iter_mut().enumerate()
+                                gui_state.render_deck.cooldowns.iter_mut().enumerate()
                             {
                                 if cooldown.cooldown_value.is_none() {
                                     cooldown.cooldown_value =
@@ -2658,34 +2854,37 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                         &mut source_path,
                                         &mut dest_path,
                                         &mut modify_path,
+                                        &edit_mode,
                                     );
                                 });
                             }
 
-                            if ui
-                                .button("Add Cooldown")
-                                .on_hover_text("Add a new cooldown")
-                                .clicked()
-                            {
-                                gui_state.gui_deck.cooldowns.push(Cooldown::empty());
+                            if matches!(edit_mode, EditMode::FullEditing) {
+                                if ui
+                                    .button("Add Cooldown")
+                                    .on_hover_text("Add a new cooldown")
+                                    .clicked()
+                                {
+                                    gui_state.render_deck.cooldowns.push(Cooldown::empty());
+                                }
                             }
 
                             if let Some((mut modify_path, modification_type)) = modify_path {
-                                for cooldown in gui_state.gui_deck.cooldowns.iter_mut() {
+                                for cooldown in gui_state.render_deck.cooldowns.iter_mut() {
                                     cooldown.cooldown_value = None;
                                 }
                                 let modify_action_idx = modify_path.pop_front().unwrap() as usize;
                                 if modify_action_idx == 1 {
-                                    gui_state.gui_deck.passive.modify_from_path(
+                                    gui_state.render_deck.passive.modify_from_path(
                                         &mut modify_path.clone(),
                                         modification_type,
                                     );
                                 } else if modify_path.is_empty() {
                                     if matches!(modification_type, ModificationType::Remove) {
-                                        gui_state.gui_deck.cooldowns.remove(modify_action_idx - 2);
+                                        gui_state.render_deck.cooldowns.remove(modify_action_idx - 2);
                                     }
                                 } else if modify_action_idx > 1 {
-                                    gui_state.gui_deck.cooldowns[modify_action_idx - 2]
+                                    gui_state.render_deck.cooldowns[modify_action_idx - 2]
                                         .modify_from_path(
                                             &mut modify_path.clone(),
                                             modification_type,
@@ -2694,7 +2893,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                             }
                             if let Some((source_path, source_type)) = source_path.as_mut() {
                                 if let Some((drop_path, drop_type)) = dest_path.as_mut() {
-                                    for cooldown in gui_state.gui_deck.cooldowns.iter_mut() {
+                                    for cooldown in gui_state.render_deck.cooldowns.iter_mut() {
                                         cooldown.cooldown_value = None;
                                     }
                                     let source_action_idx =
@@ -2709,20 +2908,20 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                             palette_card.take_from_path(source_path)
                                         } else if source_action_idx == 1 {
                                             gui_state
-                                                .gui_deck
+                                                .render_deck
                                                 .passive
                                                 .take_from_path(&mut source_path.clone())
                                         } else {
-                                            gui_state.gui_deck.cooldowns[source_action_idx - 2]
+                                            gui_state.render_deck.cooldowns[source_action_idx - 2]
                                                 .take_from_path(&mut source_path.clone())
                                         };
                                         if drop_action_idx == 1 {
                                             gui_state
-                                                .gui_deck
+                                                .render_deck
                                                 .passive
                                                 .insert_to_path(drop_path, item);
                                         } else if drop_action_idx > 1 {
-                                            gui_state.gui_deck.cooldowns[drop_action_idx - 2]
+                                            gui_state.render_deck.cooldowns[drop_action_idx - 2]
                                                 .insert_to_path(drop_path, item);
                                         } else if matches!(
                                             gui_state.palette_state,
@@ -2731,9 +2930,9 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                                             gui_state.dock_cards.push(item);
                                         }
                                         if source_action_idx == 1 {
-                                            gui_state.gui_deck.passive.cleanup(source_path);
+                                            gui_state.render_deck.passive.cleanup(source_path);
                                         } else if source_action_idx > 1 {
-                                            gui_state.gui_deck.cooldowns[source_action_idx - 2]
+                                            gui_state.render_deck.cooldowns[source_action_idx - 2]
                                                 .cleanup(source_path);
                                         }
                                     }
@@ -2742,6 +2941,9 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState) {
                         });
                     });
             });
+            if !matches!(edit_mode, EditMode::Readonly) {
+                gui_state.gui_deck = gui_state.render_deck.clone();
+            }
         });
 }
 
