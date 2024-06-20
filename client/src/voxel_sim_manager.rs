@@ -16,7 +16,7 @@ use crate::{
     WORLDGEN_CHUNK_COUNT,
 };
 use bytemuck::{Pod, Zeroable};
-use cgmath::{Point3, Quaternion};
+use cgmath::{MetricSpace, Point3, Quaternion, Vector3, Zero};
 use std::{collections::HashSet, iter, sync::Arc};
 use voxel_shared::GameSettings;
 use vulkano::{
@@ -583,7 +583,7 @@ impl VoxelComputePipeline {
 
     // chunks are represented as u32 with a 1 representing a changed chunk
     // this function will get the locations of those and push updates and then clear the buffer
-    pub fn push_updates_from_changed(&mut self, game_settings: &GameSettings) {
+    pub fn push_updates_from_changed(&mut self, game_settings: &GameSettings, player_locations: &Vec<Point3<f32>>) {
         puffin::profile_function!();
         if self.last_worldgen_count > 0 {
             let worldgen_results = self.worldgen_results.read().unwrap();
@@ -630,6 +630,7 @@ impl VoxelComputePipeline {
             for i in 0..self.last_update_count {
                 let read_update = reader[i];
                 if read_update[3] & 1 == 1 {
+                    let chunk_pos = Point3::new(read_update[0], read_update[1], read_update[2]).map(|c| c * SUB_CHUNK_COUNT as u32 * CHUNK_SIZE as u32).map(|c| c as f32);
                     let min_x = -((read_update[3] as i32 >> 1) & 1);
                     let min_y = -((read_update[3] as i32 >> 2) & 1);
                     let min_z = -((read_update[3] as i32 >> 3) & 1);
@@ -639,13 +640,17 @@ impl VoxelComputePipeline {
                     for x_offset in min_x..=max_x {
                         for y_offset in min_y..=max_y {
                             for z_offset in min_z..=max_z {
+                                let distance_weight = player_locations.iter().map(|player_pos| {
+                                    let distance = (player_pos - chunk_pos).distance(Vector3::zero());
+                                    6.0 - distance
+                                }).sum::<f32>();
                                 self.chunk_update_queue.push_with_priority(
                                     [
                                         read_update[0].wrapping_add_signed(x_offset),
                                         read_update[1].wrapping_add_signed(y_offset),
                                         read_update[2].wrapping_add_signed(z_offset),
                                     ],
-                                    self.last_update_priorities[i] - 1,
+                                    self.last_update_priorities[i] - 1 + distance_weight as i32,
                                 );
                             }
                         }

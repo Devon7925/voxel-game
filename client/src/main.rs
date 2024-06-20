@@ -21,6 +21,7 @@ use crate::{
 };
 use card_system::Deck;
 use cgmath::{EuclideanSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
+use itertools::Itertools;
 use multipass_system::Pass;
 use std::io::Write;
 use std::{fs, panic, time::Instant};
@@ -467,7 +468,7 @@ fn compute_then_render(
             if game.rollback_data.can_step_rollback() {
                 puffin::profile_scope!("do compute");
                 game.voxel_compute
-                    .push_updates_from_changed(&game.game_settings);
+                    .push_updates_from_changed(&game.game_settings, &game.rollback_data.get_players().iter().map(|p| p.pos).collect_vec());
                 // ensure chunks near players are loaded
                 const NEARBY_CHUNK_RANGE: i32 = 2;
                 for player in game.rollback_data.get_players() {

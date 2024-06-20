@@ -34,7 +34,7 @@ singleplayer_settings:
       z: 32
     spawn_location: 
       x: 10000.0
-      y: 1810.0
+      y: 1900.0
       z: 10000.0
     max_loaded_chunks: 8192
     max_worldgen_rate: 128
@@ -53,7 +53,7 @@ practice_range_settings:
       z: 8
     spawn_location: 
       x: 10000.0
-      y: 1810.0
+      y: 1900.0
       z: 10000.0
     max_loaded_chunks: 512
     max_worldgen_rate: 512
@@ -72,7 +72,7 @@ create_lobby_settings:
       z: 32
     spawn_location: 
       x: 10000.0
-      y: 1810.0
+      y: 1900.0
       z: 10000.0
     max_loaded_chunks: 2048
     max_worldgen_rate: 128

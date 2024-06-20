@@ -376,6 +376,8 @@ pub enum VoxelMaterial {
     Water,
     Player,
     UnloadedAir,
+    Wood,
+    Leaf,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -579,7 +581,6 @@ impl StatusEffect {
 }
 
 impl VoxelMaterial {
-    pub const FRICTION_COEFFICIENTS: [f32; 10] = [0.0, 5.0, 0.0, 5.0, 5.0, 0.0, 0.1, 1.0, 0.0, 0.0];
     pub fn from_memory(memory: u32) -> Self {
         match memory >> 24 {
             0 => VoxelMaterial::Air,
@@ -592,6 +593,8 @@ impl VoxelMaterial {
             7 => VoxelMaterial::Water,
             8 => VoxelMaterial::Player,
             9 => VoxelMaterial::UnloadedAir,
+            10 => VoxelMaterial::Wood,
+            11 => VoxelMaterial::Leaf,
             _ => panic!("Invalid state"),
         }
     }
@@ -608,6 +611,8 @@ impl VoxelMaterial {
             VoxelMaterial::Water => 7,
             VoxelMaterial::Player => 8,
             VoxelMaterial::UnloadedAir => 9,
+            VoxelMaterial::Wood => 10,
+            VoxelMaterial::Leaf => 11,
         }
     }
 
@@ -634,6 +639,26 @@ impl VoxelMaterial {
             VoxelMaterial::Water => 4.4,
             VoxelMaterial::Player => panic!("Invalid state"),
             VoxelMaterial::UnloadedAir => 1.0,
+            VoxelMaterial::Wood => 1.0,
+            VoxelMaterial::Leaf => 1.0,
+        }
+    }
+    
+    pub fn get_friction(&self) -> f32 {
+        match self {
+            VoxelMaterial::Air => 0.0,
+            VoxelMaterial::Stone => 5.0,
+            VoxelMaterial::Unloaded => 0.0,
+            VoxelMaterial::Dirt => 5.0,
+            VoxelMaterial::Grass => 5.0,
+            VoxelMaterial::Projectile => 0.0,
+            VoxelMaterial::Ice => 0.1,
+            VoxelMaterial::Water => 1.0,
+            VoxelMaterial::Player => 0.0,
+            VoxelMaterial::UnloadedAir => 0.0,
+            VoxelMaterial::Wood => 5.0,
+            VoxelMaterial::Leaf => 4.0,
+        
         }
     }
 }
@@ -683,7 +708,8 @@ fn gen_cooldown_for_ttk(damage_profile: Vec<(f32, f32)>, goal_ttk: f32) -> f32 {
             &mut HashMap::new(),
         ) - TIME_TO_FIRST_SHOT)
             * healing as f32
-            / HEALING_RATE / DAMAGE_CALCULATION_FLOAT_SCALE
+            / HEALING_RATE
+            / DAMAGE_CALCULATION_FLOAT_SCALE
             > goal_ttk
         {
             healing -= delta;
@@ -748,7 +774,8 @@ fn error_function(x: f32) -> f32 {
 }
 
 fn normal_pdf(x: f32, mu: f32, sigma: f32) -> f32 {
-    (-(x - mu).powi(2) / (2.0 * sigma.powi(2))).exp() / (sigma * (2.0 * std::f32::consts::PI).sqrt())
+    (-(x - mu).powi(2) / (2.0 * sigma.powi(2))).exp()
+        / (sigma * (2.0 * std::f32::consts::PI).sqrt())
 }
 
 const RANGE_PROBABILITIES_SCALE: f32 = 5.0;
@@ -768,7 +795,10 @@ impl BaseCard {
             .iter()
             .map(|card_value| card_value.generic)
             .sum::<f32>();
-        if card_values.iter().all(|card_value| card_value.damage == 0.0) {
+        if card_values
+            .iter()
+            .all(|card_value| card_value.damage == 0.0)
+        {
             return generic_value;
         }
 
@@ -800,7 +830,8 @@ impl BaseCard {
                     damage_profile = new_damage_profile;
                 }
                 damage_profile.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-                damage_profile.chunk_by(|(a, _), (b, _)| a == b)
+                damage_profile
+                    .chunk_by(|(a, _), (b, _)| a == b)
                     .map(|group| {
                         let damage = group.first().unwrap().0;
                         let probability = group.iter().map(|(_, p)| p).sum::<f32>();
@@ -826,11 +857,16 @@ impl BaseCard {
             .map(|cd| ((cd - average_cd) / std_cd).exp())
             .collect_vec();
         let range_cd_weights_sum = range_cd_weights.iter().sum::<f32>();
-        const RANGE_CONTROL: f32 = 1.0/20.0;
+        const RANGE_CONTROL: f32 = 1.0 / 20.0;
         let range_cd_weights = range_cd_weights
             .iter()
             .enumerate()
-            .map(|(idx, weight)| RANGE_CONTROL * weight / range_cd_weights_sum + (1.0 - RANGE_CONTROL) * RANGE_PROBABILITIES_SCALE * normal_pdf(idx as f32 * RANGE_PROBABILITIES_SCALE, 25.0, 15.0))
+            .map(|(idx, weight)| {
+                RANGE_CONTROL * weight / range_cd_weights_sum
+                    + (1.0 - RANGE_CONTROL)
+                        * RANGE_PROBABILITIES_SCALE
+                        * normal_pdf(idx as f32 * RANGE_PROBABILITIES_SCALE, 25.0, 15.0)
+            })
             .collect_vec();
         let damage_value = range_cds
             .iter()
@@ -1117,13 +1153,14 @@ impl BaseCard {
                                         if i == 0 {
                                             return prob;
                                         }
-                                        prob / (RANGE_PROBABILITIES_SCALE * i as f32 * offset).powi(2)
+                                        prob / (RANGE_PROBABILITIES_SCALE * i as f32 * offset)
+                                            .powi(2)
                                     })
                                 } else {
                                     card_value.range_probabilities
                                 },
                             });
-                        };
+                        }
                         values
                     })
                     .collect()
@@ -1140,6 +1177,8 @@ impl BaseCard {
                     VoxelMaterial::Water => 0.0525,
                     VoxelMaterial::Player => panic!("Invalid state"),
                     VoxelMaterial::UnloadedAir => panic!("Invalid state"),
+                    VoxelMaterial::Wood => 0.08,
+                    VoxelMaterial::Leaf => 0.045,
                 };
                 vec![CardValue {
                     damage: 0.0,
@@ -1255,9 +1294,7 @@ impl BaseCard {
                                         }]
                                     } else if stacks > &0 {
                                         vec![CardValue {
-                                            damage: true_duration
-                                                * effect.get_effect_value()
-                                                * 0.9,
+                                            damage: true_duration * effect.get_effect_value() * 0.9,
                                             generic: 0.0,
                                             range_probabilities: core::array::from_fn(|idx| {
                                                 if idx == 0 {
@@ -1515,7 +1552,9 @@ impl BaseCard {
                 | VoxelMaterial::Dirt
                 | VoxelMaterial::Grass
                 | VoxelMaterial::Ice
-                | VoxelMaterial::Water => {}
+                | VoxelMaterial::Water
+                | VoxelMaterial::Wood
+                | VoxelMaterial::Leaf => {}
                 VoxelMaterial::Projectile
                 | VoxelMaterial::Unloaded
                 | VoxelMaterial::Player

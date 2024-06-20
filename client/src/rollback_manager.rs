@@ -2786,8 +2786,7 @@ impl Entity {
                                     self.vel[(component + 2) % 3],
                                 );
                                 if perp_vel.magnitude() > 0.0 {
-                                    let friction_factor = VoxelMaterial::FRICTION_COEFFICIENTS
-                                        [(voxel >> 24) as usize];
+                                    let friction_factor = voxel_material.get_friction();
                                     self.vel[(component + 1) % 3] -=
                                         (friction_factor * 0.5 * perp_vel.normalize().x
                                             + friction_factor * perp_vel.x)

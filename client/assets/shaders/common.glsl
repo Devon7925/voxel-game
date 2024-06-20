@@ -40,7 +40,9 @@ const uint MAT_ICE = 6;
 const uint MAT_WATER = 7;
 const uint MAT_PLAYER = 8;
 const uint MAT_AIR_OOB = 9;
-const uint[] material_damage_threshhold = { 0, 10, 0, 5, 5, 1, 5, 1, 0 };
+const uint MAT_WOOD = 10;
+const uint MAT_LEAF = 11;
+const uint[] material_damage_threshhold = { 0, 10, 0, 5, 5, 1, 5, 1, 0, 8, 5 };
 
 uvec4 get_indicies(uvec3 global_pos, uvec3 render_size) {
     uvec3 chunk_pos = (global_pos >> CHUNK_MAGNITUDE) % render_size;
