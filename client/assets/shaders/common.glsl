@@ -42,7 +42,169 @@ const uint MAT_PLAYER = 8;
 const uint MAT_AIR_OOB = 9;
 const uint MAT_WOOD = 10;
 const uint MAT_LEAF = 11;
-const uint[] material_damage_threshhold = { 0, 10, 0, 5, 5, 1, 5, 1, 0, 8, 5 };
+const uint MAT_UNBREAKABLE = 12;
+const uint[] material_damage_threshhold = { 0, 10, 0, 5, 5, 1, 5, 1, 0, 8, 5, 5 };
+
+struct PhysicsProperties {
+    bool is_fluid;
+    bool is_data_damage;
+    bool is_data_standard_distance;
+};
+
+const PhysicsProperties physics_properties[] = {
+    PhysicsProperties(true, false, false), //MAT_AIR
+    PhysicsProperties(false, true, false), //MAT_STONE
+    PhysicsProperties(false, false, false), //MAT_OOB
+    PhysicsProperties(false, true, false), //MAT_DIRT
+    PhysicsProperties(false, true, false), //MAT_GRASS
+    PhysicsProperties(false, false, false), //MAT_PROJECTILE
+    PhysicsProperties(false, true, false), //MAT_ICE
+    PhysicsProperties(true, false, true), //MAT_WATER
+    PhysicsProperties(false, false, false), //MAT_PLAYER
+    PhysicsProperties(false, false, false), //MAT_AIR_OOB
+    PhysicsProperties(false, true, false), //MAT_WOOD
+    PhysicsProperties(false, false, true), //MAT_LEAF
+    PhysicsProperties(false, false, false), //MAT_UNBREAKABLE
+    };
+
+const bool is_transparent[] = {
+    true,  //MAT_AIR
+    false,  //MAT_STONE
+    false,  //MAT_OOB
+    false,  //MAT_DIRT
+    false,  //MAT_GRASS
+    false,  //MAT_PROJECTILE
+    true,  //MAT_ICE
+    true,  //MAT_WATER
+    false,  //MAT_PLAYER
+    true,  //MAT_AIR_OOB
+    false,  //MAT_WOOD
+    true,  //MAT_LEAF
+    false,  //MAT_UNBREAKABLE
+    };
+
+struct HeightData {
+    float offset;
+    vec3 scale;
+    float impact;
+    vec3 movement;
+};
+
+const HeightData height_data[] = {
+    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)), //MAT_AIR
+    HeightData(0.2, vec3(2.0), 0.75, vec3(0.0)), //MAT_STONE
+    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)), //MAT_OOB
+    HeightData(0.4, vec3(7.0), 0.3, vec3(0.0)), //MAT_DIRT
+    HeightData(0.6, vec3(35.0, 10.0, 35.0), 0.75, vec3(0.0)), //MAT_GRASS
+    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)), //MAT_PROJECTILE
+    HeightData(0.7, vec3(1.7), 0.45, vec3(0.0)), //MAT_ICE
+    HeightData(0.8, vec3(1.0), 0.3, vec3(0.25, -0.7, 0.2)), //MAT_WATER
+    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)), //MAT_PLAYER
+    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)), //MAT_AIR_OOB
+    HeightData(0.2, vec3(10.0, 2.5, 10.0), 0.75, vec3(0.0)), //MAT_WOOD
+    HeightData(0.7, vec3(1.7), 0.45, vec3(0.0)), //MAT_LEAF
+    HeightData(0.2, vec3(2.0), 0.25, vec3(0.0)), //MAT_UNBREAKABLE
+    };
+
+struct MaterialNoiseLayer {
+    vec3 scale;
+    float normal_impact;
+    float roughness_impact;
+    float transparency_impact;
+    vec3 movement;
+    vec3 layer_color;
+};
+
+struct MaterialRenderProps {
+    MaterialNoiseLayer layers[3];
+    float ior;
+    float roughness;
+    float transparency;
+    float depth_transparency;
+    vec3 color;
+};
+
+const MaterialRenderProps material_render_props[] = {
+    // AIR
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
+    // STONE
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(2.0), 0.35, 0.1, 0.0, vec3(0.0), vec3(0.25)),
+            MaterialNoiseLayer(vec3(20.0), 0.2, 0.2, 0.0, vec3(0.0), vec3(0.05)),
+            MaterialNoiseLayer(vec3(0.5), 0.05, 0.0, 0.0, vec3(0.0), vec3(0.05))
+        ), 0.04, 0.35, 0.0, 0.0, vec3(0.55)),
+    // OOB
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
+    // DIRT
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(7.0), 0.2, 0.0, -0.1, vec3(0.0), vec3(0.15, 0.025, -0.1)),
+            MaterialNoiseLayer(vec3(20.0), 0.2, 0.2, 0.0, vec3(0.0), vec3(0.05)),
+            MaterialNoiseLayer(vec3(0.5), 0.05, 0.0, 0.0, vec3(0.0), vec3(0.05))
+        ), 0.02, 0.75, 0.0, 0.0, vec3(0.35, 0.225, 0.1)),
+    // GRASS
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(7.0), 0.2, -0.1, 0.0, vec3(0.0), vec3(0.07, 0.1, 0.07)),
+            MaterialNoiseLayer(vec3(35.0, 10.0, 35.0), 0.6, -0.2, 0.0, vec3(0.0), vec3(0.15, 0.2, 0.15)),
+            MaterialNoiseLayer(vec3(0.07), 0.0, 0.0, -0.2, vec3(0.0), vec3(0.1, 0.2, 0.025))
+        ), 0.02, 0.8, 0.0, 0.0, vec3(0.17, 0.6, 0.2)),
+    // PROJECTILE
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.0, 1.0, 0.5, 0.5, vec3(1.0, 0.3, 0.3)),
+    // ICE
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(1.7), 0.2, 0.1, 0.1, vec3(0.0), vec3(0.05, 0.05, 0.175)),
+            MaterialNoiseLayer(vec3(21.0), 0.1, 0.1, 0.05, vec3(0.0), vec3(0.05)),
+            MaterialNoiseLayer(vec3(0.5), 0.05, 0.0, 0.05, vec3(0.0), vec3(0.05))
+        ), 0.05, 0.35, 0.3, 0.3, vec3(0.7, 0.7, 0.925)),
+    // WATER
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(1.0), 0.20, 0.0, 0.0, vec3(0.25, -0.7, 0.2), vec3(0.0)),
+            MaterialNoiseLayer(vec3(2.0), 0.10, 0.0, 0.0, vec3(0.375, -0.5, 0.475), vec3(0.0)),
+            MaterialNoiseLayer(vec3(4.0), 0.05, 0.0, 0.0, vec3(0.5, -0.6, 0.5), vec3(0.0))
+        ), 0.05, 0.25, 0.8, 0.85, vec3(0.25, 0.3, 0.6)),
+    // PLAYER
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.0, 0.2, 0.0, 0.0, vec3(0.8)),
+    // AIR OOB
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
+            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
+        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
+    // WOOD
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(3.0), 0.12, 0.0, 0.0, vec3(0.0), vec3(0.05)),
+            MaterialNoiseLayer(vec3(20.0, 5.0, 20.0), 0.1, 0.0, 0.0, vec3(0.0), vec3(0.05)),
+            MaterialNoiseLayer(vec3(10.0, 2.5, 10.0), 0.17, 0.0, 0.0, vec3(0.0), vec3(0.25))
+        ), 0.02, 0.8, 0.0, 0.0, vec3(0.37, 0.225, 0.1)),
+    // LEAF
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(1.7), 0.1, 0.0, 0.0, vec3(0.0), vec3(0.05, 0.175, 0.05)),
+            MaterialNoiseLayer(vec3(9.5), 0.3, 0.2, -0.5, vec3(0.1, -0.2, 0.1), vec3(0.05, 0.1, 0.05)),
+            MaterialNoiseLayer(vec3(3.5), 0.05, 0.0, 0.00, vec3(0.0), vec3(0.05))
+        ), 0.05, 0.6, 0.4, 0.4, vec3(0.1, 0.6, 0.1)),
+    
+    // UNBREAKABLE
+    MaterialRenderProps(MaterialNoiseLayer[3](
+            MaterialNoiseLayer(vec3(2.0), 0.175, 0.1, 0.0, vec3(0.0), vec3(0.25)),
+            MaterialNoiseLayer(vec3(20.0), 0.1, 0.2, 0.0, vec3(0.0), vec3(0.05)),
+            MaterialNoiseLayer(vec3(0.5), 0.025, 0.0, 0.0, vec3(0.0), vec3(0.05))
+        ), 0.04, 0.8, 0.0, 0.0, vec3(0.25)),
+    };
 
 uvec4 get_indicies(uvec3 global_pos, uvec3 render_size) {
     uvec3 chunk_pos = (global_pos >> CHUNK_MAGNITUDE) % render_size;

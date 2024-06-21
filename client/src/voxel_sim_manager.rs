@@ -18,7 +18,7 @@ use crate::{
 use bytemuck::{Pod, Zeroable};
 use cgmath::{MetricSpace, Point3, Quaternion, Vector3, Zero};
 use std::{collections::HashSet, iter, sync::Arc};
-use voxel_shared::GameSettings;
+use voxel_shared::{GameSettings, WorldGenSettings};
 use vulkano::{
     buffer::{
         Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
@@ -301,7 +301,10 @@ impl VoxelComputePipeline {
 
         let compute_proj_pipeline = get_pipeline(compute_projs_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
         let unload_chunks_pipeline = get_pipeline(unload_chunks_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
-        let compute_worldgen_pipeline = get_pipeline(compute_worldgen_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
+        let compute_worldgen_pipeline = match game_settings.world_gen {
+            WorldGenSettings::Normal => get_pipeline(normal_world_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone()),
+            WorldGenSettings::Control => get_pipeline(control_world_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone()),
+        };
         let complete_worldgen_pipeline = get_pipeline(complete_worldgen_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
         let write_voxels_pipeline = get_pipeline(write_voxels_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
         let compute_voxel_update_pipeline = get_pipeline(compute_updates_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
@@ -1052,10 +1055,18 @@ mod compute_updates_cs {
     }
 }
 
-mod compute_worldgen_cs {
+mod normal_world_cs {
     vulkano_shaders::shader! {
         ty: "compute",
-        path: "assets/shaders/compute_worldgen.glsl",
+        path: "assets/shaders/maps/open_world.glsl",
+        include: ["assets/shaders"],
+    }
+}
+
+mod control_world_cs {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "assets/shaders/maps/control.glsl",
         include: ["assets/shaders"],
     }
 }

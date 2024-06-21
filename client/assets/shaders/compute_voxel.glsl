@@ -83,27 +83,6 @@ void set_data(uvec3 global_pos, uint data) {
     voxels[index] = data;
 }
 
-struct PhysicsProperties {
-    bool is_fluid;
-    bool is_data_damage;
-    bool is_data_standard_distance;
-};
-
-const PhysicsProperties physics_properties[] = {
-    PhysicsProperties(true, false, false), //MAT_AIR
-    PhysicsProperties(false, true, false), //MAT_STONE
-    PhysicsProperties(false, false, false), //MAT_OOB
-    PhysicsProperties(false, true, false), //MAT_DIRT
-    PhysicsProperties(false, true, false), //MAT_GRASS
-    PhysicsProperties(false, false, false), //MAT_PROJECTILE
-    PhysicsProperties(false, true, false), //MAT_ICE
-    PhysicsProperties(true, false, true), //MAT_WATER
-    PhysicsProperties(false, false, false), //MAT_PLAYER
-    PhysicsProperties(false, false, false), //MAT_AIR_OOB
-    PhysicsProperties(false, true, false), //MAT_WOOD
-    PhysicsProperties(false, false, true), //MAT_LEAF
-    };
-
 void main() {
     ivec3 pos = 2 * ivec3(gl_WorkGroupSize) * chunk_updates[gl_WorkGroupID.x].xyz + 2 * ivec3(gl_LocalInvocationID) + ivec3(sim_data.voxel_update_offset);
     uvec2 pos_data[2][2][2];

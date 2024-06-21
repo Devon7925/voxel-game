@@ -80,21 +80,6 @@ struct RaycastResult {
     uint layer_count;
 };
 
-const bool is_transparent[] = {
-    true,
-    false,
-    false,
-    false,
-    false,
-    false,
-    true,
-    true,
-    false,
-    true,
-    false,
-    true,
-    };
-
 RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles) {
     uint offset = 0;
     if (ray.x < 0) offset += 1;
@@ -376,99 +361,6 @@ struct MaterialProperties {
     float depth_transparency;
 };
 
-struct MaterialNoiseLayer {
-    vec3 scale;
-    float normal_impact;
-    float roughness_impact;
-    float transparency_impact;
-    vec3 movement;
-    vec3 layer_color;
-};
-
-struct MaterialRenderProps {
-    MaterialNoiseLayer layers[3];
-    float ior;
-    float roughness;
-    float transparency;
-    float depth_transparency;
-    vec3 color;
-};
-
-const MaterialRenderProps material_render_props[] = {
-    // AIR
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
-    // STONE
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(2.0), 0.35, 0.1, 0.0, vec3(0.0), vec3(0.25)),
-            MaterialNoiseLayer(vec3(20.0), 0.2, 0.2, 0.0, vec3(0.0), vec3(0.05)),
-            MaterialNoiseLayer(vec3(0.5), 0.05, 0.0, 0.0, vec3(0.0), vec3(0.05))
-        ), 0.04, 0.35, 0.0, 0.0, vec3(0.55)),
-    // OOB
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
-    // DIRT
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(7.0), 0.2, 0.0, -0.1, vec3(0.0), vec3(0.15, 0.025, -0.1)),
-            MaterialNoiseLayer(vec3(20.0), 0.2, 0.2, 0.0, vec3(0.0), vec3(0.05)),
-            MaterialNoiseLayer(vec3(0.5), 0.05, 0.0, 0.0, vec3(0.0), vec3(0.05))
-        ), 0.02, 0.75, 0.0, 0.0, vec3(0.35, 0.225, 0.1)),
-    // GRASS
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(7.0), 0.2, -0.1, 0.0, vec3(0.0), vec3(0.07, 0.1, 0.07)),
-            MaterialNoiseLayer(vec3(35.0, 10.0, 35.0), 0.6, -0.2, 0.0, vec3(0.0), vec3(0.15, 0.2, 0.15)),
-            MaterialNoiseLayer(vec3(0.07), 0.0, 0.0, -0.2, vec3(0.0), vec3(0.1, 0.2, 0.025))
-        ), 0.02, 0.8, 0.0, 0.0, vec3(0.17, 0.6, 0.2)),
-    // PROJECTILE
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 1.0, 0.5, 0.5, vec3(1.0, 0.3, 0.3)),
-    // ICE
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(1.7), 0.2, 0.1, 0.1, vec3(0.0), vec3(0.05, 0.05, 0.175)),
-            MaterialNoiseLayer(vec3(21.0), 0.1, 0.1, 0.05, vec3(0.0), vec3(0.05)),
-            MaterialNoiseLayer(vec3(0.5), 0.05, 0.0, 0.05, vec3(0.0), vec3(0.05))
-        ), 0.05, 0.35, 0.3, 0.3, vec3(0.7, 0.7, 0.925)),
-    // WATER
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(1.0), 0.20, 0.0, 0.0, vec3(0.25, -0.7, 0.2), vec3(0.0)),
-            MaterialNoiseLayer(vec3(2.0), 0.10, 0.0, 0.0, vec3(0.375, -0.5, 0.475), vec3(0.0)),
-            MaterialNoiseLayer(vec3(4.0), 0.05, 0.0, 0.0, vec3(0.5, -0.6, 0.5), vec3(0.0))
-        ), 0.05, 0.25, 0.8, 0.85, vec3(0.25, 0.3, 0.6)),
-    // PLAYER
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.2, 0.0, 0.0, vec3(0.8)),
-    // AIR OOB
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
-            MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
-    // WOOD
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(3.0), 0.12, 0.0, 0.0, vec3(0.0), vec3(0.05)),
-            MaterialNoiseLayer(vec3(20.0, 5.0, 20.0), 0.1, 0.0, 0.0, vec3(0.0), vec3(0.05)),
-            MaterialNoiseLayer(vec3(10.0, 2.5, 10.0), 0.17, 0.0, 0.0, vec3(0.0), vec3(0.25))
-        ), 0.02, 0.8, 0.0, 0.0, vec3(0.37, 0.225, 0.1)),
-    // LEAF
-    MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(1.7), 0.1, 0.0, 0.0, vec3(0.0), vec3(0.05, 0.175, 0.05)),
-            MaterialNoiseLayer(vec3(9.5), 0.3, 0.2, -0.5, vec3(0.1, -0.2, 0.1), vec3(0.05, 0.1, 0.05)),
-            MaterialNoiseLayer(vec3(3.5), 0.05, 0.0, 0.00, vec3(0.0), vec3(0.05))
-        ), 0.05, 0.6, 0.4, 0.4, vec3(0.1, 0.6, 0.1)),
-    };
-
 float max3(vec3 v) {
     return max(max(v.x, v.y), v.z);
 }
@@ -500,7 +392,7 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
         transparency += distance_noise_factor * layer.transparency_impact * noise.w;
     }
     normal = normalize(normal);
-    if (material != MAT_WATER && material != MAT_LEAF) {
+    if (physics_properties[material].is_data_damage) {
         color *= (1.0 - float(data) / material_damage_threshhold[material]);
     }
     return MaterialProperties(
@@ -514,29 +406,6 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
         mat_render_props.depth_transparency
     );
 }
-
-struct HeightData {
-    float offset;
-    vec3 scale;
-    float impact;
-    vec3 movement;
-};
-
-// AIR, STONE, OOB, DIRT, GRASS, PROJECTILE, ICE, WATER, PLAYER, AIR_OOB, WOOD, LEAF
-const HeightData height_data[] = {
-    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)),
-    HeightData(0.2, vec3(2.0), 0.75, vec3(0.0)),
-    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)),
-    HeightData(0.4, vec3(7.0), 0.3, vec3(0.0)),
-    HeightData(0.6, vec3(35.0, 10.0, 35.0), 0.75, vec3(0.0)),
-    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)),
-    HeightData(0.7, vec3(1.7), 0.45, vec3(0.0)),
-    HeightData(0.8, vec3(1.0), 0.3, vec3(0.25, -0.7, 0.2)),
-    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)),
-    HeightData(0.0, vec3(0.0), 0.0, vec3(0.0)),
-    HeightData(0.2, vec3(10.0, 2.5, 10.0), 0.75, vec3(0.0)),
-    HeightData(0.7, vec3(1.7), 0.45, vec3(0.0)),
-    };
 
 MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_dir) {
     if (resultLayer.voxel_data >> 24 == MAT_PLAYER || resultLayer.voxel_data >> 24 == MAT_PROJECTILE) {

@@ -35,7 +35,7 @@ singleplayer_settings:
     game_mode: !Explorer
       spawn_location: 
         x: 10000.0
-        y: 1900.0
+        y: 1820.0
         z: 10000.0
     max_loaded_chunks: 8192
     max_worldgen_rate: 128
@@ -55,7 +55,7 @@ practice_range_settings:
     game_mode: !PracticeRange
       spawn_location: 
         x: 10000.0
-        y: 1900.0
+        y: 1820.0
         z: 10000.0
     max_loaded_chunks: 512
     max_worldgen_rate: 512

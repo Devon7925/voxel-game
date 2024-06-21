@@ -378,6 +378,7 @@ pub enum VoxelMaterial {
     UnloadedAir,
     Wood,
     Leaf,
+    Unbreakable,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -595,6 +596,7 @@ impl VoxelMaterial {
             9 => VoxelMaterial::UnloadedAir,
             10 => VoxelMaterial::Wood,
             11 => VoxelMaterial::Leaf,
+            12 => VoxelMaterial::Unbreakable,
             _ => panic!("Invalid state"),
         }
     }
@@ -613,6 +615,7 @@ impl VoxelMaterial {
             VoxelMaterial::UnloadedAir => 9,
             VoxelMaterial::Wood => 10,
             VoxelMaterial::Leaf => 11,
+            VoxelMaterial::Unbreakable => 12,
         }
     }
 
@@ -641,9 +644,10 @@ impl VoxelMaterial {
             VoxelMaterial::UnloadedAir => 1.0,
             VoxelMaterial::Wood => 1.0,
             VoxelMaterial::Leaf => 1.0,
+            VoxelMaterial::Unbreakable => 1.0,
         }
     }
-    
+
     pub fn get_friction(&self) -> f32 {
         match self {
             VoxelMaterial::Air => 0.0,
@@ -658,7 +662,7 @@ impl VoxelMaterial {
             VoxelMaterial::UnloadedAir => 0.0,
             VoxelMaterial::Wood => 5.0,
             VoxelMaterial::Leaf => 4.0,
-        
+            VoxelMaterial::Unbreakable => 5.0,
         }
     }
 }
@@ -1179,6 +1183,7 @@ impl BaseCard {
                     VoxelMaterial::UnloadedAir => panic!("Invalid state"),
                     VoxelMaterial::Wood => 0.08,
                     VoxelMaterial::Leaf => 0.045,
+                    VoxelMaterial::Unbreakable => panic!("Invalid state"),
                 };
                 vec![CardValue {
                     damage: 0.0,
@@ -1558,7 +1563,8 @@ impl BaseCard {
                 VoxelMaterial::Projectile
                 | VoxelMaterial::Unloaded
                 | VoxelMaterial::Player
-                | VoxelMaterial::UnloadedAir => {
+                | VoxelMaterial::UnloadedAir
+                | VoxelMaterial::Unbreakable => {
                     return Some(format!("Invalid Material {:?}", material));
                 }
             },
