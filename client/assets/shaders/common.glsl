@@ -187,10 +187,10 @@ const MaterialRenderProps material_render_props[] = {
         ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
     // WOOD
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(3.0), 0.12, 0.0, 0.0, vec3(0.0), vec3(0.05)),
+            MaterialNoiseLayer(vec3(10.0, 2.5, 10.0), 0.17, 0.0, 0.0, vec3(0.0), vec3(0.25)),
             MaterialNoiseLayer(vec3(20.0, 5.0, 20.0), 0.1, 0.0, 0.0, vec3(0.0), vec3(0.05)),
-            MaterialNoiseLayer(vec3(10.0, 2.5, 10.0), 0.17, 0.0, 0.0, vec3(0.0), vec3(0.25))
-        ), 0.02, 0.8, 0.0, 0.0, vec3(0.37, 0.225, 0.1)),
+            MaterialNoiseLayer(vec3(3.0), 0.12, 0.0, 0.0, vec3(0.0), vec3(0.05))
+        ), 0.05, 0.8, 0.0, 0.0, vec3(0.37, 0.225, 0.1)),
     // LEAF
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(vec3(1.7), 0.1, 0.0, 0.0, vec3(0.0), vec3(0.05, 0.175, 0.05)),

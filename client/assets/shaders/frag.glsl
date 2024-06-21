@@ -78,6 +78,7 @@ struct RaycastResultLayer {
 struct RaycastResult {
     RaycastResultLayer layers[5];
     uint layer_count;
+    float dist;
 };
 
 RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles) {
@@ -347,7 +348,7 @@ RaycastResult raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projec
             }
         }
     }
-    return RaycastResult(layers, layer_idx);
+    return RaycastResult(layers, layer_idx, depth);
 }
 
 struct MaterialProperties {
@@ -365,7 +366,7 @@ float max3(vec3 v) {
     return max(max(v.x, v.y), v.z);
 }
 
-MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) {
+MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir, uint texture_layer_count) {
     uint material = resultLayer.voxel_data >> 24;
     uint data = resultLayer.voxel_data & 0xFFFFFF;
     MaterialRenderProps mat_render_props = material_render_props[material];
@@ -382,7 +383,7 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
     vec3 color = mat_render_props.color;
     float roughness = mat_render_props.roughness;
     float transparency = mat_render_props.transparency;
-    for (int layer_idx = 0; layer_idx < 3; layer_idx++) {
+    for (int layer_idx = 0; layer_idx < texture_layer_count; layer_idx++) {
         MaterialNoiseLayer layer = mat_render_props.layers[layer_idx];
         vec4 noise = grad_noise(layer.scale * resultLayer.pos + layer.movement * push_constants.time);
         float distance_noise_factor = clamp(-0.1 * float(push_constants.vertical_resolution) * dot(ray_dir, resultLayer.normal) / (max(resultLayer.dist, 0.1) * max3(layer.scale)), 0.0, 1.0);
@@ -407,9 +408,9 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir) 
     );
 }
 
-MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_dir) {
+MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_dir, uint texture_layer_count) {
     if (resultLayer.voxel_data >> 24 == MAT_PLAYER || resultLayer.voxel_data >> 24 == MAT_PROJECTILE) {
-        return material_props(resultLayer, ray_dir);
+        return material_props(resultLayer, ray_dir, texture_layer_count);
     }
     vec3 relative_pos = resultLayer.pos - floor(resultLayer.pos) - 0.5;
     vec3 weights = abs(relative_pos);
@@ -444,7 +445,7 @@ MaterialProperties position_material(RaycastResultLayer resultLayer, vec3 ray_di
         }
     }
     resultLayer.voxel_data = result_vox;
-    return material_props(resultLayer, ray_dir);
+    return material_props(resultLayer, ray_dir, texture_layer_count);
 }
 
 float DistributionGGX(vec3 N, vec3 H, float roughness)
@@ -520,11 +521,11 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
     while (multiplier > 0.05 && i < primary_ray.layer_count) {
         if (primary_ray.layers[i].voxel_data >> 24 == MAT_OOB) {
             float sky_brightness = max(dot(ray, -light_dir), 0.0);
-            sky_brightness += pow(sky_brightness, 10.0);
-            color += multiplier * (sky_brightness * vec3(0.429, 0.608, 0.622) + vec3(0.1, 0.1, 0.4));
+            sky_brightness += pow(sky_brightness, 20.0);
+            color += multiplier * mix(vec3(0.35, 0.4, 0.8), vec3(0.629, 0.908, 1.0), sky_brightness);
             break;
         }
-        MaterialProperties mat_props = position_material(primary_ray.layers[i], ray);
+        MaterialProperties mat_props = position_material(primary_ray.layers[i], ray, 3 - i/2);
         color += (1 - mat_props.transparency) * multiplier * mat_props.albedo * mat_props.emmision;
 
         RaycastResultLayer shade_check = simple_raycast(primary_ray.layers[i].pos + epsilon * primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist, true);
@@ -567,8 +568,13 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             color += (1 - mat_props.transparency) * multiplier * get_light(ao_dir, -ray, vec3(1.0), light_power, mat_props);
         }
 
-        if (i + 1 < primary_ray.layer_count && mat_props.depth_transparency > 0.0 && !primary_ray.layers[i].is_leaving_medium) {
-            float dist = primary_ray.layers[i + 1].dist - primary_ray.layers[i].dist;
+        if (mat_props.depth_transparency > 0.0 && !primary_ray.layers[i].is_leaving_medium) {
+            float dist = 0;
+            if (i + 1 < primary_ray.layer_count) {
+                dist = primary_ray.layers[i + 1].dist - primary_ray.layers[i].dist;
+            } else {
+                dist = primary_ray.dist - primary_ray.layers[i].dist;
+            }
             float depth_transparency = pow(mat_props.depth_transparency, dist);
             color += (1.0 - depth_transparency) * mat_props.transparency * multiplier * mat_props.albedo;
             multiplier *= depth_transparency;
