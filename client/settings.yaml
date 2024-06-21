@@ -32,10 +32,11 @@ singleplayer_settings:
       x: 32
       y: 32
       z: 32
-    spawn_location: 
-      x: 10000.0
-      y: 1900.0
-      z: 10000.0
+    game_mode: !Explorer
+      spawn_location: 
+        x: 10000.0
+        y: 1900.0
+        z: 10000.0
     max_loaded_chunks: 8192
     max_worldgen_rate: 128
     max_update_rate: 128
@@ -51,14 +52,15 @@ practice_range_settings:
       x: 8
       y: 8
       z: 8
-    spawn_location: 
-      x: 10000.0
-      y: 1900.0
-      z: 10000.0
+    game_mode: !PracticeRange
+      spawn_location: 
+        x: 10000.0
+        y: 1900.0
+        z: 10000.0
     max_loaded_chunks: 512
     max_worldgen_rate: 512
     max_update_rate: 512
-    world_gen: PracticeRange
+    world_gen: Normal
     fixed_center: true
 create_lobby_settings:
     name: "Standard Open Multiplayer"
@@ -70,12 +72,9 @@ create_lobby_settings:
       x: 32
       y: 16
       z: 32
-    spawn_location: 
-      x: 10000.0
-      y: 1900.0
-      z: 10000.0
+    game_mode: !Control
     max_loaded_chunks: 2048
     max_worldgen_rate: 128
     max_update_rate: 128
-    world_gen: Normal
+    world_gen: Control
     fixed_center: false

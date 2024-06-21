@@ -8,6 +8,7 @@ use cgmath::{EuclideanSpace, Point3};
 use crate::{
     app::CreationInterface,
     card_system::{CardManager, Cooldown, Deck},
+    game_modes::{game_mode_from_type, GameMode},
     rollback_manager::{PlayerSim, ReplayData, RollbackData},
     settings_manager::Settings,
     voxel_sim_manager::VoxelComputePipeline,
@@ -21,6 +22,7 @@ pub struct Game {
     pub card_manager: CardManager,
     pub game_state: GameState,
     pub game_settings: GameSettings,
+    pub game_mode: Box<dyn GameMode>,
     pub has_started: bool,
 }
 pub struct GameState {
@@ -36,12 +38,13 @@ impl Game {
         creation_interface: &CreationInterface,
         lobby_id: Option<RoomId>,
     ) -> Self {
+        let game_mode = game_mode_from_type(game_settings.game_mode.clone());
         let game_state = GameState {
-            start_pos: game_settings.spawn_location.zip(
+            start_pos: game_mode.get_initial_center().zip(
                 Point3::from_vec(game_settings.render_size),
                 |spawn, size| spawn as u32 / CHUNK_SIZE as u32 - size / 2,
             ),
-            players_center: game_settings.spawn_location.into(),
+            players_center: game_mode.get_initial_center().into(),
         };
         let mut card_manager = CardManager::default();
 
@@ -52,11 +55,12 @@ impl Game {
             deck,
             &mut card_manager,
             lobby_id,
+            &game_mode,
         ));
 
         let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);
 
-        voxel_compute.queue_update_from_world_pos(&game_settings.spawn_location, &game_settings);
+        voxel_compute.queue_update_from_world_pos(&game_mode.get_initial_center(), &game_settings);
 
         Game {
             voxel_compute,
@@ -64,6 +68,7 @@ impl Game {
             card_manager,
             game_state,
             game_settings,
+            game_mode,
             has_started: false,
         }
     }
@@ -83,13 +88,14 @@ impl Game {
             }
             panic!("No game settings found in replay file");
         };
+        let game_mode = game_mode_from_type(game_settings.game_mode.clone());
 
         let game_state = GameState {
-            start_pos: game_settings.spawn_location.zip(
+            start_pos: game_mode.get_initial_center().zip(
                 Point3::from_vec(game_settings.render_size),
                 |spawn, size| spawn as u32 / CHUNK_SIZE as u32 - size / 2,
             ),
-            players_center: game_settings.spawn_location.into(),
+            players_center: game_mode.get_initial_center().into(),
         };
         let mut card_manager = CardManager::default();
 
@@ -98,11 +104,12 @@ impl Game {
             &game_settings,
             &mut replay_lines,
             &mut card_manager,
+            &game_mode,
         ));
 
         let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);
 
-        voxel_compute.queue_update_from_world_pos(&game_settings.spawn_location, &game_settings);
+        voxel_compute.queue_update_from_world_pos(&game_mode.get_initial_center(), &game_settings);
 
         Game {
             voxel_compute,
@@ -110,6 +117,7 @@ impl Game {
             card_manager,
             game_state,
             game_settings,
+            game_mode,
             has_started: false,
         }
     }

@@ -2484,7 +2484,7 @@ fn draw_modifier<T: std::fmt::Display + Numeric + Copy>(
     }
 }
 
-enum EditMode {
+pub enum EditMode {
     FullEditing,
     Readonly,
 }
@@ -2521,8 +2521,12 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
 
             let menu_size = ui.available_rect_before_wrap().shrink2(vec2(PADDING, 0.0));
 
-            let edit_mode = if game.is_some() {
-                EditMode::Readonly
+            let edit_mode = if let Some(game) = game {
+                if gui_state.render_deck_idx > 0 {
+                    EditMode::Readonly
+                } else {
+                    game.game_mode.deck_swapping(game.rollback_data.get_players().get(gui_state.render_deck_idx).unwrap())
+                }
             } else {
                 EditMode::FullEditing
             };

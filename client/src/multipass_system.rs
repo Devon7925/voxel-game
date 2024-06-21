@@ -6,10 +6,10 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
-use cgmath::{ElementWise, Matrix4, Point3, SquareMatrix, Vector3};
+use cgmath::{Matrix4, SquareMatrix};
 use egui_winit_vulkano::{
     egui::{
-        self, epaint, pos2, vec2, Align2, Color32, Margin, Order, Rect, RichText, Stroke, Vec2,
+        self, epaint, vec2, Align2, Color32, Margin, Order, Rect, RichText, Stroke, Vec2,
     },
     Gui, GuiConfig,
 };
@@ -42,7 +42,7 @@ use crate::{
     settings_manager::Settings,
     GuiState,
 };
-use voxel_shared::{GameSettings, RoomId, WorldGenSettings};
+use voxel_shared::RoomId;
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -590,24 +590,29 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                             .anchor(Align2::LEFT_TOP, (0.0, 0.0))
                             .show(&ctx, |ui| {
                                 let center = ui.available_rect_before_wrap().center();
-                                
+
                                 if spectate_player.hitmarker.0 + spectate_player.hitmarker.1 > 0.0 {
                                     let hitmarker_size = 0.5 * spectate_player.hitmarker.0;
-                                    let head_hitmarker_size = 0.5 * (spectate_player.hitmarker.0 + spectate_player.hitmarker.1);
+                                    let head_hitmarker_size = 0.5
+                                        * (spectate_player.hitmarker.0
+                                            + spectate_player.hitmarker.1);
                                     let hitmarker_thickness = 1.5;
                                     let head_hitmarker_color = Color32::RED;
                                     let hitmarker_color = Color32::from_additive_luminance(255);
                                     ui.painter().add(epaint::Shape::line_segment(
                                         [
-                                            center + vec2(-head_hitmarker_size, -head_hitmarker_size),
+                                            center
+                                                + vec2(-head_hitmarker_size, -head_hitmarker_size),
                                             center + vec2(head_hitmarker_size, head_hitmarker_size),
                                         ],
                                         Stroke::new(hitmarker_thickness, head_hitmarker_color),
                                     ));
                                     ui.painter().add(epaint::Shape::line_segment(
                                         [
-                                            center + vec2(-head_hitmarker_size, head_hitmarker_size),
-                                            center + vec2(head_hitmarker_size, -head_hitmarker_size),
+                                            center
+                                                + vec2(-head_hitmarker_size, head_hitmarker_size),
+                                            center
+                                                + vec2(head_hitmarker_size, -head_hitmarker_size),
                                         ],
                                         Stroke::new(hitmarker_thickness, head_hitmarker_color),
                                     ));
@@ -630,7 +635,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 let thickness = 1.0;
                                 let color = Color32::from_additive_luminance(255);
                                 let crosshair_size = 10.0;
-    
+
                                 ui.painter().add(epaint::Shape::line_segment(
                                     [
                                         center + vec2(-crosshair_size, 0.0),
@@ -647,12 +652,24 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 ));
 
                                 //draw hurtmarkers
-                                for (hurt_direction, hurt_size, remaining_marker_duration) in spectate_player.hurtmarkers.iter() {
-                                    let hurtmarker_color = Color32::RED.gamma_multiply(remaining_marker_duration / 1.5);
+                                for (hurt_direction, hurt_size, remaining_marker_duration) in
+                                    spectate_player.hurtmarkers.iter()
+                                {
+                                    let hurtmarker_color = Color32::RED
+                                        .gamma_multiply(remaining_marker_duration / 1.5);
                                     let hurtmarker_size = 1.2 * hurt_size.sqrt();
-                                    let transformed_hurt_angle = spectate_player.facing[0] - (-hurt_direction.z).atan2(hurt_direction.x);
-                                    let hurtmarker_center = center + vec2(transformed_hurt_angle.cos(), transformed_hurt_angle.sin()) * 50.0;
-                                    ui.painter().circle_filled(hurtmarker_center, hurtmarker_size, hurtmarker_color);
+                                    let transformed_hurt_angle = spectate_player.facing[0]
+                                        - (-hurt_direction.z).atan2(hurt_direction.x);
+                                    let hurtmarker_center = center
+                                        + vec2(
+                                            transformed_hurt_angle.cos(),
+                                            transformed_hurt_angle.sin(),
+                                        ) * 50.0;
+                                    ui.painter().circle_filled(
+                                        hurtmarker_center,
+                                        hurtmarker_size,
+                                        hurtmarker_color,
+                                    );
                                 }
                             });
                     }
@@ -877,6 +894,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                         });
                 }
                 Some(&GuiElement::LobbyBrowser) => {
+                    use egui_extras::{Column, TableBuilder};
                     egui::Area::new("lobby browser")
                         .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
                         .show(&ctx, |ui| {
@@ -884,6 +902,17 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 ui.available_rect_before_wrap().center(),
                                 ui.available_rect_before_wrap().size(),
                             );
+                            let lobby_list = match gui_state.lobby_browser.get_lobbies()
+                            {
+                                Ok(lobby_list) => lobby_list,
+                                Err(err) => {
+                                    gui_state.errors.push(format!(
+                                        "Error getting lobbies: {}",
+                                        err
+                                    ));
+                                    vec![]
+                                }
+                            };
 
                             ui.allocate_ui_at_rect(menu_size, |ui| {
                                 ui.painter().rect_filled(
@@ -893,45 +922,101 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 );
                                 vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
-                                        let lobby_list = match gui_state.lobby_browser.get_lobbies()
-                                        {
-                                            Ok(lobby_list) => lobby_list,
-                                            Err(err) => {
-                                                gui_state.errors.push(format!(
-                                                    "Error getting lobbies: {}",
-                                                    err
-                                                ));
-                                                vec![]
-                                            }
-                                        };
                                         horizontal_centerer(ui, |ui| {
-                                            if lobby_list.is_empty() {
-                                                ui.label("No lobbies found");
-                                            }
-                                            egui::Grid::new("lobby_grid")
-                                                .num_columns(2)
-                                                .spacing([40.0, 4.0])
-                                                .show(ui, |ui| {
-                                                    for lobby in lobby_list.iter() {
-                                                        ui.label(lobby.name.clone());
-                                                        if ui.button("Join").clicked() {
-                                                            gui_state.menu_stack.clear();
-                                                            *game = Some(Game::new(
-                                                                settings,
-                                                                lobby.settings.clone(),
-                                                                &gui_state.gui_deck,
-                                                                creation_interface,
-                                                                Some(lobby.lobby_id.clone()),
-                                                            ));
-                                                            gui_state
-                                                                .menu_stack
-                                                                .push(GuiElement::LobbyQueue);
-                                                            gui_state.game_just_started = true;
+                                            ui.vertical_centered(|ui| {
+                                                let available_height = ui.available_height();
+                                                let table = TableBuilder::new(ui)
+                                                    .striped(true)
+                                                    .resizable(false)
+                                                    .cell_layout(egui::Layout::left_to_right(
+                                                        egui::Align::Center,
+                                                    ))
+                                                    .column(Column::auto())
+                                                    .column(Column::auto())
+                                                    .column(Column::auto())
+                                                    .column(Column::auto())
+                                                    .column(Column::auto())
+                                                    .max_scroll_height(available_height);
+
+                                                table
+                                                    .header(20.0, |mut header| {
+                                                        header.col(|ui| {
+                                                            ui.strong("Name");
+                                                        });
+                                                        header.col(|ui| {
+                                                            ui.strong("Mode");
+                                                        });
+                                                        header.col(|ui| {
+                                                            ui.strong("Map");
+                                                        });
+                                                        header.col(|ui| {
+                                                            ui.strong("Players");
+                                                        });
+                                                        header.col(|ui| {
+                                                            ui.strong("");
+                                                        });
+                                                    })
+                                                    .body(|mut body| {
+                                                        for lobby in lobby_list.iter() {
+                                                            body.row(20.0, |mut row| {
+                                                                row.col(|ui| {
+                                                                    ui.label(lobby.name.clone());
+                                                                });
+                                                                row.col(|ui| {
+                                                                    ui.label(
+                                                                        lobby
+                                                                            .settings
+                                                                            .game_mode
+                                                                            .get_name(),
+                                                                    );
+                                                                });
+                                                                row.col(|ui| {
+                                                                    ui.label(
+                                                                        lobby
+                                                                            .settings
+                                                                            .world_gen
+                                                                            .get_name(),
+                                                                    );
+                                                                });
+                                                                row.col(|ui| {
+                                                                    ui.label(format!(
+                                                                        "{}/{}",
+                                                                        lobby.player_count,
+                                                                        lobby.settings.player_count
+                                                                    ));
+                                                                });
+                                                                row.col(|ui| {
+                                                                    if ui.button("Join").clicked() {
+                                                                        gui_state
+                                                                            .menu_stack
+                                                                            .clear();
+                                                                        *game = Some(Game::new(
+                                                                            settings,
+                                                                            lobby.settings.clone(),
+                                                                            &gui_state.gui_deck,
+                                                                            creation_interface,
+                                                                            Some(
+                                                                                lobby
+                                                                                    .lobby_id
+                                                                                    .clone(),
+                                                                            ),
+                                                                        ));
+                                                                        gui_state.menu_stack.push(
+                                                                            GuiElement::LobbyQueue,
+                                                                        );
+                                                                        gui_state
+                                                                            .game_just_started =
+                                                                            true;
+                                                                    }
+                                                                });
+                                                            });
                                                         }
-                                                        ui.end_row();
-                                                    }
-                                                });
+                                                    });
+                                            });
                                         });
+                                        if lobby_list.is_empty() {
+                                            ui.label("No lobbies found");
+                                        }
                                         if ui.button("Back").clicked() {
                                             gui_state.menu_stack.pop();
                                         }

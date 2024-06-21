@@ -26,16 +26,9 @@ use crate::{
         BaseCard, CardManager, Deck, DirectionCard, ReferencedCooldown, ReferencedEffect,
         ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType,
         StateKeybind, StatusEffect, VoxelMaterial,
-    },
-    game_manager::GameState,
-    gui::{GuiElement, GuiState},
-    networking::{NetworkConnection, NetworkPacket},
-    settings_manager::{Control, Settings},
-    voxel_sim_manager::{Projectile, VoxelComputePipeline},
-    WindowProperties, CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET,
-    PLAYER_HITBOX_SIZE,
+    }, game_manager::GameState, game_modes::GameMode, gui::{GuiElement, GuiState}, networking::{NetworkConnection, NetworkPacket}, settings_manager::{Control, Settings}, voxel_sim_manager::{Projectile, VoxelComputePipeline}, WindowProperties, CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE
 };
-use voxel_shared::{GameSettings, RoomId, WorldGenSettings};
+use voxel_shared::{GameModeSettings, GameSettings, RoomId};
 
 #[derive(Clone, Debug)]
 pub struct WorldState {
@@ -58,6 +51,7 @@ pub trait PlayerSim {
         voxel_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
+        game_mode: &Box<dyn GameMode>,
     );
     fn step_visuals(
         &mut self,
@@ -65,6 +59,7 @@ pub trait PlayerSim {
         voxel_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
+        game_mode: &Box<dyn GameMode>,
     );
 
     fn download_projectiles(
@@ -87,7 +82,7 @@ pub trait PlayerSim {
     fn visable_projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]>;
     fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]>;
 
-    fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager);
+    fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager, game_mode: &Box<dyn GameMode>);
 
     fn process_event(
         &mut self,
@@ -158,7 +153,6 @@ impl EntityMetaData {
     }
 }
 
-#[derive(Debug)]
 pub struct RollbackData {
     pub current_time: u64,
     pub rollback_time: u64,
@@ -372,6 +366,7 @@ impl PlayerSim for RollbackData {
         vox_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
+        game_mode: &Box<dyn GameMode>,
     ) {
         let rollback_actions: Vec<Action> = self
             .entity_metadata
@@ -418,6 +413,7 @@ impl PlayerSim for RollbackData {
             vox_compute,
             game_state,
             game_settings,
+            game_mode,
         );
         if leaving_players.len() > 0 {
             for player_idx in leaving_players.iter() {
@@ -447,6 +443,7 @@ impl PlayerSim for RollbackData {
         vox_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
+        game_mode: &Box<dyn GameMode>,
     ) {
         let on_ground = self
             .get_spectate_player()
@@ -483,6 +480,7 @@ impl PlayerSim for RollbackData {
             vox_compute,
             game_state,
             game_settings,
+            game_mode,
         );
         //send projectiles
         let projectile_count = 128.min(self.cached_current_state.projectiles.len());
@@ -561,7 +559,7 @@ impl PlayerSim for RollbackData {
         &self.entity_metadata
     }
 
-    fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager) {
+    fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager, game_mode: &Box<dyn GameMode>) {
         let Some(network_connection) = self.network_connection.as_mut() else {
             return;
         };
@@ -623,7 +621,7 @@ impl PlayerSim for RollbackData {
                         .insert(peer, self.rollback_state.players.len());
 
                     let mut new_player = Entity {
-                        pos: settings.spawn_location.into(),
+                        pos: game_mode.spawn_location(self.rollback_state.players.len()),
                         ..Default::default()
                     };
                     (new_player.abilities, new_player.passive_abilities) =
@@ -879,6 +877,7 @@ impl RollbackData {
         deck: &Deck,
         card_manager: &mut CardManager,
         lobby_id: Option<RoomId>,
+        game_mode: &Box<dyn GameMode>,
     ) -> Self {
         let rendered_projectile_buffer = Buffer::new_sized(
             memory_allocator.clone(),
@@ -938,7 +937,7 @@ impl RollbackData {
         let mut entity_metadata = Vec::new();
 
         let mut first_player = Entity {
-            pos: game_settings.spawn_location.into(),
+            pos: game_mode.spawn_location(0),
             ..Default::default()
         };
         (first_player.abilities, first_player.passive_abilities) =
@@ -949,16 +948,6 @@ impl RollbackData {
             game_settings.rollback_buffer_size
                 as usize
         ])));
-
-        if matches!(game_settings.world_gen, WorldGenSettings::PracticeRange) {
-            let bot = Entity {
-                pos: game_settings.spawn_location.into(),
-                abilities: vec![],
-                ..Default::default()
-            };
-            rollback_state.players.push(bot.clone());
-            entity_metadata.push(EntityMetaData::TrainingBot);
-        }
 
         let network_connection =
             lobby_id.map(|lobby_id| NetworkConnection::new(settings, &game_settings, lobby_id));
@@ -1013,6 +1002,7 @@ impl RollbackData {
         vox_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
+        game_mode: &Box<dyn GameMode>,
     ) -> WorldState {
         let mut state = self.rollback_state.clone();
         for i in self.rollback_time..self.current_time {
@@ -1029,6 +1019,7 @@ impl RollbackData {
                 vox_compute,
                 game_state,
                 game_settings,
+                game_mode,
             );
         }
         state
@@ -1092,6 +1083,7 @@ impl PlayerSim for ReplayData {
         voxel_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
+        game_mode: &Box<dyn GameMode>,
     ) {
         if self.actions.is_empty() {
             return;
@@ -1127,6 +1119,7 @@ impl PlayerSim for ReplayData {
             voxel_compute,
             game_state,
             game_settings,
+            game_mode,
         );
         if leaving_players.len() > 0 {
             for player_idx in leaving_players.iter() {
@@ -1146,6 +1139,7 @@ impl PlayerSim for ReplayData {
         _voxel_compute: &mut VoxelComputePipeline,
         _game_state: &GameState,
         _game_settings: &GameSettings,
+        _game_mode: &Box<dyn GameMode>,
     ) {
         puffin::profile_function!();
         //send projectiles
@@ -1224,7 +1218,7 @@ impl PlayerSim for ReplayData {
         &self.entity_metadata
     }
 
-    fn network_update(&mut self, _settings: &GameSettings, _card_manager: &mut CardManager) {}
+    fn network_update(&mut self, _settings: &GameSettings, _card_manager: &mut CardManager, _game_mode: &Box<dyn GameMode>) {}
 
     fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
         self.player_buffer.clone()
@@ -1275,6 +1269,7 @@ impl ReplayData {
         game_settings: &GameSettings,
         replay_lines: &mut Lines<BufReader<File>>,
         card_manager: &mut CardManager,
+        game_mode: &Box<dyn GameMode>,
     ) -> Self {
         let projectile_buffer = Buffer::new_sized(
             memory_allocator.clone(),
@@ -1319,23 +1314,13 @@ impl ReplayData {
                 let deck: Deck = ron::de::from_str(deck_string).unwrap();
 
                 let mut new_player = Entity {
-                    pos: game_settings.spawn_location.into(),
+                    pos: game_mode.spawn_location(0),
                     ..Default::default()
                 };
                 (new_player.abilities, new_player.passive_abilities) =
                     abilities_from_cooldowns(&deck, card_manager);
                 state.players.push(new_player);
                 entity_metadata.push(EntityMetaData::Player(deck.clone(), VecDeque::new()));
-
-                if matches!(game_settings.world_gen, WorldGenSettings::PracticeRange) {
-                    let bot = Entity {
-                        pos: game_settings.spawn_location.into(),
-                        abilities: vec![],
-                        ..Default::default()
-                    };
-                    state.players.push(bot.clone());
-                    entity_metadata.push(EntityMetaData::TrainingBot);
-                }
             } else if let Some(_time_stamp_string) = line.strip_prefix("TIME ") {
                 let actions_string = replay_lines.next().unwrap().unwrap();
                 let line_actions: Vec<Action> = ron::de::from_str(&actions_string).unwrap();
@@ -1401,6 +1386,7 @@ impl WorldState {
         vox_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
+        game_mode: &Box<dyn GameMode>,
     ) {
         let voxels = vox_compute.voxels();
         let mut new_effects = NewEffects::default();
@@ -1451,6 +1437,7 @@ impl WorldState {
                     &mut new_effects,
                     game_state,
                     game_settings,
+                    game_mode,
                 );
             }
         }
@@ -2416,6 +2403,7 @@ impl Entity {
         new_effects: &mut NewEffects,
         game_state: &GameState,
         game_settings: &GameSettings,
+        game_mode: &Box<dyn GameMode>,
     ) {
         let size_change = player_stats[player_idx].size - self.size;
         if size_change > 0.0 {
@@ -2432,7 +2420,7 @@ impl Entity {
         if self.respawn_timer > 0.0 {
             self.respawn_timer -= time_step;
             if self.respawn_timer <= 0.0 {
-                self.pos = Point3::from(game_settings.spawn_location);
+                self.pos = game_mode.spawn_location(player_idx);
                 self.vel = Vector3::new(0.0, 0.0, 0.0);
                 self.health = vec![HealthSection::Health(100.0, 100.0)];
                 self.status_effects.clear();

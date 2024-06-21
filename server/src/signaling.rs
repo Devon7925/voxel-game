@@ -57,6 +57,7 @@ impl ServerState {
             self.lobbies.remove(&room_key);
         } else {
             room.0.insert(peer_id);
+            room.1.player_count += 1;
         }
         Ok(ret)
     }
@@ -129,6 +130,7 @@ pub(crate) async fn lobby_creator(
         name: payload.name.clone(),
         lobby_id: room_id.clone(),
         settings: payload,
+        player_count: 0,
     };
 
     state

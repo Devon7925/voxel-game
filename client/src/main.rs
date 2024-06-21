@@ -1,6 +1,7 @@
 mod app;
 mod card_system;
 mod game_manager;
+mod game_modes;
 mod gui;
 mod lobby_browser;
 mod multipass_system;
@@ -190,7 +191,7 @@ fn main() {
                     gui_state.game_just_started = false;
                     if let Some(game) = app.game.as_mut() {
                         game.rollback_data
-                            .network_update(&game.game_settings, &mut game.card_manager);
+                            .network_update(&game.game_settings, &mut game.card_manager, &game.game_mode);
                         if !game.has_started
                             && game.rollback_data.player_count()
                                 >= game.game_settings.player_count as usize
@@ -467,8 +468,15 @@ fn compute_then_render(
         if game.has_started {
             if game.rollback_data.can_step_rollback() {
                 puffin::profile_scope!("do compute");
-                game.voxel_compute
-                    .push_updates_from_changed(&game.game_settings, &game.rollback_data.get_players().iter().map(|p| p.pos).collect_vec());
+                game.voxel_compute.push_updates_from_changed(
+                    &game.game_settings,
+                    &game
+                        .rollback_data
+                        .get_players()
+                        .iter()
+                        .map(|p| p.pos)
+                        .collect_vec(),
+                );
                 // ensure chunks near players are loaded
                 const NEARBY_CHUNK_RANGE: i32 = 2;
                 for player in game.rollback_data.get_players() {
@@ -496,12 +504,14 @@ fn compute_then_render(
                     &mut game.voxel_compute,
                     &game.game_state,
                     &game.game_settings,
+                    &game.game_mode,
                 );
                 game.rollback_data.step_visuals(
                     &mut game.card_manager,
                     &mut game.voxel_compute,
                     &game.game_state,
                     &game.game_settings,
+                    &game.game_mode,
                 );
 
                 game.game_state.players_center = game
@@ -511,7 +521,7 @@ fn compute_then_render(
                     .map(|player| player.pos)
                     .fold(Point3::new(0.0, 0.0, 0.0), |acc, pos| acc + pos.to_vec())
                     / game.rollback_data.get_players().len() as f32;
-                if !game.game_settings.fixed_center {
+                if !game.game_mode.fixed_center() {
                     // consider moving start pos
                     let current_center =
                         game.game_state.start_pos + game.game_settings.render_size / 2;
@@ -559,6 +569,7 @@ fn compute_then_render(
                     &mut game.voxel_compute,
                     &game.game_state,
                     &game.game_settings,
+                    &game.game_mode,
                 );
                 future.boxed()
             }

@@ -3,6 +3,11 @@
     * Update game_design.md
         * Explain reasoning for what cards exist
         * Remove things that weren't added
+    * Write readme.md
+        * Explain what the game is
+        * Add screenshots
+        * Client build instructions
+        * Server run instructions
 * Card Editor
     * Keybinds
         * Editor

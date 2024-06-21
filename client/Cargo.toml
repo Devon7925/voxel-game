@@ -34,3 +34,4 @@ priority-queue = "2.0.3"
 voxel-shared = { path = ".." }
 itertools = "0.13.0"
 ahash = "0.8.11"
+egui_extras = "0.24.2"
