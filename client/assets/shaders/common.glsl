@@ -200,10 +200,10 @@ const MaterialRenderProps material_render_props[] = {
     
     // UNBREAKABLE
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(2.0), 0.175, 0.1, 0.0, vec3(0.0), vec3(0.25)),
+            MaterialNoiseLayer(vec3(2.0), 0.175, 0.1, 0.0, vec3(0.0), vec3(0.15)),
             MaterialNoiseLayer(vec3(20.0), 0.1, 0.2, 0.0, vec3(0.0), vec3(0.05)),
             MaterialNoiseLayer(vec3(0.5), 0.025, 0.0, 0.0, vec3(0.0), vec3(0.05))
-        ), 0.04, 0.8, 0.0, 0.0, vec3(0.25)),
+        ), 0.04, 0.8, 0.0, 0.0, vec3(0.15)),
     };
 
 uvec4 get_indicies(uvec3 global_pos, uvec3 render_size) {
@@ -236,6 +236,23 @@ vec4 quaternion_from_arc(vec3 src, vec3 dst) {
     } else {
         return normalize(vec4(cross(src, dst), mag_avg + dotprod));
     }
+}
+
+uvec2 pcg2d(uvec2 v)
+{
+    v = v * 1664525u + 1013904223u;
+
+    v.x += v.y * 1664525u;
+    v.y += v.x * 1664525u;
+
+    v = v ^ (v>>16u);
+
+    v.x += v.y * 1664525u;
+    v.y += v.x * 1664525u;
+
+    v = v ^ (v>>16u);
+
+    return v;
 }
 
 uvec3 pcg3d(uvec3 v) {
