@@ -9,7 +9,7 @@ use egui_winit_vulkano::egui::{
     epaint::{self, PathShape},
     pos2,
     text::LayoutJob,
-    vec2, Align2, Color32, ComboBox, CursorIcon, DragValue, FontId, Id, InnerResponse, Label,
+    vec2, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label,
     LayerId, Layout, Order, Pos2, Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke,
     TextFormat, TextStyle, Ui, Vec2,
 };
@@ -39,6 +39,7 @@ pub enum GuiElement {
     MultiplayerMenu,
     LobbyBrowser,
     LobbyQueue,
+    SingleplayerMenu,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]

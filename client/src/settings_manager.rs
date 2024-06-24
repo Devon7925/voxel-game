@@ -16,8 +16,7 @@ pub struct Settings {
     pub replay_settings: ReplaySettings,
     pub do_profiling: bool,
     pub crash_log: String,
-    pub singleplayer_settings: GameSettings,
-    pub practice_range_settings: GameSettings,
+    pub preset_settings: Vec<GameSettings>,
     pub create_lobby_settings: GameSettings,
 }
 
@@ -41,11 +40,11 @@ impl Display for Control {
 
 impl Settings {
     pub fn from_string(yaml_string: &str) -> Self {
-        serde_yaml::from_str(yaml_string).unwrap()
+        serde_yml::from_str(yaml_string).unwrap()
     }
 
     pub fn to_string(&self) -> String {
-        serde_yaml::to_string(self).unwrap()
+        serde_yml::to_string(self).unwrap()
     }
 }
 

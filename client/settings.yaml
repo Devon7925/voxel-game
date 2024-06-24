@@ -18,63 +18,62 @@ graphics_settings:
   transparent_shadow_ray_dist: 40
   ao_ray_dist: 15
 replay_settings:
-    replay_folder: replays
-    record_replay: false
+  replay_folder: replays
+  record_replay: false
 do_profiling: false
 crash_log: crash_log.txt
-singleplayer_settings:
-    name: "Singleplayer"
-    delta_time: 0.02
-    is_remote: false
-    rollback_buffer_size: 2
-    player_count: 1
-    render_size:
-      x: 32
-      y: 32
-      z: 32
-    game_mode: !Explorer
-      spawn_location: 
-        x: 10000.0
-        y: 1820.0
-        z: 10000.0
-    max_loaded_chunks: 8192
-    max_worldgen_rate: 128
-    max_update_rate: 128
-    world_gen: Normal
-    fixed_center: false
-practice_range_settings:
-    name: "Practice Range"
-    delta_time: 0.02
-    is_remote: false
-    rollback_buffer_size: 2
-    player_count: 1
-    render_size:
-      x: 8
-      y: 8
-      z: 8
-    game_mode: !PracticeRange
-      spawn_location: 
-        x: 10000.0
-        y: 1820.0
-        z: 10000.0
-    max_loaded_chunks: 512
-    max_worldgen_rate: 512
-    max_update_rate: 512
-    world_gen: Normal
-    fixed_center: true
+preset_settings:
+- name: "Open World"
+  delta_time: 0.02
+  is_remote: false
+  rollback_buffer_size: 2
+  player_count: 1
+  render_size:
+    x: 32
+    y: 32
+    z: 32
+  game_mode: !Explorer
+    spawn_location: 
+      x: 10000.0
+      y: 1820.0
+      z: 10000.0
+  max_loaded_chunks: 8192
+  max_worldgen_rate: 128
+  max_update_rate: 128
+  world_gen: Normal
+  fixed_center: false
+- name: "Practice Range"
+  delta_time: 0.02
+  is_remote: false
+  rollback_buffer_size: 2
+  player_count: 1
+  render_size:
+    x: 8
+    y: 8
+    z: 8
+  game_mode: !PracticeRange
+    spawn_location: 
+      x: 10000.0
+      y: 1820.0
+      z: 10000.0
+  max_loaded_chunks: 512
+  max_worldgen_rate: 512
+  max_update_rate: 512
+  world_gen: Normal
+  fixed_center: true
 create_lobby_settings:
-    name: "Standard Open Multiplayer"
-    delta_time: 0.03
-    is_remote: true
-    rollback_buffer_size: 25
-    player_count: 2
-    render_size:
-      x: 32
-      y: 16
-      z: 32
-    game_mode: !Control
-    max_loaded_chunks: 2048
-    max_worldgen_rate: 128
-    max_update_rate: 128
-    world_gen: Control
-    fixed_center: false
+  name: "Standard Open Multiplayer"
+  delta_time: 0.03
+  is_remote: true
+  rollback_buffer_size: 25
+  player_count: 2
+  render_size:
+    x: 32
+    y: 16
+    z: 32
+  game_mode: !Control
+  max_loaded_chunks: 2048
+  max_worldgen_rate: 128
+  max_update_rate: 128
+  world_gen: Control
+  fixed_center: false

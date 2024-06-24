@@ -722,29 +722,10 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                 vertical_centerer(ui, |ui| {
                                     ui.vertical_centered(|ui| {
                                         if ui.button("Singleplayer").clicked() {
-                                            gui_state.menu_stack.pop();
-                                            *game = Some(Game::new(
-                                                settings,
-                                                settings.singleplayer_settings.clone(),
-                                                &gui_state.gui_deck,
-                                                creation_interface,
-                                                None,
-                                            ));
-                                            gui_state.game_just_started = true;
+                                            gui_state.menu_stack.push(GuiElement::SingleplayerMenu);
                                         }
                                         if ui.button("Multiplayer").clicked() {
                                             gui_state.menu_stack.push(GuiElement::MultiplayerMenu);
-                                        }
-                                        if ui.button("Practice Range").clicked() {
-                                            gui_state.menu_stack.pop();
-                                            *game = Some(Game::new(
-                                                settings,
-                                                settings.practice_range_settings.clone(),
-                                                &gui_state.gui_deck,
-                                                creation_interface,
-                                                None,
-                                            ));
-                                            gui_state.game_just_started = true;
                                         }
                                         if ui.button("Play Replay").clicked() {
                                             let mut replay_folder_path =
@@ -770,6 +751,44 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                         }
                                         if ui.button("Exit to Desktop").clicked() {
                                             gui_state.should_exit = true;
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                }
+                Some(&GuiElement::SingleplayerMenu) => {
+                    egui::Area::new("singleplayer menu")
+                        .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
+                        .show(&ctx, |ui| {
+                            let menu_size = Rect::from_center_size(
+                                ui.available_rect_before_wrap().center(),
+                                ui.available_rect_before_wrap().size(),
+                            );
+
+                            ui.allocate_ui_at_rect(menu_size, |ui| {
+                                ui.painter().rect_filled(
+                                    ui.available_rect_before_wrap(),
+                                    0.0,
+                                    Color32::BLACK,
+                                );
+                                vertical_centerer(ui, |ui| {
+                                    ui.vertical_centered(|ui| {
+                                        for preset in settings.preset_settings.iter() {
+                                            if ui.button(&preset.name).clicked() {
+                                                gui_state.menu_stack.clear();
+                                                *game = Some(Game::new(
+                                                    settings,
+                                                    preset.clone(),
+                                                    &gui_state.gui_deck,
+                                                    creation_interface,
+                                                    None,
+                                                ));
+                                                gui_state.game_just_started = true;
+                                            }
+                                        }
+                                        if ui.button("Back").clicked() {
+                                            gui_state.menu_stack.pop();
                                         }
                                     });
                                 });
