@@ -2,7 +2,7 @@ use cgmath::Point3;
 use egui_winit_vulkano::egui::Ui;
 use voxel_shared::GameModeSettings;
 
-use crate::{game_manager::Game, gui::EditMode, rollback_manager::{Entity, PlayerSim}, RESPAWN_TIME};
+use crate::{game_manager::Game, gui::EditMode, rollback_manager::{Entity, PlayerSim}, voxel_sim_manager::Projectile, RESPAWN_TIME};
 
 pub trait GameMode {
     fn are_friends(&self, player1: u32, player2: u32, entities: &Vec<Entity>) -> bool;
@@ -13,6 +13,7 @@ pub trait GameMode {
     fn has_mode_gui(&self) -> bool { false }
     fn mode_gui(&mut self, ui: &mut Ui, sim: &mut Box<dyn PlayerSim>) {}
     fn send_action(&self, player_idx: usize, action: String, entities: &mut Vec<Entity>) {}
+    fn update(&mut self, entities: &mut Vec<Entity>, projectiles: &mut Vec<Projectile>, delta_time: f32) {}
 }
 
 struct PracticeRangeMode {
@@ -172,5 +173,44 @@ impl GameMode for ControlMode {
         if ui.button("Switch to Team 2").clicked() {
             sim.send_gamemode_packet("2".to_string());
         };
+    }
+
+    
+    fn update(&mut self, entities: &mut Vec<Entity>, projectiles: &mut Vec<Projectile>, delta_time: f32) {
+        for entity in entities.iter_mut() {
+            let entity_team = entity.gamemode_data.get(0).unwrap_or(&0);
+            match entity_team {
+                1 => {
+                    if entity.pos.x - 10000.0 < -SPAWN_ROOM_OFFSET as f32 {
+                        entity.adjust_health(25.0 * delta_time);
+                    }
+                }
+                2 => {
+                    if entity.pos.x - 10000.0 > SPAWN_ROOM_OFFSET as f32 {
+                        entity.adjust_health(25.0 * delta_time);
+                    }
+                }
+                _ => {}
+            }
+            if entity.pos.y < 1800.0-14.0 {
+                entity.adjust_health(-50.0 * delta_time);
+            }
+        }
+        for proj in projectiles.iter_mut() {
+            let entity_team = entities.get(proj.owner as usize).unwrap().gamemode_data.get(0).unwrap_or(&0);
+            match entity_team {
+                1 => {
+                    if proj.pos[0] - 10000.0 > SPAWN_ROOM_OFFSET as f32 {
+                        proj.health = 0.0;
+                    }
+                }
+                2 => {
+                    if proj.pos[0] - 10000.0 < -SPAWN_ROOM_OFFSET as f32 {
+                        proj.health = 0.0;
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 }

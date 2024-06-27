@@ -508,7 +508,7 @@ fn compute_then_render(
                     &mut game.voxel_compute,
                     &game.game_state,
                     &game.game_settings,
-                    &game.game_mode,
+                    &mut game.game_mode,
                 );
                 game.rollback_data.step_visuals(
                     &mut game.card_manager,

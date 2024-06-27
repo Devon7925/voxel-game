@@ -51,7 +51,7 @@ pub trait PlayerSim {
         voxel_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
-        game_mode: &Box<dyn GameMode>,
+        game_mode: &mut Box<dyn GameMode>,
     );
     fn step_visuals(
         &mut self,
@@ -371,7 +371,7 @@ impl PlayerSim for RollbackData {
         vox_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
-        game_mode: &Box<dyn GameMode>,
+        game_mode: &mut Box<dyn GameMode>,
     ) {
         let rollback_actions: Vec<Action> = self
             .entity_metadata
@@ -423,6 +423,7 @@ impl PlayerSim for RollbackData {
             game_settings,
             game_mode,
         );
+        game_mode.update(&mut self.rollback_state.players, &mut self.rollback_state.projectiles, self.delta_time);
         if leaving_players.len() > 0 {
             for player_idx in leaving_players.iter() {
                 self.rollback_state.players.remove(*player_idx);
@@ -1121,7 +1122,7 @@ impl PlayerSim for ReplayData {
         voxel_compute: &mut VoxelComputePipeline,
         game_state: &GameState,
         game_settings: &GameSettings,
-        game_mode: &Box<dyn GameMode>,
+        game_mode: &mut Box<dyn GameMode>,
     ) {
         if self.actions.is_empty() {
             return;
@@ -1159,6 +1160,7 @@ impl PlayerSim for ReplayData {
             game_settings,
             game_mode,
         );
+        game_mode.update(&mut self.state.players, &mut self.state.projectiles, self.delta_time);
         if leaving_players.len() > 0 {
             for player_idx in leaving_players.iter() {
                 self.state.players.remove(*player_idx);
@@ -2885,7 +2887,7 @@ impl Entity {
         true
     }
 
-    fn adjust_health(&mut self, adjustment: f32) {
+    pub fn adjust_health(&mut self, adjustment: f32) {
         if adjustment > 0.0 {
             let mut healing_left = adjustment;
             let mut health_idx = 0;
