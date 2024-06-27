@@ -59,6 +59,9 @@ void main() {
     uint projectile_idx = gl_WorkGroupSize.x * gl_WorkGroupID.x + gl_LocalInvocationID.x;
     if (projectile_idx >= sim_data.projectile_count) return;
     Projectile projectile = projectiles[projectile_idx];
+    if (projectile.should_collide_with_terrain != 1) {
+        return;
+    }
 
     ivec3 grid_iteration_count = ivec3(ceil(2.0 * projectile.size * sqrt(2.0)));
     grid_iteration_count.z = int(ceil((2.0 * projectile.size.z + sim_data.dt * projectile.vel) * sqrt(2.0)));

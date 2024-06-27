@@ -17,7 +17,9 @@ struct Projectile {
     float damage;
     uint proj_card_idx;
     uint wall_bounce;
-    float _filler3;
+    uint is_from_head;
+    uint should_collide_with_terrain;
+    uvec3 _filler;
 };
 
 struct Player {

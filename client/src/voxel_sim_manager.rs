@@ -65,6 +65,10 @@ pub struct Projectile {
     pub proj_card_idx: u32,
     pub wall_bounce: u32,
     pub is_from_head: u32,
+    pub should_collide_with_terrain: u32,
+    pub _filler0: u32,
+    pub _filler1: u32,
+    pub _filler2: u32,
 }
 
 /// Pipeline holding double buffered grid & color image. Grids are used to calculate the state, and

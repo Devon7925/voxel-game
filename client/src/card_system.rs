@@ -2328,6 +2328,7 @@ impl CardManager {
             } => {
                 let proj_stats = self.get_referenced_proj(card_idx);
                 let proj_damage = proj_stats.damage as f32;
+                let should_collide_with_terrain = !proj_stats.lock_owner || !proj_stats.on_hit.is_empty() || !proj_stats.on_headshot.is_empty();
                 projectiles.push(Projectile {
                     pos: [pos.x, pos.y, pos.z, 1.0],
                     chunk_update_pos: [0, 0, 0, 0],
@@ -2341,6 +2342,10 @@ impl CardManager {
                     proj_card_idx: card_idx as u32,
                     wall_bounce: if proj_stats.wall_bounce { 1 } else { 0 },
                     is_from_head: if is_from_head { 1 } else { 0 },
+                    should_collide_with_terrain: if should_collide_with_terrain { 1 } else { 0 },
+                    _filler0: 0,
+                    _filler1: 0,
+                    _filler2: 0,
                 });
             }
             ReferencedBaseCard {
