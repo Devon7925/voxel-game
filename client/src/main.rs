@@ -516,6 +516,7 @@ fn compute_then_render(
                     &game.game_state,
                     &game.game_settings,
                     &game.game_mode,
+                    gui_state.menu_stack.is_empty(),
                 );
 
                 game.game_state.players_center = game
@@ -574,6 +575,7 @@ fn compute_then_render(
                     &game.game_state,
                     &game.game_settings,
                     &game.game_mode,
+                    !gui_state.menu_stack.is_empty(),
                 );
                 future.boxed()
             }

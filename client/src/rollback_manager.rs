@@ -60,6 +60,7 @@ pub trait PlayerSim {
         game_state: &GameState,
         game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
+        allow_player_action: bool,
     );
 
     fn download_projectiles(
@@ -453,6 +454,7 @@ impl PlayerSim for RollbackData {
         game_state: &GameState,
         game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
+        allow_player_action: bool,
     ) {
         let on_ground = self
             .get_spectate_player()
@@ -462,11 +464,25 @@ impl PlayerSim for RollbackData {
             cd.iter_mut()
                 .for_each(|ability| ability.update_on_ground(on_ground))
         });
-        self.player_action.activate_ability = self
-            .controls
-            .iter()
-            .map(|cd| cd.iter().map(|ability| ability.get_state()).collect())
-            .collect();
+        if allow_player_action {
+            self.player_action.activate_ability = self
+                .controls
+                .iter()
+                .map(|cd| cd.iter().map(|ability| ability.get_state()).collect())
+                .collect();
+        } else {
+            self.player_action.activate_ability = self
+                .controls
+                .iter()
+                .map(|cd| cd.iter().map(|_| false).collect())
+                .collect();
+            self.player_action.backward = false;
+            self.player_action.forward = false;
+            self.player_action.left = false;
+            self.player_action.right = false;
+            self.player_action.jump = false;
+            self.player_action.crouch = false;
+        }
         self.send_action(
             Action {
                 primary_action: Some(self.player_action.clone()),
@@ -740,18 +756,16 @@ impl PlayerSim for RollbackData {
                         }
                     };
                 }
-                if gui_state.menu_stack.len() == 0 {
-                    mouse_match!(jump);
-                    mouse_match!(crouch);
-                    mouse_match!(right);
-                    mouse_match!(left);
-                    mouse_match!(forward);
-                    mouse_match!(backward);
-                    for cooldown in self.controls.iter_mut() {
-                        for ability in cooldown.iter_mut() {
-                            ability
-                                .update(&Control::Mouse(*button), state == &ElementState::Pressed);
-                        }
+                mouse_match!(jump);
+                mouse_match!(crouch);
+                mouse_match!(right);
+                mouse_match!(left);
+                mouse_match!(forward);
+                mouse_match!(backward);
+                for cooldown in self.controls.iter_mut() {
+                    for ability in cooldown.iter_mut() {
+                        ability
+                            .update(&Control::Mouse(*button), state == &ElementState::Pressed);
                     }
                 }
             }
@@ -767,20 +781,18 @@ impl PlayerSim for RollbackData {
                             }
                         };
                     }
-                    if gui_state.menu_stack.len() == 0 {
-                        key_match!(jump);
-                        key_match!(crouch);
-                        key_match!(right);
-                        key_match!(left);
-                        key_match!(forward);
-                        key_match!(backward);
-                        for cooldown in self.controls.iter_mut() {
-                            for ability in cooldown.iter_mut() {
-                                ability.update(
-                                    &Control::Key(key),
-                                    input.state == ElementState::Pressed,
-                                );
-                            }
+                    key_match!(jump);
+                    key_match!(crouch);
+                    key_match!(right);
+                    key_match!(left);
+                    key_match!(forward);
+                    key_match!(backward);
+                    for cooldown in self.controls.iter_mut() {
+                        for ability in cooldown.iter_mut() {
+                            ability.update(
+                                &Control::Key(key),
+                                input.state == ElementState::Pressed,
+                            );
                         }
                     }
                     match key {
@@ -1180,6 +1192,7 @@ impl PlayerSim for ReplayData {
         _game_state: &GameState,
         _game_settings: &GameSettings,
         _game_mode: &Box<dyn GameMode>,
+        _allow_player_action: bool,
     ) {
         puffin::profile_function!();
         //send projectiles
