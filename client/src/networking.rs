@@ -6,7 +6,7 @@ use std::str;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-use crate::{card_system::{Cooldown, Deck}, rollback_manager::PlayerAction, settings_manager::Settings};
+use crate::{card_system::Deck, rollback_manager::PlayerAction, settings_manager::Settings};
 use voxel_shared::{GameSettings, RoomId};
 
 #[derive(Debug)]
@@ -22,6 +22,7 @@ pub enum NetworkPacket {
     Action(u64, PlayerAction),
     DeckUpdate(u64, Deck),
     Leave(u64),
+    GamemodePacket(u64, String),
 }
 
 impl NetworkConnection {

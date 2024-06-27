@@ -821,6 +821,13 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                     if ui.button("Card Editor").clicked() {
                                         gui_state.menu_stack.push(GuiElement::CardEditor);
                                     }
+                                    if let Some(game) = game {
+                                        if game.game_mode.has_mode_gui() {
+                                            if ui.button("Mode configuration").clicked() {
+                                                gui_state.menu_stack.push(GuiElement::ModeGui);
+                                            }
+                                        }
+                                    }
                                     if ui.button("Leave Game").clicked() {
                                         if let Some(game) = game {
                                             game.rollback_data.leave_game();
@@ -1068,6 +1075,35 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                                 game.rollback_data.player_count(),
                                                 game.game_settings.player_count
                                             ));
+                                        }
+                                        if ui.button("Back").clicked() {
+                                            gui_state.menu_stack.pop();
+                                            *game = None;
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                }
+                Some(&GuiElement::ModeGui) => {
+                    egui::Area::new("mode gui")
+                        .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
+                        .show(&ctx, |ui| {
+                            let menu_size = Rect::from_center_size(
+                                ui.available_rect_before_wrap().center(),
+                                ui.available_rect_before_wrap().size(),
+                            );
+
+                            ui.allocate_ui_at_rect(menu_size, |ui| {
+                                ui.painter().rect_filled(
+                                    ui.available_rect_before_wrap(),
+                                    0.0,
+                                    Color32::BLACK,
+                                );
+                                vertical_centerer(ui, |ui| {
+                                    ui.vertical_centered(|ui| {
+                                        if let Some(game) = game {
+                                            game.game_mode.mode_gui(ui, &mut game.rollback_data);
                                         }
                                         if ui.button("Back").clicked() {
                                             gui_state.menu_stack.pop();

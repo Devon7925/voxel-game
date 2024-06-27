@@ -41,7 +41,20 @@ preset_settings:
   max_worldgen_rate: 128
   max_update_rate: 128
   world_gen: Normal
-  fixed_center: false
+- name: "Control Test"
+  delta_time: 0.02
+  is_remote: false
+  rollback_buffer_size: 2
+  player_count: 1
+  render_size:
+    x: 32
+    y: 8
+    z: 16
+  game_mode: !Control
+  max_loaded_chunks: 8192
+  max_worldgen_rate: 128
+  max_update_rate: 128
+  world_gen: Control
 - name: "Practice Range"
   delta_time: 0.02
   is_remote: false
@@ -60,7 +73,6 @@ preset_settings:
   max_worldgen_rate: 512
   max_update_rate: 512
   world_gen: Normal
-  fixed_center: true
 create_lobby_settings:
   name: "Standard Open Multiplayer"
   delta_time: 0.03

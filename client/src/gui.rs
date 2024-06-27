@@ -40,6 +40,7 @@ pub enum GuiElement {
     LobbyBrowser,
     LobbyQueue,
     SingleplayerMenu,
+    ModeGui,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]

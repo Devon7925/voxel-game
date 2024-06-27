@@ -26,7 +26,7 @@ use crate::{
         BaseCard, CardManager, Deck, DirectionCard, ReferencedCooldown, ReferencedEffect,
         ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType,
         StateKeybind, StatusEffect, VoxelMaterial,
-    }, game_manager::GameState, game_modes::GameMode, gui::{GuiElement, GuiState}, networking::{NetworkConnection, NetworkPacket}, settings_manager::{Control, Settings}, voxel_sim_manager::{Projectile, VoxelComputePipeline}, WindowProperties, CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE
+    }, game_manager::GameState, game_modes::GameMode, gui::{GuiElement, GuiState}, networking::{NetworkConnection, NetworkPacket}, settings_manager::{Control, Settings}, voxel_sim_manager::{Projectile, VoxelComputePipeline}, WindowProperties, CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RESPAWN_TIME
 };
 use voxel_shared::{GameModeSettings, GameSettings, RoomId};
 
@@ -83,6 +83,7 @@ pub trait PlayerSim {
     fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]>;
 
     fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager, game_mode: &Box<dyn GameMode>);
+    fn send_gamemode_packet(&mut self, packet: String);
 
     fn process_event(
         &mut self,
@@ -199,6 +200,7 @@ pub struct PlayerAction {
 pub struct MetaAction {
     pub deck_update: Option<Deck>,
     pub leave: Option<bool>,
+    pub gamemode_action: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -221,6 +223,7 @@ pub struct Entity {
     pub player_piercing_invincibility: f32,
     pub hitmarker: (f32, f32),
     pub hurtmarkers: Vec<(Vector3<f32>, f32, f32)>,
+    pub gamemode_data: Vec<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -286,6 +289,7 @@ impl Default for MetaAction {
         MetaAction {
             deck_update: None,
             leave: None,
+            gamemode_action: None,
         }
     }
 }
@@ -314,6 +318,7 @@ impl Default for Entity {
             player_piercing_invincibility: 0.0,
             hitmarker: (0.0, 0.0),
             hurtmarkers: Vec::new(),
+            gamemode_data: Vec::new(),
         }
     }
 }
@@ -388,7 +393,7 @@ impl PlayerSim for RollbackData {
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
                 if let Some(MetaAction {
-                    deck_update, leave, ..
+                    deck_update, leave, gamemode_action
                 }) = meta_action
                 {
                     if let Some(new_deck) = deck_update {
@@ -400,6 +405,9 @@ impl PlayerSim for RollbackData {
                     if let Some(true) = leave {
                         println!("player {} left", player_idx);
                         leaving_players.push(player_idx);
+                    }
+                    if let Some(game_mode_action) = gamemode_action {
+                        game_mode.send_action(player_idx, game_mode_action.clone(), &mut self.rollback_state.players);
                     }
                 }
             }
@@ -620,10 +628,8 @@ impl PlayerSim for RollbackData {
                     self.player_idx_map
                         .insert(peer, self.rollback_state.players.len());
 
-                    let mut new_player = Entity {
-                        pos: game_mode.spawn_location(self.rollback_state.players.len()),
-                        ..Default::default()
-                    };
+                    let mut new_player = Entity::default();
+                    new_player.pos = game_mode.spawn_location(&new_player);
                     (new_player.abilities, new_player.passive_abilities) =
                         abilities_from_cooldowns(&cards, card_manager);
 
@@ -654,7 +660,38 @@ impl PlayerSim for RollbackData {
                         time,
                     );
                 }
+                NetworkPacket::GamemodePacket(time, packet) => {
+                    self.send_action(
+                        Action {
+                            primary_action: None,
+                            meta_action: Some(MetaAction {
+                                gamemode_action: Some(packet),
+                                ..Default::default()
+                            }),
+                        },
+                        player_idx.unwrap().clone(),
+                        time,
+                    );
+                }
             }
+        }
+    }
+
+    
+    fn send_gamemode_packet(&mut self, packet: String) {
+        self.send_action(
+            Action {
+                primary_action: None,
+                meta_action: Some(MetaAction {
+                    gamemode_action: Some(packet.clone()),
+                    ..Default::default()
+                }),
+            },
+            0,
+            self.current_time,
+        );
+        if let Some(network_connection) = self.network_connection.as_mut() {
+            network_connection.queue_packet(NetworkPacket::GamemodePacket(self.current_time, packet));
         }
     }
 
@@ -936,10 +973,8 @@ impl RollbackData {
         let mut rollback_state = WorldState::new();
         let mut entity_metadata = Vec::new();
 
-        let mut first_player = Entity {
-            pos: game_mode.spawn_location(0),
-            ..Default::default()
-        };
+        let mut first_player = Entity::default();
+        first_player.pos = game_mode.spawn_location(&first_player);
         (first_player.abilities, first_player.passive_abilities) =
             abilities_from_cooldowns(deck, card_manager);
         rollback_state.players.push(first_player.clone());
@@ -1067,6 +1102,9 @@ impl RollbackData {
             }
             if let Some(leave) = new_meta_action.leave {
                 action.meta_action.as_mut().unwrap().leave = Some(leave);
+            }
+            if let Some(gamemode_action) = new_meta_action.gamemode_action {
+                action.meta_action.as_mut().unwrap().gamemode_action = Some(gamemode_action);
             }
         }
     }
@@ -1219,6 +1257,7 @@ impl PlayerSim for ReplayData {
     }
 
     fn network_update(&mut self, _settings: &GameSettings, _card_manager: &mut CardManager, _game_mode: &Box<dyn GameMode>) {}
+    fn send_gamemode_packet(&mut self, _packet: String) {}
 
     fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
         self.player_buffer.clone()
@@ -1313,10 +1352,8 @@ impl ReplayData {
             } else if let Some(deck_string) = line.strip_prefix("PLAYER DECK ") {
                 let deck: Deck = ron::de::from_str(deck_string).unwrap();
 
-                let mut new_player = Entity {
-                    pos: game_mode.spawn_location(0),
-                    ..Default::default()
-                };
+                let mut new_player = Entity::default();
+                new_player.pos = game_mode.spawn_location(&new_player);
                 (new_player.abilities, new_player.passive_abilities) =
                     abilities_from_cooldowns(&deck, card_manager);
                 state.players.push(new_player);
@@ -1446,7 +1483,7 @@ impl WorldState {
             proj.simple_step(&self.players, card_manager, time_step, &mut new_effects)
         });
 
-        let collision_pairs = self.get_collision_pairs(card_manager, time_step);
+        let collision_pairs = self.get_collision_pairs(card_manager, time_step, game_mode);
 
         for (i, j) in collision_pairs.iter() {
             let damage_1 = self.projectiles.get(*i).unwrap().damage;
@@ -1522,31 +1559,66 @@ impl WorldState {
             }
         }
 
-        for (player_idx, player) in self.players.iter_mut().enumerate() {
-            if player.respawn_timer > 0.0 || player_stats[player_idx].invincible {
-                continue;
-            }
+        let proj_collisions = self.get_player_proj_collisions(&player_stats, card_manager, game_mode, time_step);
 
-            // check piercing invincibility at start to prevent order from mattering
-            let player_piercing_invincibility = player.player_piercing_invincibility > 0.0;
-            let mut proj_collisions = Vec::new();
-            // check for collision with projectiles
-            for (proj_idx, proj) in self.projectiles.iter_mut().enumerate() {
-                if player_idx as u32 == proj.owner && proj.lifetime < 1.0 && proj.is_from_head == 1
-                {
-                    continue;
-                }
+        proj_collisions
+            .iter()
+            .filter(|(_, proj_idx, damage_source_location, collision)| {
+                let vec_start = damage_source_location.to_vec();
+                let vec_end = collision.offset;
+                self.projectiles
+                    .iter()
+                    .enumerate()
+                    .filter(|(idx, _)| {
+                        collision_pairs.contains(&(*proj_idx.min(idx), *proj_idx.max(idx)))
+                    })
+                    .all(|(_, proj2)| {
+                        let mut adj_vec_start = vec_start;
+                        let mut adj_vec_end = vec_end;
+                        adj_vec_start -= Vector3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
+                        adj_vec_end -= Vector3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
+                        let proj2_rot = Quaternion::new(
+                            proj2.dir[3],
+                            proj2.dir[0],
+                            proj2.dir[1],
+                            proj2.dir[2],
+                        );
+                        let proj2_rot_inv = proj2_rot.invert();
+                        adj_vec_start = proj2_rot_inv.rotate_vector(adj_vec_start);
+                        adj_vec_end = proj2_rot_inv.rotate_vector(adj_vec_end);
+                        adj_vec_start.div_assign_element_wise(Vector3::new(
+                            proj2.size[0],
+                            proj2.size[1],
+                            proj2.size[2],
+                        ));
+                        adj_vec_end.div_assign_element_wise(Vector3::new(
+                            proj2.size[0],
+                            proj2.size[1],
+                            proj2.size[2],
+                        ));
+
+                        let vec_dir = adj_vec_end - adj_vec_start;
+                        let (t_min, t_max) = (0..3)
+                            .map(|i| {
+                                (
+                                    (-1.0 - adj_vec_start[i]) / vec_dir[i],
+                                    (1.0 - adj_vec_start[i]) / vec_dir[i],
+                                )
+                            })
+                            .map(|t| (t.0.min(t.1), t.0.max(t.1)))
+                            .reduce(|(t_min1, t_max1), (t_min2, t_max2)| {
+                                (t_min1.max(t_min2), t_max1.min(t_max2))
+                            })
+                            .unwrap();
+                        !(t_min < 1.0 && t_max > 0.0 && t_min < t_max)
+                    })
+            })
+            .collect_vec()
+            .iter()
+            .for_each(|(player_idx, proj_idx, _, collision)| {
+                let player = self.players.get_mut(*player_idx).unwrap();
+                let proj = self.projectiles.get_mut(*proj_idx).unwrap();
                 let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
-
-                if proj_card.no_friendly_fire && proj.owner == player_idx as u32 {
-                    continue;
-                }
-                if proj_card.no_enemy_fire && proj.owner != player_idx as u32 {
-                    continue;
-                }
-                if player_piercing_invincibility && proj_card.pierce_players {
-                    continue;
-                }
 
                 let projectile_rot =
                     Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
@@ -1556,172 +1628,65 @@ impl WorldState {
                     projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
                 ];
                 let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
-                let adjusted_projectile_size = if proj_card.lock_owner {
-                    Vector3::new(proj.size[0], proj.size[1], proj.size[2])
+
+                if !proj_card.pierce_players {
+                    proj.health = 0.0;
                 } else {
-                    Vector3::new(
-                        proj.size[0],
-                        proj.size[1],
-                        proj.size[2] + proj.vel * time_step / 2.0,
-                    )
-                };
-                let mut collision: Option<Hitsphere> = None;
-                'outer: for hitsphere in Entity::HITSPHERES.iter().map(|x| Hitsphere {
-                    offset: (player.pos + x.offset * player.size).to_vec(),
-                    radius: x.radius * player.size,
-                    headshot: x.headshot,
-                }) {
-                    if let Some(prev_collision) = collision.as_ref() {
-                        if (projectile_pos - hitsphere.offset).to_vec().magnitude()
-                            > (projectile_pos - prev_collision.offset)
-                                .to_vec()
-                                .magnitude()
-                        {
-                            continue 'outer;
-                        }
-                    }
-                    for i in 0..3 {
-                        if (hitsphere.offset.dot(projectile_vectors[i])
-                            - projectile_pos.dot(projectile_vectors[i]))
-                        .abs()
-                            > adjusted_projectile_size[i] + hitsphere.radius
-                        {
-                            continue 'outer;
-                        }
-                    }
-                    collision = Some(hitsphere.clone());
+                    player.player_piercing_invincibility = 0.3;
                 }
-                if let Some(collision) = collision {
-                    proj_collisions.push((proj_idx, projectile_pos, collision));
+                let mut hit_cards = card_manager
+                    .get_referenced_proj(proj.proj_card_idx as usize)
+                    .on_hit
+                    .iter()
+                    .map(|x| (x.clone(), false))
+                    .collect::<Vec<_>>();
+                if collision.headshot {
+                    hit_cards.extend(
+                        card_manager
+                            .get_referenced_proj(proj.proj_card_idx as usize)
+                            .on_headshot
+                            .iter()
+                            .map(|x| (x.clone(), true)),
+                    );
                 }
-            }
-
-            proj_collisions
-                .iter()
-                .filter(|(proj_idx, damage_source_location, collision)| {
-                    let vec_start = damage_source_location.to_vec();
-                    let vec_end = collision.offset;
-                    self.projectiles
-                        .iter()
-                        .enumerate()
-                        .filter(|(idx, _)| {
-                            collision_pairs.contains(&(*proj_idx.min(idx), *proj_idx.max(idx)))
-                        })
-                        .all(|(_, proj2)| {
-                            let mut adj_vec_start = vec_start;
-                            let mut adj_vec_end = vec_end;
-                            adj_vec_start -= Vector3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
-                            adj_vec_end -= Vector3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
-                            let proj2_rot = Quaternion::new(
-                                proj2.dir[3],
-                                proj2.dir[0],
-                                proj2.dir[1],
-                                proj2.dir[2],
-                            );
-                            let proj2_rot_inv = proj2_rot.invert();
-                            adj_vec_start = proj2_rot_inv.rotate_vector(adj_vec_start);
-                            adj_vec_end = proj2_rot_inv.rotate_vector(adj_vec_end);
-                            adj_vec_start.div_assign_element_wise(Vector3::new(
-                                proj2.size[0],
-                                proj2.size[1],
-                                proj2.size[2],
-                            ));
-                            adj_vec_end.div_assign_element_wise(Vector3::new(
-                                proj2.size[0],
-                                proj2.size[1],
-                                proj2.size[2],
-                            ));
-
-                            let vec_dir = adj_vec_end - adj_vec_start;
-                            let (t_min, t_max) = (0..3)
-                                .map(|i| {
-                                    (
-                                        (-1.0 - adj_vec_start[i]) / vec_dir[i],
-                                        (1.0 - adj_vec_start[i]) / vec_dir[i],
-                                    )
-                                })
-                                .map(|t| (t.0.min(t.1), t.0.max(t.1)))
-                                .reduce(|(t_min1, t_max1), (t_min2, t_max2)| {
-                                    (t_min1.max(t_min2), t_max1.min(t_max2))
-                                })
-                                .unwrap();
-                            !(t_min < 1.0 && t_max > 0.0 && t_min < t_max)
-                        })
-                })
-                .collect_vec()
-                .iter()
-                .for_each(|(proj_idx, _, collision)| {
-                    let proj = self.projectiles.get_mut(*proj_idx).unwrap();
-                    let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
-
-                    let projectile_rot =
-                        Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
-                    let projectile_vectors = [
-                        projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0)),
-                        projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0)),
-                        projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
-                    ];
-                    let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
-
-                    if !proj_card.pierce_players {
-                        proj.health = 0.0;
-                    } else {
-                        player.player_piercing_invincibility = 0.3;
-                    }
-                    let mut hit_cards = card_manager
-                        .get_referenced_proj(proj.proj_card_idx as usize)
-                        .on_hit
-                        .iter()
-                        .map(|x| (x.clone(), false))
-                        .collect::<Vec<_>>();
-                    if collision.headshot {
-                        hit_cards.extend(
-                            card_manager
-                                .get_referenced_proj(proj.proj_card_idx as usize)
-                                .on_headshot
-                                .iter()
-                                .map(|x| (x.clone(), true)),
+                for (card_ref, was_headshot) in hit_cards {
+                    let proj_rot = proj.dir;
+                    let proj_rot =
+                        Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
+                    let (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) =
+                        card_manager.get_effects_from_base_card(
+                            card_ref,
+                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                            &proj_rot,
+                            proj.owner,
+                            false,
                         );
+                    new_effects.new_projectiles.extend(on_hit_projectiles);
+                    for (pos, material) in on_hit_voxels {
+                        new_effects
+                            .voxels_to_write
+                            .push((pos, material.to_memory()));
                     }
-                    for (card_ref, was_headshot) in hit_cards {
-                        let proj_rot = proj.dir;
-                        let proj_rot =
-                            Quaternion::new(proj_rot[3], proj_rot[0], proj_rot[1], proj_rot[2]);
-                        let (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) =
-                            card_manager.get_effects_from_base_card(
-                                card_ref,
-                                &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
-                                &proj_rot,
-                                proj.owner,
-                                false,
-                            );
-                        new_effects.new_projectiles.extend(on_hit_projectiles);
-                        for (pos, material) in on_hit_voxels {
-                            new_effects
-                                .voxels_to_write
-                                .push((pos, material.to_memory()));
-                        }
-                        for effect in effects {
-                            new_effects.new_effects.push((
-                                player_idx,
-                                proj.owner as usize,
-                                was_headshot,
-                                Point3::from_vec(collision.offset),
-                                ((collision.offset - projectile_pos.to_vec()).normalize()
-                                    + projectile_vectors[2] * proj.vel)
-                                    .normalize(),
-                                effect,
-                            ));
-                        }
-                        for status_effects in status_effects {
-                            new_effects
-                                .new_status_effects
-                                .push((player_idx, status_effects));
-                        }
-                        new_effects.step_triggers.extend(triggers);
+                    for effect in effects {
+                        new_effects.new_effects.push((
+                            *player_idx,
+                            proj.owner as usize,
+                            was_headshot,
+                            Point3::from_vec(collision.offset),
+                            ((collision.offset - projectile_pos.to_vec()).normalize()
+                                + projectile_vectors[2] * proj.vel)
+                                .normalize(),
+                            effect,
+                        ));
                     }
-                });
-        }
+                    for status_effects in status_effects {
+                        new_effects
+                            .new_status_effects
+                            .push((*player_idx, status_effects));
+                    }
+                    new_effects.step_triggers.extend(triggers);
+                }
+            });
 
         let mut player_player_collision_pairs: Vec<(usize, usize)> = vec![];
         for i in 0..self.players.len() {
@@ -1730,7 +1695,7 @@ impl WorldState {
                 continue;
             }
             for j in 0..self.players.len() {
-                if i == j {
+                if game_mode.are_friends(i as u32, j as u32, &self.players) {
                     continue;
                 }
                 let player2 = self.players.get(j).unwrap();
@@ -1816,7 +1781,7 @@ impl WorldState {
 
         for player in self.players.iter_mut() {
             if player.get_health_stats().0 <= 0.0 && player.respawn_timer <= 0.0 {
-                player.respawn_timer = 5.0;
+                player.respawn_timer = RESPAWN_TIME;
             }
         }
 
@@ -1945,6 +1910,84 @@ impl WorldState {
         }
     }
 
+    fn get_player_proj_collisions(&self, player_stats: &Vec<PlayerEffectStats>, card_manager: &CardManager, game_mode: &Box<dyn GameMode>, time_step: f32) -> Vec<(usize, usize, Point3<f32>, Hitsphere)> {
+        let mut proj_collisions = Vec::new();
+        for (player_idx, player) in self.players.iter().enumerate() {
+            if player.respawn_timer > 0.0 || player_stats[player_idx].invincible {
+                continue;
+            }
+    
+            // check piercing invincibility at start to prevent order from mattering
+            let player_piercing_invincibility = player.player_piercing_invincibility > 0.0;
+            // check for collision with projectiles
+            for (proj_idx, proj) in self.projectiles.iter().enumerate() {
+                if player_idx as u32 == proj.owner && proj.lifetime < 1.0 && proj.is_from_head == 1
+                {
+                    continue;
+                }
+                let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
+    
+                if proj_card.no_friendly_fire && game_mode.are_friends(proj.owner, player_idx as u32, &self.players) {
+                    continue;
+                }
+                if proj_card.no_enemy_fire && proj.owner != player_idx as u32 {
+                    continue;
+                }
+                if player_piercing_invincibility && proj_card.pierce_players {
+                    continue;
+                }
+    
+                let projectile_rot =
+                    Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
+                let projectile_vectors = [
+                    projectile_rot.rotate_vector(Vector3::new(1.0, 0.0, 0.0)),
+                    projectile_rot.rotate_vector(Vector3::new(0.0, 1.0, 0.0)),
+                    projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
+                ];
+                let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
+                let adjusted_projectile_size = if proj_card.lock_owner {
+                    Vector3::new(proj.size[0], proj.size[1], proj.size[2])
+                } else {
+                    Vector3::new(
+                        proj.size[0],
+                        proj.size[1],
+                        proj.size[2] + proj.vel * time_step / 2.0,
+                    )
+                };
+                let mut collision: Option<Hitsphere> = None;
+                'outer: for hitsphere in Entity::HITSPHERES.iter().map(|x| Hitsphere {
+                    offset: (player.pos + x.offset * player.size).to_vec(),
+                    radius: x.radius * player.size,
+                    headshot: x.headshot,
+                }) {
+                    if let Some(prev_collision) = collision.as_ref() {
+                        if (projectile_pos - hitsphere.offset).to_vec().magnitude()
+                            > (projectile_pos - prev_collision.offset)
+                                .to_vec()
+                                .magnitude()
+                        {
+                            continue 'outer;
+                        }
+                    }
+                    for i in 0..3 {
+                        if (hitsphere.offset.dot(projectile_vectors[i])
+                            - projectile_pos.dot(projectile_vectors[i]))
+                        .abs()
+                            > adjusted_projectile_size[i] + hitsphere.radius
+                        {
+                            continue 'outer;
+                        }
+                    }
+                    collision = Some(hitsphere.clone());
+                }
+                if let Some(collision) = collision {
+                    proj_collisions.push((player_idx, proj_idx, projectile_pos, collision));
+                }
+            }
+        }
+        proj_collisions
+    }
+    
     fn get_player_effect_stats(&self) -> Vec<PlayerEffectStats> {
         self.players
             .iter()
@@ -2053,6 +2096,7 @@ impl WorldState {
         &self,
         card_manager: &CardManager,
         time_step: f32,
+        game_mode: &Box<dyn GameMode>
     ) -> Vec<(usize, usize)> {
         let mut collision_pairs = Vec::new();
         for i in 0..self.projectiles.len() {
@@ -2105,7 +2149,7 @@ impl WorldState {
                 let proj2_card = card_manager.get_referenced_proj(proj2.proj_card_idx as usize);
 
                 if (proj1_card.no_friendly_fire && proj2_card.no_friendly_fire)
-                    && proj1.owner == proj2.owner
+                    && game_mode.are_friends(proj1.owner, proj2.owner, &self.players)
                 {
                     continue;
                 }
@@ -2420,7 +2464,7 @@ impl Entity {
         if self.respawn_timer > 0.0 {
             self.respawn_timer -= time_step;
             if self.respawn_timer <= 0.0 {
-                self.pos = game_mode.spawn_location(player_idx);
+                self.pos = game_mode.spawn_location(&self);
                 self.vel = Vector3::new(0.0, 0.0, 0.0);
                 self.health = vec![HealthSection::Health(100.0, 100.0)];
                 self.status_effects.clear();

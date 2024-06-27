@@ -51,6 +51,7 @@ const MAX_VOXEL_UPDATE_RATE: usize = 1024;
 const MAX_WORLDGEN_RATE: usize = 1024;
 
 const DEFAULT_DELTA_TIME: f32 = 1.0 / 60.0;
+const RESPAWN_TIME: f32 = 5.0;
 
 pub struct WindowProperties {
     pub width: u32,
@@ -190,8 +191,11 @@ fn main() {
                     }
                     gui_state.game_just_started = false;
                     if let Some(game) = app.game.as_mut() {
-                        game.rollback_data
-                            .network_update(&game.game_settings, &mut game.card_manager, &game.game_mode);
+                        game.rollback_data.network_update(
+                            &game.game_settings,
+                            &mut game.card_manager,
+                            &game.game_mode,
+                        );
                         if !game.has_started
                             && game.rollback_data.player_count()
                                 >= game.game_settings.player_count as usize

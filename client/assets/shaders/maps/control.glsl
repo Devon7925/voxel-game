@@ -59,9 +59,9 @@ uint WALL_SEED = 80679522;
 uint PATH_SEED = 35685335;
 
 const int SPAWN_ROOM_OFFSET = 150;
-const vec2 WALL_SCALE = vec2(0.03, 0.03);
-const vec2 PATH_SCALE = vec2(0.03, 0.03);
-const vec2 GAP_SCALE = vec2(0.06, 0.06);
+const float WALL_SCALE = 0.03;
+const float PATH_SCALE = 0.03;
+const float GAP_SCALE = 0.06;
 
 vec2 hash2( vec2 p, uint seed )
 {	
@@ -172,6 +172,10 @@ vec2 blurred_voronoi( in vec2 x, float w, uint seed )
 	return m;
 }
 
+const int SPAWN_HEIGHT = 15;
+const int SPAWN_DEPTH = 15;
+const int SPAWN_WIDTH = 15;
+
 uint get_worldgen(uvec3 global_pos) {
     ivec3 signed_pos = ivec3(global_pos);
     signed_pos.x = abs(signed_pos.x - 10000);
@@ -184,13 +188,16 @@ uint get_worldgen(uvec3 global_pos) {
         }
         return MAT_UNBREAKABLE << 24;
     }
-    if (signed_pos.y == 0 && signed_pos.x + SPAWN_ROOM_OFFSET < 5 && abs(signed_pos.z) < 5) {
-        return MAT_UNBREAKABLE << 24;
-    }
     if (signed_pos.y < -13) {
         return MAT_AIR << 24;
     }
-    if (signed_pos.x > SPAWN_ROOM_OFFSET + 10) {
+    if (signed_pos.x < SPAWN_ROOM_OFFSET + SPAWN_DEPTH-1 && signed_pos.x > SPAWN_ROOM_OFFSET && signed_pos.y < SPAWN_HEIGHT-1 && signed_pos.y > 0 && abs(signed_pos.z) < SPAWN_WIDTH-1) {
+        return MAT_AIR << 24;
+    }
+    if (signed_pos.x < SPAWN_ROOM_OFFSET + SPAWN_DEPTH && signed_pos.x > SPAWN_ROOM_OFFSET && signed_pos.y < SPAWN_HEIGHT && abs(signed_pos.z) < SPAWN_WIDTH) {
+        return MAT_UNBREAKABLE << 24;
+    }
+    if (signed_pos.x > SPAWN_ROOM_OFFSET) {
         return MAT_AIR << 24;
     }
     if (abs(true_pos.z) > 100) {
@@ -200,11 +207,11 @@ uint get_worldgen(uvec3 global_pos) {
     wall_noise.height = 30.0 * wall_noise.height - 15.0;
     wall_noise.nearest_height = 30.0 * wall_noise.nearest_height - 15.0;
     VoronoiResult path_noise = voronoi_edge_dist(PATH_SCALE * true_pos.xz, PATH_SEED);
-    vec2 path_center = path_noise.edge_distance / PATH_SCALE.x * path_noise.edge_dir + true_pos.xz;
+    vec2 path_center = path_noise.edge_distance / PATH_SCALE * path_noise.edge_dir + true_pos.xz;
     vec2 wall_noise_at_path_center = blurred_voronoi(WALL_SCALE * path_center, 0.5, WALL_SEED);
-    vec4 gap_noise = grad_noise(vec3(GAP_SCALE.x * true_pos.x, 0.0, GAP_SCALE.y * true_pos.z));
-    float adj_terrain_height = wall_noise.height;
-    float adj_path_height = wall_noise_at_path_center.y;
+    vec4 gap_noise = grad_noise(vec3(GAP_SCALE * true_pos.x, 0.0, GAP_SCALE * true_pos.z));
+    float adj_terrain_height = wall_noise.height * min(0.1 * length(true_pos - vec3(SPAWN_ROOM_OFFSET, 0.0, 0.0)), 1.0);
+    float adj_path_height = wall_noise_at_path_center.y * min(0.1 * length(true_pos - vec3(SPAWN_ROOM_OFFSET, 0.0, 0.0)), 1.0);
     if (path_noise.edge_distance < 0.1 && adj_path_height >= -13) {
         if (abs(signed_pos.y - adj_path_height) < 0.5) {
             return MAT_UNBREAKABLE << 24;
