@@ -113,7 +113,7 @@ void main() {
             uint top_voxel = pos_data[i][1][k].x;
             if (bottom_voxel == MAT_AIR && top_voxel == MAT_WATER) {
                 pos_data[i][0][k] = uvec2(top_voxel, 0);
-                pos_data[i][1][k] = uvec2(MAT_AIR, 0);
+                pos_data[i][1][k] = uvec2(bottom_voxel, 0);
             }
         }
     }

@@ -689,6 +689,13 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                             });
                     }
 
+                    
+                    egui::Area::new("game overlay")
+                    .anchor(Align2::CENTER_TOP, Vec2::new(0.0, 0.0))
+                    .show(&ctx, |ui| {
+                        game.game_mode.overlay(ui, &game.rollback_data);
+                    });
+
                     egui::Area::new("cooldowns")
                         .anchor(
                             Align2::RIGHT_BOTTOM,

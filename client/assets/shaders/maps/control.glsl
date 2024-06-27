@@ -172,6 +172,12 @@ vec2 blurred_voronoi( in vec2 x, float w, uint seed )
 	return m;
 }
 
+float sdBox( in vec2 p, in vec2 b )
+{
+    vec2 d = abs(p)-b;
+    return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+}
+
 const int SPAWN_HEIGHT = 15;
 const int SPAWN_DEPTH = 15;
 const int SPAWN_WIDTH = 15;
@@ -210,8 +216,9 @@ uint get_worldgen(uvec3 global_pos) {
     vec2 path_center = path_noise.edge_distance / PATH_SCALE * path_noise.edge_dir + true_pos.xz;
     vec2 wall_noise_at_path_center = blurred_voronoi(WALL_SCALE * path_center, 0.5, WALL_SEED);
     vec4 gap_noise = grad_noise(vec3(GAP_SCALE * true_pos.x, 0.0, GAP_SCALE * true_pos.z));
-    float adj_terrain_height = wall_noise.height * min(0.1 * length(true_pos - vec3(SPAWN_ROOM_OFFSET, 0.0, 0.0)), 1.0);
-    float adj_path_height = wall_noise_at_path_center.y * min(0.1 * length(true_pos - vec3(SPAWN_ROOM_OFFSET, 0.0, 0.0)), 1.0);
+    float flattening_factor = min(0.1 * length(true_pos - vec3(SPAWN_ROOM_OFFSET, 0.0, 0.0)), 1.0) * min(0.07 * sdBox(true_pos.xz, vec2(12.0)), 1.0);
+    float adj_terrain_height = wall_noise.height * flattening_factor;
+    float adj_path_height = wall_noise_at_path_center.y * flattening_factor;
     if (path_noise.edge_distance < 0.1 && adj_path_height >= -13) {
         if (abs(signed_pos.y - adj_path_height) < 0.5) {
             return MAT_UNBREAKABLE << 24;
