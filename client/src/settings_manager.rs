@@ -64,7 +64,6 @@ pub struct GraphicsSettings {
     pub primary_ray_dist: u32,
     pub shadow_ray_dist: u32,
     pub reflection_ray_dist: u32,
-    pub transparent_shadow_ray_dist: u32,
     pub ao_ray_dist: u32,
 }
 

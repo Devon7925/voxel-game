@@ -132,7 +132,7 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
+        ), 0.0, 0.0, 1.0, 1.0, vec3(1.0)),
     // STONE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(vec3(2.0), 0.35, 0.1, 0.0, vec3(0.0), vec3(0.25)),
@@ -144,10 +144,10 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
+        ), 0.0, 0.0, 1.0, 1.0, vec3(1.0)),
     // DIRT
     MaterialRenderProps(MaterialNoiseLayer[3](
-            MaterialNoiseLayer(vec3(7.0), 0.2, 0.0, -0.1, vec3(0.0), vec3(0.15, 0.025, -0.1)),
+            MaterialNoiseLayer(vec3(7.0), 0.2, -0.1, 0.0, vec3(0.0), vec3(0.15, 0.025, -0.1)),
             MaterialNoiseLayer(vec3(20.0), 0.2, 0.2, 0.0, vec3(0.0), vec3(0.05)),
             MaterialNoiseLayer(vec3(0.5), 0.05, 0.0, 0.0, vec3(0.0), vec3(0.05))
         ), 0.02, 0.75, 0.0, 0.0, vec3(0.35, 0.225, 0.1)),
@@ -155,7 +155,7 @@ const MaterialRenderProps material_render_props[] = {
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(vec3(7.0), 0.2, -0.1, 0.0, vec3(0.0), vec3(0.07, 0.1, 0.07)),
             MaterialNoiseLayer(vec3(35.0, 10.0, 35.0), 0.6, -0.2, 0.0, vec3(0.0), vec3(0.15, 0.2, 0.15)),
-            MaterialNoiseLayer(vec3(0.07), 0.0, 0.0, -0.2, vec3(0.0), vec3(0.1, 0.2, 0.025))
+            MaterialNoiseLayer(vec3(0.07), 0.0, -0.2, 0.0, vec3(0.0), vec3(0.1, 0.2, 0.025))
         ), 0.02, 0.8, 0.0, 0.0, vec3(0.17, 0.6, 0.2)),
     // PROJECTILE
     MaterialRenderProps(MaterialNoiseLayer[3](
@@ -174,7 +174,7 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(vec3(1.0), 0.20, 0.0, 0.0, vec3(0.25, -0.7, 0.2), vec3(0.0)),
             MaterialNoiseLayer(vec3(2.0), 0.10, 0.0, 0.0, vec3(0.375, -0.5, 0.475), vec3(0.0)),
             MaterialNoiseLayer(vec3(4.0), 0.05, 0.0, 0.0, vec3(0.5, -0.6, 0.5), vec3(0.0))
-        ), 0.05, 0.25, 0.8, 0.85, vec3(0.25, 0.3, 0.6)),
+        ), 0.05, 0.25, 0.8, 0.9, vec3(0.25, 0.3, 0.6)),
     // PLAYER
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
@@ -186,7 +186,7 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0)),
             MaterialNoiseLayer(vec3(0.0), 0.0, 0.0, 0.0, vec3(0.0), vec3(0.0))
-        ), 0.0, 0.0, 1.0, 1.0, vec3(0.0)),
+        ), 0.0, 0.0, 1.0, 1.0, vec3(1.0)),
     // WOOD
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(vec3(10.0, 2.5, 10.0), 0.17, 0.0, 0.0, vec3(0.0), vec3(0.25)),

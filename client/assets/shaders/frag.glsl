@@ -34,7 +34,6 @@ layout(push_constant) uniform PushConstants {
     uint primary_ray_dist;
     uint shadow_ray_dist;
     uint reflection_ray_dist;
-    uint transparent_shadow_ray_dist;
     uint ao_ray_dist;
     uint vertical_resolution;
 } push_constants;
@@ -67,6 +66,14 @@ vec3 ray_box_dist(vec3 pos, vec3 ray, vec3 vmin, vec3 vmax) {
     return max(normMinDiff, normMaxDiff);
 }
 
+struct SimpleRaycastResult {
+    vec3 pos;
+    vec3 normal;
+    uint voxel_data;
+    float dist;
+    float passthrough_light;
+};
+
 struct RaycastResultLayer {
     vec3 pos;
     vec3 normal;
@@ -81,17 +88,19 @@ struct RaycastResult {
     float dist;
 };
 
-RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles) {
+SimpleRaycastResult simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool check_projectiles) {
     uint offset = 0;
     if (ray.x < 0) offset += 1;
     if (ray.y < 0) offset += 2;
     if (ray.z < 0) offset += 4;
 
+    float passthrough_light = 1.0;
+
     vec3 ray_pos = pos;
     vec3 normal = vec3(0);
     float depth = 0;
     uint voxel_data = MAT_OOB << 24;
-    uint medium = get_data(uvec3(floor(ray_pos))) >> 24;
+    uint prev_voxel_material = MAT_OOB;
     bool did_hit = false;
 
     float max_dist = 1000000.0;
@@ -148,33 +157,34 @@ RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool 
         vec3 v_min;
         vec3 v_max;
         uint voxel_material = voxel_data >> 24;
-        if (voxel_material == MAT_AIR_OOB) {
-            v_min = floor(ray_pos / CHUNK_SIZE) * CHUNK_SIZE;
-            v_max = v_min + vec3(CHUNK_SIZE);
-        } else if (voxel_material == medium) {
-            uint dist = 0;
-            if (voxel_material == MAT_AIR || voxel_material == MAT_WATER) {
-                dist = get_dist(voxel_data, offset);
-            }
-            v_min = floor_pos - vec3(dist);
-            v_max = floor_pos + vec3(dist + 1);
-        } else {
+        if (!is_transparent[voxel_material]) {
             did_hit = true;
             end_ray_pos = ray_pos;
-            end_depth = depth;
             end_normal = normal;
-            if (medium != MAT_AIR) {
-                end_voxel_data = medium << 24;
-            } else {
-                end_voxel_data = voxel_data;
-            }
             end_voxel_data = voxel_data;
             end_depth = depth;
             break;
         }
+        if (voxel_material == MAT_AIR_OOB) {
+            v_min = floor(ray_pos / CHUNK_SIZE) * CHUNK_SIZE;
+            v_max = v_min + vec3(CHUNK_SIZE);
+        } else {
+            uint dist = 0;
+            if (physics_properties[voxel_material].is_data_standard_distance) {
+                dist = get_dist(voxel_data, offset);
+            }
+            v_min = floor_pos - vec3(dist);
+            v_max = floor_pos + vec3(dist + 1);
+        }
         vec3 delta = ray_box_dist(ray_pos, ray, v_min, v_max);
         float dist_diff = min(delta.x, min(delta.y, delta.z));
         depth += dist_diff;
+
+        if (prev_voxel_material != voxel_material) {
+            passthrough_light *= material_render_props[voxel_material].transparency;
+        }
+        prev_voxel_material = voxel_material;
+
         if (depth > max_dist) {
             break;
         }
@@ -204,10 +214,10 @@ RaycastResultLayer simple_raycast(vec3 pos, vec3 ray, uint max_iterations, bool 
     }
 
     if (!did_hit) {
-        return RaycastResultLayer(pos, vec3(0.0), MAT_OOB << 24, 0.0, false);
+        return SimpleRaycastResult(pos, vec3(0.0), MAT_OOB << 24, 0.0, passthrough_light);
     }
 
-    return RaycastResultLayer(end_ray_pos, end_normal, end_voxel_data, end_depth, false);
+    return SimpleRaycastResult(end_ray_pos, end_normal, end_voxel_data, end_depth, passthrough_light);
 }
 
 const uint LAYER_COUNT = 5;
@@ -402,7 +412,7 @@ MaterialProperties material_props(RaycastResultLayer resultLayer, vec3 ray_dir, 
         mat_render_props.ior,
         roughness,
         0.0,
-        0.1,
+        0.05,
         transparency,
         mat_render_props.depth_transparency
     );
@@ -526,46 +536,37 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             break;
         }
         MaterialProperties mat_props = position_material(primary_ray.layers[i], ray, 3 - i/2);
-        color += (1 - mat_props.transparency) * multiplier * mat_props.albedo * mat_props.emmision;
+        color += (1.0 - mat_props.transparency) * multiplier * mat_props.albedo * mat_props.emmision;
 
-        RaycastResultLayer shade_check = simple_raycast(primary_ray.layers[i].pos + epsilon * primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist, true);
-        float shade_transparency = material_render_props[shade_check.voxel_data >> 24].transparency;
-        if (shade_transparency > 0.0) {
-            vec3 v_min = floor(shade_check.pos);
-            vec3 v_max = floor(shade_check.pos) + vec3(1);
-            vec3 delta = ray_box_dist(shade_check.pos, -light_dir, v_min, v_max);
-            float dist_diff = min(delta.x, min(delta.y, delta.z)) + 0.01;
-            shade_check = simple_raycast(shade_check.pos - dist_diff * light_dir, -light_dir, push_constants.transparent_shadow_ray_dist, false);
-        }
+        SimpleRaycastResult shade_check = simple_raycast(primary_ray.layers[i].pos + epsilon * primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist, true);
         if (shade_check.voxel_data >> 24 == MAT_OOB) {
-            color += shade_transparency * (1 - mat_props.transparency) * multiplier * get_light(-light_dir, -ray, vec3(1.0), 1.0, mat_props);
+            color += multiplier * get_light(-light_dir, -ray, (1.0 - mat_props.transparency) * shade_check.passthrough_light * vec3(1.0), 1.0, mat_props);
         }
 
         vec3 reflection = reflect(ray, mat_props.normal);
-        RaycastResultLayer reflection_check = simple_raycast(primary_ray.layers[i].pos + epsilon * primary_ray.layers[i].normal, reflection, push_constants.reflection_ray_dist, false);
+        SimpleRaycastResult reflection_check = simple_raycast(primary_ray.layers[i].pos + epsilon * primary_ray.layers[i].normal, reflection, push_constants.reflection_ray_dist, false);
         MaterialRenderProps reflection_props = material_render_props[reflection_check.voxel_data >> 24];
-        RaycastResultLayer reflection_light_check = simple_raycast(reflection_check.pos + epsilon * reflection_check.normal, -light_dir, push_constants.ao_ray_dist, false);
+        SimpleRaycastResult reflection_light_check = simple_raycast(reflection_check.pos + epsilon * reflection_check.normal, -light_dir, push_constants.ao_ray_dist, false);
         vec3 light = vec3(0);
-        if (reflection_light_check.voxel_data >> 24 == MAT_OOB) {
-            light += (1.0 - reflection_props.transparency) * reflection_props.color * 0.15;
+        if (reflection_check.voxel_data >> 24 == MAT_OOB) {
+            light += reflection_check.passthrough_light * vec3(pow(dot(reflection, -light_dir), 3.0));
+        } else if (reflection_light_check.voxel_data >> 24 == MAT_OOB) {
+            light += (1.0 - reflection_props.transparency) * reflection_check.passthrough_light * reflection_light_check.passthrough_light * reflection_props.color * 0.15;
         }
-        if (reflection_check.voxel_data >> 24 == MAT_OOB || reflection_props.transparency == 1.0) {
-            light += vec3(pow(dot(reflection, -light_dir), 3.0));
-        }
-        color += (1 - mat_props.transparency) * multiplier * get_light(reflection, -ray, light, 1.0, mat_props);
+        color += multiplier * get_light(reflection, -ray, (1 - mat_props.transparency) * light, 1.0, mat_props);
 
         vec3 ao_dir = mat_props.normal;
-        RaycastResultLayer ao_check = simple_raycast(primary_ray.layers[i].pos + epsilon * primary_ray.layers[i].normal, ao_dir, push_constants.ao_ray_dist, false);
+        SimpleRaycastResult ao_check = simple_raycast(primary_ray.layers[i].pos + epsilon * primary_ray.layers[i].normal, ao_dir, push_constants.ao_ray_dist, false);
         if (ao_check.voxel_data >> 24 == MAT_OOB) {
             float light_power = pow(dot(ao_dir, -light_dir), 3.0);
-            color += (1 - mat_props.transparency) * multiplier * get_light(ao_dir, -ray, vec3(1.0), light_power, mat_props);
+            color += multiplier * get_light(ao_dir, -ray, (1 - mat_props.transparency) * ao_check.passthrough_light * vec3(1.0), light_power, mat_props);
         }
 
         ao_dir = normalize(primary_ray.layers[i].normal + mat_props.normal);
         ao_check = simple_raycast(primary_ray.layers[i].pos + epsilon * primary_ray.layers[i].normal, ao_dir, push_constants.ao_ray_dist, false);
         if (ao_check.voxel_data >> 24 == MAT_OOB) {
             float light_power = pow(dot(ao_dir, -light_dir), 3.0);
-            color += (1 - mat_props.transparency) * multiplier * get_light(ao_dir, -ray, vec3(1.0), light_power, mat_props);
+            color += multiplier * get_light(ao_dir, -ray, (1 - mat_props.transparency) * ao_check.passthrough_light * vec3(1.0), light_power, mat_props);
         }
 
         if (mat_props.depth_transparency > 0.0 && !primary_ray.layers[i].is_leaving_medium) {

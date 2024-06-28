@@ -248,7 +248,6 @@ impl PointLightingSystem {
             primary_ray_dist: graphics_settings.primary_ray_dist.into(),
             shadow_ray_dist: graphics_settings.shadow_ray_dist.into(),
             reflection_ray_dist: graphics_settings.reflection_ray_dist.into(),
-            transparent_shadow_ray_dist: graphics_settings.transparent_shadow_ray_dist.into(),
             ao_ray_dist: graphics_settings.ao_ray_dist.into(),
             vertical_resolution: viewport_dimensions[1],
         };

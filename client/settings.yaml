@@ -15,7 +15,6 @@ graphics_settings:
   transparency_ray_dist: 75
   shadow_ray_dist: 40
   reflection_ray_dist: 20
-  transparent_shadow_ray_dist: 40
   ao_ray_dist: 15
 replay_settings:
   replay_folder: replays
