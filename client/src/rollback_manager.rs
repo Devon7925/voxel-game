@@ -2764,29 +2764,22 @@ impl Entity {
                 if delta[component] <= delta[(component + 1) % 3]
                     && delta[component] <= delta[(component + 2) % 3]
                 {
-                    // neccessary because otherwise side plane could hit on ground to prevent walking
-                    // however this allows clipping when corners would collide
-                    const HITBOX_SHRINK_FACTOR: f32 = 0.999;
-                    let x_iter_count = (HITBOX_SHRINK_FACTOR
-                        * self.size
+                    let x_iter_count = (self.size
                         * PLAYER_HITBOX_SIZE[(component + 1) % 3])
                         .ceil()
                         + 1.0;
-                    let z_iter_count = (HITBOX_SHRINK_FACTOR
-                        * self.size
+                    let z_iter_count = (self.size
                         * PLAYER_HITBOX_SIZE[(component + 2) % 3])
                         .ceil()
                         + 1.0;
-                    let x_dist = (HITBOX_SHRINK_FACTOR
-                        * self.size
+                    let x_dist = (self.size
                         * PLAYER_HITBOX_SIZE[(component + 1) % 3])
                         / x_iter_count;
-                    let z_dist = (HITBOX_SHRINK_FACTOR
-                        * self.size
+                    let z_dist = (self.size
                         * PLAYER_HITBOX_SIZE[(component + 2) % 3])
                         / z_iter_count;
                     let mut start_pos = self.pos + PLAYER_HITBOX_OFFSET * self.size
-                        - HITBOX_SHRINK_FACTOR * 0.5 * self.size * PLAYER_HITBOX_SIZE;
+                        - 0.5 * self.size * PLAYER_HITBOX_SIZE;
                     start_pos[component] = player_move_pos[component];
 
                     let mut x_vec = Vector3::new(0.0, 0.0, 0.0);
