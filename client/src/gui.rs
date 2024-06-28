@@ -9,8 +9,8 @@ use egui_winit_vulkano::egui::{
     epaint::{self, PathShape},
     pos2,
     text::LayoutJob,
-    vec2, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label,
-    LayerId, Layout, Order, Pos2, Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke,
+    vec2, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label, LayerId,
+    Layout, Order, Pos2, Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke,
     TextFormat, TextStyle, Ui, Vec2,
 };
 use itertools::Itertools;
@@ -2527,7 +2527,12 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                 if gui_state.render_deck_idx > 0 {
                     EditMode::Readonly
                 } else {
-                    game.game_mode.deck_swapping(game.rollback_data.get_players().get(gui_state.render_deck_idx).unwrap())
+                    game.game_mode.deck_swapping(
+                        game.rollback_data
+                            .get_players()
+                            .get(gui_state.render_deck_idx)
+                            .unwrap(),
+                    )
                 }
             } else {
                 EditMode::FullEditing
@@ -2590,6 +2595,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                                     Some(clippers::ClipperData::Text(text)) => {
                                         let clipboard_parse = ron::from_str(text.as_str());
                                         if let Err(e) = &clipboard_parse {
+                                            gui_state.errors.push(format!("Failed to parse clipboard: {}", e));
                                             println!("Failed to parse clipboard: {}", e);
                                         }
                                         clipboard_parse.ok()
@@ -2887,7 +2893,10 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                                     );
                                 } else if modify_path.is_empty() {
                                     if matches!(modification_type, ModificationType::Remove) {
-                                        gui_state.render_deck.cooldowns.remove(modify_action_idx - 2);
+                                        gui_state
+                                            .render_deck
+                                            .cooldowns
+                                            .remove(modify_action_idx - 2);
                                     }
                                 } else if modify_action_idx > 1 {
                                     gui_state.render_deck.cooldowns[modify_action_idx - 2]

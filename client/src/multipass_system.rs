@@ -1143,6 +1143,7 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                             ..Default::default()
                         }
                         .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+                        .fill(Color32::BLACK)
                         .rounding(ui.visuals().widgets.noninteractive.rounding)
                         .show(ui, |ui| {
                             ui.style_mut().wrap = Some(false);
