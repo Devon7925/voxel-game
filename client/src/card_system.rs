@@ -440,6 +440,7 @@ impl Effect {
 pub enum StatusEffect {
     None,
     SimpleStatusEffect(SimpleStatusEffectType, i32),
+    UnsignedSimpleStatusEffect(UnsignedSimpleStatusEffectType, u32),
     Invincibility,
     Trapped,
     Lockout,
@@ -453,9 +454,13 @@ pub enum SimpleStatusEffectType {
     DamageOverTime,
     IncreaseDamageTaken,
     IncreaseGravity(DirectionCard),
-    Overheal,
     Grow,
     IncreaseMaxHealth,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub enum UnsignedSimpleStatusEffectType {
+    Overheal,
 }
 
 impl StatusEffect {
@@ -472,9 +477,10 @@ impl StatusEffect {
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), s) => {
                 0.5 * *s as f32
             }
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, s) => {
-                10.0 * *s as f32
-            }
+            StatusEffect::UnsignedSimpleStatusEffect(
+                UnsignedSimpleStatusEffectType::Overheal,
+                s,
+            ) => 10.0 * *s as f32,
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, s) => 1.25f32.powi(*s),
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, s) => {
                 0.1 * PLAYER_BASE_MAX_HEALTH * *s as f32
@@ -491,6 +497,7 @@ impl StatusEffect {
         match self {
             StatusEffect::None => false,
             StatusEffect::SimpleStatusEffect(_, _) => false,
+            StatusEffect::UnsignedSimpleStatusEffect(_, _) => false,
             StatusEffect::Invincibility => false,
             StatusEffect::Trapped => false,
             StatusEffect::Lockout => false,
@@ -521,7 +528,7 @@ impl StatusEffect {
                     self.get_effect_value()
                 )
             }
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, _) => {
+            StatusEffect::UnsignedSimpleStatusEffect(UnsignedSimpleStatusEffectType::Overheal, _) => {
                 format!("Overheal (10 per) {}", self.get_effect_value())
             }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, _) => {
@@ -548,6 +555,13 @@ impl StatusEffect {
                     None
                 }
             }
+            StatusEffect::UnsignedSimpleStatusEffect(_, stacks) => {
+                if *stacks > 20 {
+                    Some(format!("Too many effect stacks ({} > 20)", stacks))
+                } else {
+                    None
+                }
+            }
             StatusEffect::Invincibility => None,
             StatusEffect::Trapped => None,
             StatusEffect::Lockout => None,
@@ -569,7 +583,9 @@ impl StatusEffect {
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), _) => {
                 "Increase gravity"
             }
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, _) => "Overheal",
+            StatusEffect::UnsignedSimpleStatusEffect(UnsignedSimpleStatusEffectType::Overheal, _) => {
+                "Overheal"
+            }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, _) => "Grow",
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, _) => {
                 "Increase max health"
@@ -1354,19 +1370,6 @@ impl BaseCard {
                                         }
                                     }),
                                 }],
-                                SimpleStatusEffectType::Overheal => vec![CardValue {
-                                    damage: 0.0,
-                                    generic: 0.35
-                                        * (1.0 - (-true_duration).exp())
-                                        * effect.get_effect_value(),
-                                    range_probabilities: core::array::from_fn(|idx| {
-                                        if idx == 0 {
-                                            1.0
-                                        } else {
-                                            0.0
-                                        }
-                                    }),
-                                }],
                                 SimpleStatusEffectType::Grow => vec![CardValue {
                                     damage: 0.0,
                                     generic: (if is_direct && stacks > &0 { -0.5 } else { 1.0 })
@@ -1387,6 +1390,23 @@ impl BaseCard {
                                         * 0.0035
                                         * true_duration
                                         * effect.get_effect_value().abs(),
+                                    range_probabilities: core::array::from_fn(|idx| {
+                                        if idx == 0 {
+                                            1.0
+                                        } else {
+                                            0.0
+                                        }
+                                    }),
+                                }],
+                            }
+                        }
+                        StatusEffect::UnsignedSimpleStatusEffect(effect_type, stacks) => {
+                            match effect_type {
+                                UnsignedSimpleStatusEffectType::Overheal => vec![CardValue {
+                                    damage: 0.0,
+                                    generic: 0.35
+                                        * (1.0 - (-true_duration).exp())
+                                        * effect.get_effect_value(),
                                     range_probabilities: core::array::from_fn(|idx| {
                                         if idx == 0 {
                                             1.0
@@ -1976,7 +1996,7 @@ pub enum ReferencedStatusEffect {
     DamageOverTime(i32),
     IncreaseDamageTaken(i32),
     IncreaseGravity(DirectionCard, i32),
-    Overheal(i32),
+    Overheal(u32),
     Grow(i32),
     IncreaseMaxHealth(i32),
     Invincibility,
@@ -2281,7 +2301,7 @@ impl CardManager {
                 SimpleStatusEffectType::IncreaseGravity(direction),
                 stacks,
             ) => vec![ReferencedStatusEffect::IncreaseGravity(direction, stacks)],
-            StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Overheal, stacks) => {
+            StatusEffect::UnsignedSimpleStatusEffect(UnsignedSimpleStatusEffectType::Overheal, stacks) => {
                 vec![ReferencedStatusEffect::Overheal(stacks)]
             }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, stacks) => {

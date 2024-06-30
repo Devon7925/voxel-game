@@ -17,10 +17,7 @@ use itertools::Itertools;
 
 use crate::{
     card_system::{
-        Ability, BaseCard, Cooldown, CooldownModifier, Deck, DirectionCard, DragableCard, Effect,
-        Keybind, MultiCastModifier, PassiveCard, ProjectileModifier, ReferencedStatusEffect,
-        SignedSimpleCooldownModifier, SimpleCooldownModifier, SimpleProjectileModifierType,
-        SimpleStatusEffectType, StatusEffect, VoxelMaterial,
+        Ability, BaseCard, Cooldown, CooldownModifier, Deck, DirectionCard, DragableCard, Effect, Keybind, MultiCastModifier, PassiveCard, ProjectileModifier, ReferencedStatusEffect, SignedSimpleCooldownModifier, SimpleCooldownModifier, SimpleProjectileModifierType, SimpleStatusEffectType, StatusEffect, UnsignedSimpleStatusEffectType, VoxelMaterial
     },
     game_manager::Game,
     lobby_browser::LobbyBrowser,
@@ -1272,6 +1269,17 @@ impl DrawableCard for StatusEffect {
                 path,
                 edit_mode,
             ),
+            StatusEffect::UnsignedSimpleStatusEffect(_, ref mut v) => draw_modifier(
+                ui,
+                item_id,
+                name,
+                Some(v),
+                hover_text,
+                true,
+                modify_path,
+                path,
+                edit_mode,
+            ),
             StatusEffect::Invincibility
             | StatusEffect::Lockout
             | StatusEffect::Trapped
@@ -1323,6 +1331,11 @@ impl DrawableCard for StatusEffect {
             StatusEffect::SimpleStatusEffect(_, ref mut stacks) => match modification_type {
                 ModificationType::Add => *stacks += 1,
                 ModificationType::Remove => *stacks -= 1,
+                ModificationType::Other => {}
+            },
+            StatusEffect::UnsignedSimpleStatusEffect(_, ref mut stacks) => match modification_type {
+                ModificationType::Add => *stacks += 1,
+                ModificationType::Remove => if *stacks > 0 {*stacks -= 1},
                 ModificationType::Other => {}
             },
             StatusEffect::None
@@ -2595,7 +2608,9 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                                     Some(clippers::ClipperData::Text(text)) => {
                                         let clipboard_parse = ron::from_str(text.as_str());
                                         if let Err(e) = &clipboard_parse {
-                                            gui_state.errors.push(format!("Failed to parse clipboard: {}", e));
+                                            gui_state
+                                                .errors
+                                                .push(format!("Failed to parse clipboard: {}", e));
                                             println!("Failed to parse clipboard: {}", e);
                                         }
                                         clipboard_parse.ok()
@@ -2777,8 +2792,8 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                             SimpleStatusEffectType::Speed,
                             1,
                         )),
-                        DragableCard::StatusEffect(StatusEffect::SimpleStatusEffect(
-                            SimpleStatusEffectType::Overheal,
+                        DragableCard::StatusEffect(StatusEffect::UnsignedSimpleStatusEffect(
+                            UnsignedSimpleStatusEffectType::Overheal,
                             1,
                         )),
                         DragableCard::StatusEffect(StatusEffect::SimpleStatusEffect(
