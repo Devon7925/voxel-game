@@ -54,7 +54,7 @@ struct PhysicsProperties {
 };
 
 const PhysicsProperties physics_properties[] = {
-    PhysicsProperties(true, false, false), //MAT_AIR
+    PhysicsProperties(true, false, true), //MAT_AIR
     PhysicsProperties(false, true, false), //MAT_STONE
     PhysicsProperties(false, false, false), //MAT_OOB
     PhysicsProperties(false, true, false), //MAT_DIRT

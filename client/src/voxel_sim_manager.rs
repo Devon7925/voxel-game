@@ -134,7 +134,7 @@ fn empty_chunk_grid(
             image_type: ImageType::Dim3d,
             format: Format::R32_UINT,
             extent,
-            usage: ImageUsage::TRANSFER_DST | ImageUsage::TRANSFER_SRC | ImageUsage::STORAGE,
+            usage: ImageUsage::STORAGE,
             ..Default::default()
         },
         AllocationCreateInfo::default(),
