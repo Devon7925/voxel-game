@@ -422,7 +422,11 @@ impl PlayerSim for RollbackData {
                         (
                             self.rollback_state.players[player_idx].abilities,
                             self.rollback_state.players[player_idx].passive_abilities,
-                        ) = abilities_from_cooldowns(new_deck, card_manager, game_mode.cooldowns_reset_on_deck_swap())
+                        ) = abilities_from_cooldowns(
+                            new_deck,
+                            card_manager,
+                            game_mode.cooldowns_reset_on_deck_swap(),
+                        )
                     }
                     if let Some(true) = leave {
                         println!("player {} left", player_idx);
@@ -681,8 +685,11 @@ impl PlayerSim for RollbackData {
 
                     let mut new_player = Entity::default();
                     new_player.pos = game_mode.spawn_location(&new_player);
-                    (new_player.abilities, new_player.passive_abilities) =
-                        abilities_from_cooldowns(&cards, card_manager, game_mode.cooldowns_reset_on_deck_swap());
+                    (new_player.abilities, new_player.passive_abilities) = abilities_from_cooldowns(
+                        &cards,
+                        card_manager,
+                        game_mode.cooldowns_reset_on_deck_swap(),
+                    );
 
                     self.rollback_state.players.push(new_player);
                     self.entity_metadata.push(EntityMetaData::Player(
@@ -851,16 +858,9 @@ impl PlayerSim for RollbackData {
                                     let exited_ui = gui_state.menu_stack.last().unwrap();
                                     match exited_ui {
                                         GuiElement::CardEditor => {
-                                            let unreasonable_reason = Some(
-                                                gui_state
-                                                    .gui_deck
-                                                    .cooldowns
-                                                    .iter()
-                                                    .filter_map(|cd| cd.get_unreasonable_reason())
-                                                    .join(", "),
-                                            )
-                                            .filter(|s| !s.is_empty());
-                                            if let Some(unreasonable_reason) = unreasonable_reason {
+                                            if let Some(unreasonable_reason) =
+                                                gui_state.gui_deck.get_unreasonable_reason()
+                                            {
                                                 gui_state.errors.push(format!(
                                                     "Unreasonable deck not saved: {}",
                                                     unreasonable_reason
@@ -1187,7 +1187,11 @@ impl PlayerSim for ReplayData {
                         (
                             self.state.players[player_idx].abilities,
                             self.state.players[player_idx].passive_abilities,
-                        ) = abilities_from_cooldowns(new_deck, card_manager, game_mode.cooldowns_reset_on_deck_swap())
+                        ) = abilities_from_cooldowns(
+                            new_deck,
+                            card_manager,
+                            game_mode.cooldowns_reset_on_deck_swap(),
+                        )
                     }
                     if let Some(true) = leave {
                         leaving_players.push(player_idx);
@@ -1412,8 +1416,11 @@ impl ReplayData {
 
                 let mut new_player = Entity::default();
                 new_player.pos = game_mode.spawn_location(&new_player);
-                (new_player.abilities, new_player.passive_abilities) =
-                    abilities_from_cooldowns(&deck, card_manager, game_mode.cooldowns_reset_on_deck_swap());
+                (new_player.abilities, new_player.passive_abilities) = abilities_from_cooldowns(
+                    &deck,
+                    card_manager,
+                    game_mode.cooldowns_reset_on_deck_swap(),
+                );
                 state.players.push(new_player);
                 entity_metadata.push(EntityMetaData::Player(deck.clone(), VecDeque::new()));
             } else if let Some(_time_stamp_string) = line.strip_prefix("TIME ") {

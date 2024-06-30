@@ -109,10 +109,7 @@ fn main() {
 
     let player_deck: Deck =
         ron::from_str(fs::read_to_string(&settings.card_file).unwrap().as_str()).unwrap();
-    assert!(player_deck
-        .cooldowns
-        .iter()
-        .all(|cooldown| cooldown.get_unreasonable_reason().is_none()));
+    assert!(player_deck.get_unreasonable_reason().is_none());
 
     // Create app with vulkano context.
     let mut app = RenderPipeline::new(&event_loop, settings);

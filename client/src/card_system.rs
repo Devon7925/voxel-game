@@ -28,6 +28,22 @@ impl Deck {
             .sum::<f32>()
             / (1.0 - 2.0 * passive_value)
     }
+
+    pub fn get_unreasonable_reason(&self) -> Option<String> {
+        Some(
+            self.passive
+                .passive_effects
+                .iter()
+                .filter_map(|c| c.get_unreasonable_reason())
+                .chain(
+                    self.cooldowns
+                        .iter()
+                        .filter_map(|c| c.get_unreasonable_reason()),
+                )
+                .join(", "),
+        )
+        .filter(|s| !s.is_empty())
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -281,19 +297,6 @@ impl Cooldown {
             }
         }
         impact_multiplier
-    }
-
-    pub fn ability_charges(&self) -> u32 {
-        self.modifiers
-            .iter()
-            .map(|modifier| match modifier {
-                CooldownModifier::SimpleCooldownModifier(SimpleCooldownModifier::AddCharge, s) => {
-                    *s
-                }
-                _ => 0,
-            })
-            .sum::<u32>()
-            + 1
     }
 }
 
@@ -2328,7 +2331,9 @@ impl CardManager {
             } => {
                 let proj_stats = self.get_referenced_proj(card_idx);
                 let proj_damage = proj_stats.damage as f32;
-                let should_collide_with_terrain = !proj_stats.lock_owner || !proj_stats.on_hit.is_empty() || !proj_stats.on_headshot.is_empty();
+                let should_collide_with_terrain = !proj_stats.lock_owner
+                    || !proj_stats.on_hit.is_empty()
+                    || !proj_stats.on_headshot.is_empty();
                 projectiles.push(Projectile {
                     pos: [pos.x, pos.y, pos.z, 1.0],
                     chunk_update_pos: [0, 0, 0, 0],
