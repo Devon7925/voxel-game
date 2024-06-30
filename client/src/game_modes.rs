@@ -5,7 +5,6 @@ use egui_winit_vulkano::egui::{Slider, Ui};
 use voxel_shared::GameModeSettings;
 
 use crate::{
-    game_manager::Game,
     gui::EditMode,
     rollback_manager::{Entity, PlayerSim},
     voxel_sim_manager::Projectile,
@@ -21,15 +20,18 @@ pub trait GameMode {
     fn has_mode_gui(&self) -> bool {
         false
     }
-    fn mode_gui(&mut self, ui: &mut Ui, sim: &mut Box<dyn PlayerSim>) {}
-    fn overlay(&self, ui: &mut Ui, sim: &Box<dyn PlayerSim>) {}
-    fn send_action(&self, player_idx: usize, action: String, entities: &mut Vec<Entity>) {}
+    fn mode_gui(&mut self, _ui: &mut Ui, _sim: &mut Box<dyn PlayerSim>) {}
+    fn overlay(&self, _ui: &mut Ui, _sim: &Box<dyn PlayerSim>) {}
+    fn send_action(&self, _player_idx: usize, _action: String, _entities: &mut Vec<Entity>) {}
     fn update(
         &mut self,
-        entities: &mut Vec<Entity>,
-        projectiles: &mut Vec<Projectile>,
-        delta_time: f32,
+        _entities: &mut Vec<Entity>,
+        _projectiles: &mut Vec<Projectile>,
+        _delta_time: f32,
     ) {
+    }
+    fn cooldowns_reset_on_deck_swap(&self) -> bool {
+        false
     }
 }
 
@@ -70,7 +72,7 @@ pub fn game_mode_from_type(game_mode: GameModeSettings) -> Box<dyn GameMode> {
 }
 
 impl GameMode for PracticeRangeMode {
-    fn are_friends(&self, _player1: u32, _player2: u32, entities: &Vec<Entity>) -> bool {
+    fn are_friends(&self, _player1: u32, _player2: u32, _entities: &Vec<Entity>) -> bool {
         true
     }
 
@@ -89,10 +91,14 @@ impl GameMode for PracticeRangeMode {
     fn deck_swapping(&self, _player: &Entity) -> EditMode {
         EditMode::FullEditing
     }
+
+    fn cooldowns_reset_on_deck_swap(&self) -> bool {
+        true
+    }
 }
 
 impl GameMode for ExplorerMode {
-    fn are_friends(&self, _player1: u32, _player2: u32, entities: &Vec<Entity>) -> bool {
+    fn are_friends(&self, _player1: u32, _player2: u32, _entities: &Vec<Entity>) -> bool {
         true
     }
 
@@ -114,7 +120,7 @@ impl GameMode for ExplorerMode {
 }
 
 impl GameMode for FFAMode {
-    fn are_friends(&self, player1: u32, player2: u32, entities: &Vec<Entity>) -> bool {
+    fn are_friends(&self, player1: u32, player2: u32, _entities: &Vec<Entity>) -> bool {
         player1 == player2
     }
 
@@ -218,7 +224,10 @@ impl GameMode for ControlMode {
 
     fn overlay(&self, ui: &mut Ui, _sim: &Box<dyn PlayerSim>) {
         ui.label(format!("{}", self.team_1_score));
-        ui.add(Slider::new(&mut self.capture_progress.clone(), RangeInclusive::new(-1.0, 1.0)));
+        ui.add(Slider::new(
+            &mut self.capture_progress.clone(),
+            RangeInclusive::new(-1.0, 1.0),
+        ));
         ui.label(format!("{}", self.team_2_score));
     }
 
@@ -238,7 +247,10 @@ impl GameMode for ControlMode {
                     if entity.pos.x - 10000.0 < -SPAWN_ROOM_OFFSET as f32 {
                         entity.adjust_health(25.0 * delta_time);
                     }
-                    if vec_from_point.y > 0.0 && vec_from_point.map(|c| c.abs()).x < 11.0 && vec_from_point.map(|c| c.abs()).z < 11.0 {
+                    if vec_from_point.y > 0.0
+                        && vec_from_point.map(|c| c.abs()).x < 11.0
+                        && vec_from_point.map(|c| c.abs()).z < 11.0
+                    {
                         team_1_capturers += 1;
                     }
                 }
@@ -246,7 +258,10 @@ impl GameMode for ControlMode {
                     if entity.pos.x - 10000.0 > SPAWN_ROOM_OFFSET as f32 {
                         entity.adjust_health(25.0 * delta_time);
                     }
-                    if vec_from_point.y > 0.0 && vec_from_point.map(|c| c.abs()).x < 11.0 && vec_from_point.map(|c| c.abs()).z < 11.0 {
+                    if vec_from_point.y > 0.0
+                        && vec_from_point.map(|c| c.abs()).x < 11.0
+                        && vec_from_point.map(|c| c.abs()).z < 11.0
+                    {
                         team_2_capturers += 1;
                     }
                 }

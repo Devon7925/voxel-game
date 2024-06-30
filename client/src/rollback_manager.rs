@@ -340,6 +340,7 @@ impl Default for Entity {
 pub fn abilities_from_cooldowns(
     deck: &Deck,
     card_manager: &mut CardManager,
+    give_cooldown: bool,
 ) -> (Vec<PlayerAbility>, Vec<ReferencedStatusEffect>) {
     let total_impact = deck.get_total_impact();
     (
@@ -347,12 +348,17 @@ pub fn abilities_from_cooldowns(
             .iter()
             .map(|cooldown| {
                 let cooldown_time = cooldown.get_cooldown_recovery(total_impact);
+                let ability = card_manager.register_cooldown(cooldown.clone());
                 PlayerAbility {
                     value: cooldown_time.clone(),
-                    ability: card_manager.register_cooldown(cooldown.clone()),
                     cooldown: cooldown_time.0,
                     recovery: 0.0,
-                    remaining_charges: 0,
+                    remaining_charges: if give_cooldown {
+                        ability.max_charges
+                    } else {
+                        0
+                    },
+                    ability,
                 }
             })
             .collect(),
@@ -416,7 +422,7 @@ impl PlayerSim for RollbackData {
                         (
                             self.rollback_state.players[player_idx].abilities,
                             self.rollback_state.players[player_idx].passive_abilities,
-                        ) = abilities_from_cooldowns(new_deck, card_manager)
+                        ) = abilities_from_cooldowns(new_deck, card_manager, game_mode.cooldowns_reset_on_deck_swap())
                     }
                     if let Some(true) = leave {
                         println!("player {} left", player_idx);
@@ -676,7 +682,7 @@ impl PlayerSim for RollbackData {
                     let mut new_player = Entity::default();
                     new_player.pos = game_mode.spawn_location(&new_player);
                     (new_player.abilities, new_player.passive_abilities) =
-                        abilities_from_cooldowns(&cards, card_manager);
+                        abilities_from_cooldowns(&cards, card_manager, game_mode.cooldowns_reset_on_deck_swap());
 
                     self.rollback_state.players.push(new_player);
                     self.entity_metadata.push(EntityMetaData::Player(
@@ -1014,7 +1020,7 @@ impl RollbackData {
         let mut first_player = Entity::default();
         first_player.pos = game_mode.spawn_location(&first_player);
         (first_player.abilities, first_player.passive_abilities) =
-            abilities_from_cooldowns(deck, card_manager);
+            abilities_from_cooldowns(deck, card_manager, game_mode.cooldowns_reset_on_deck_swap());
         rollback_state.players.push(first_player.clone());
         entity_metadata.push(EntityMetaData::Player(
             deck.clone(),
@@ -1181,7 +1187,7 @@ impl PlayerSim for ReplayData {
                         (
                             self.state.players[player_idx].abilities,
                             self.state.players[player_idx].passive_abilities,
-                        ) = abilities_from_cooldowns(new_deck, card_manager)
+                        ) = abilities_from_cooldowns(new_deck, card_manager, game_mode.cooldowns_reset_on_deck_swap())
                     }
                     if let Some(true) = leave {
                         leaving_players.push(player_idx);
@@ -1407,7 +1413,7 @@ impl ReplayData {
                 let mut new_player = Entity::default();
                 new_player.pos = game_mode.spawn_location(&new_player);
                 (new_player.abilities, new_player.passive_abilities) =
-                    abilities_from_cooldowns(&deck, card_manager);
+                    abilities_from_cooldowns(&deck, card_manager, game_mode.cooldowns_reset_on_deck_swap());
                 state.players.push(new_player);
                 entity_metadata.push(EntityMetaData::Player(deck.clone(), VecDeque::new()));
             } else if let Some(_time_stamp_string) = line.strip_prefix("TIME ") {
@@ -2768,7 +2774,8 @@ impl Entity {
         while distance_to_move.magnitude() > 0.0 {
             iteration_counter += 1;
 
-            let player_move_pos = self.pos + PLAYER_HITBOX_OFFSET * self.size + collision_corner_offset;
+            let player_move_pos =
+                self.pos + PLAYER_HITBOX_OFFSET * self.size + collision_corner_offset;
             let vel_dir = distance_to_move.normalize();
             let delta = ray_box_dist(player_move_pos, vel_dir);
             let mut dist_diff = delta.x.min(delta.y).min(delta.z);
@@ -2800,7 +2807,8 @@ impl Entity {
             'component_loop: for component in 0..3 {
                 let mut fake_pos = self.pos;
                 fake_pos[component] += dist_diff * vel_dir[component];
-                let player_move_pos = fake_pos + PLAYER_HITBOX_OFFSET * self.size + collision_corner_offset;
+                let player_move_pos =
+                    fake_pos + PLAYER_HITBOX_OFFSET * self.size + collision_corner_offset;
                 if delta[component] <= delta[(component + 1) % 3]
                     && delta[component] <= delta[(component + 2) % 3]
                 {
@@ -2895,8 +2903,8 @@ impl Entity {
         game_state: &GameState,
         game_settings: &GameSettings,
     ) -> bool {
-        let mut start_pos = self.pos + PLAYER_HITBOX_OFFSET * self.size
-            - 0.5 * self.size * PLAYER_HITBOX_SIZE;
+        let mut start_pos =
+            self.pos + PLAYER_HITBOX_OFFSET * self.size - 0.5 * self.size * PLAYER_HITBOX_SIZE;
         start_pos[component] = player_move_pos[component];
         start_pos[1] += 1.0;
         let x_iter_count = (start_pos[(component + 1) % 3]
@@ -2914,8 +2922,7 @@ impl Entity {
         z_vec[(component + 2) % 3] = 1.0;
         for x_iter in 0..=(x_iter_count as u32) {
             for z_iter in 0..=(z_iter_count as u32) {
-                let pos =
-                    start_pos + x_iter as f32 * x_vec + z_iter as f32 * z_vec;
+                let pos = start_pos + x_iter as f32 * x_vec + z_iter as f32 * z_vec;
                 let voxel_pos = pos.map(|c| c.floor() as u32);
                 let voxel = if let Some(index) =
                     get_index(voxel_pos, cpu_chunks, game_state, game_settings)
