@@ -74,11 +74,14 @@ void main() {
     for (int i = 0; i <= grid_iteration_count.x; i++) {
         for (int j = 0; j <= grid_iteration_count.y; j++) {
             for (int k = 0; k <= grid_iteration_count.z; k++) {
-                vec3 pos = start + dir * grid_dist.z * k + right * grid_dist.x * i + up * grid_dist.y * j;
+                int mapped_i = grid_iteration_count.x / 2 + (2 * (i%2) - 1) * ((i + 1)/2);
+                int mapped_j = grid_iteration_count.y / 2 + (2 * (j%2) - 1) * ((j + 1)/2);
+                int mapped_k = grid_iteration_count.z / 2 + (2 * (k%2) - 1) * ((k + 1)/2);
+                vec3 pos = start + dir * grid_dist.z * mapped_k + right * grid_dist.x * mapped_i + up * grid_dist.y * mapped_j;
                 ivec3 voxel_pos = ivec3(pos);
                 uint data = get_data(voxel_pos);
                 uint voxel_mat = data >> 24;
-                if (voxel_mat == MAT_AIR || voxel_mat == MAT_AIR_OOB || voxel_mat == MAT_WATER) {
+                if (physics_properties[voxel_mat].is_fluid) {
                     continue;
                 } else if (voxel_mat == MAT_OOB) {
                     projectile.health = 0.0;
@@ -87,7 +90,7 @@ void main() {
                     return;
                 }
 
-                float dist_past_bb = grid_dist.z * k - 2.0 * projectile.size.z;
+                float dist_past_bb = grid_dist.z * mapped_k - 2.0 * projectile.size.z;
                 vec3 delta = RayBoxDist(pos, -dir, vec3(voxel_pos), vec3(voxel_pos + ivec3(1)));
                 float dist_diff = min(delta.x, min(delta.y, delta.z));
                 if (dist_past_bb > 0.0) {

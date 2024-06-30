@@ -63,7 +63,7 @@ const PhysicsProperties physics_properties[] = {
     PhysicsProperties(false, true, false), //MAT_ICE
     PhysicsProperties(true, false, true), //MAT_WATER
     PhysicsProperties(false, false, false), //MAT_PLAYER
-    PhysicsProperties(false, false, false), //MAT_AIR_OOB
+    PhysicsProperties(true, false, false), //MAT_AIR_OOB
     PhysicsProperties(false, true, false), //MAT_WOOD
     PhysicsProperties(false, false, true), //MAT_LEAF
     PhysicsProperties(false, false, false), //MAT_UNBREAKABLE

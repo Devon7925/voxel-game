@@ -106,8 +106,6 @@
         ),
     ],
     passive: (
-        passive_effects: [
-            SimpleStatusEffect(Speed, 20),
-        ],
+        passive_effects: [],
     ),
 )
