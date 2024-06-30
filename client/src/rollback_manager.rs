@@ -26,7 +26,15 @@ use crate::{
         BaseCard, CardManager, Deck, DirectionCard, ReferencedCooldown, ReferencedEffect,
         ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType,
         StateKeybind, StatusEffect, VoxelMaterial,
-    }, game_manager::GameState, game_modes::GameMode, gui::{GuiElement, GuiState}, networking::{NetworkConnection, NetworkPacket}, settings_manager::{Control, Settings}, voxel_sim_manager::{Projectile, VoxelComputePipeline}, WindowProperties, CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RESPAWN_TIME
+    },
+    game_manager::GameState,
+    game_modes::GameMode,
+    gui::{GuiElement, GuiState},
+    networking::{NetworkConnection, NetworkPacket},
+    settings_manager::{Control, Settings},
+    voxel_sim_manager::{Projectile, VoxelComputePipeline},
+    WindowProperties, CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET,
+    PLAYER_HITBOX_SIZE, RESPAWN_TIME,
 };
 use voxel_shared::{GameModeSettings, GameSettings, RoomId};
 
@@ -83,7 +91,12 @@ pub trait PlayerSim {
     fn visable_projectile_buffer(&self) -> Subbuffer<[Projectile; 1024]>;
     fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]>;
 
-    fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager, game_mode: &Box<dyn GameMode>);
+    fn network_update(
+        &mut self,
+        settings: &GameSettings,
+        card_manager: &mut CardManager,
+        game_mode: &Box<dyn GameMode>,
+    );
     fn send_gamemode_packet(&mut self, packet: String);
 
     fn process_event(
@@ -394,7 +407,9 @@ impl PlayerSim for RollbackData {
                 rollback_actions.iter().map(|a| &a.meta_action).enumerate()
             {
                 if let Some(MetaAction {
-                    deck_update, leave, gamemode_action
+                    deck_update,
+                    leave,
+                    gamemode_action,
                 }) = meta_action
                 {
                     if let Some(new_deck) = deck_update {
@@ -408,7 +423,11 @@ impl PlayerSim for RollbackData {
                         leaving_players.push(player_idx);
                     }
                     if let Some(game_mode_action) = gamemode_action {
-                        game_mode.send_action(player_idx, game_mode_action.clone(), &mut self.rollback_state.players);
+                        game_mode.send_action(
+                            player_idx,
+                            game_mode_action.clone(),
+                            &mut self.rollback_state.players,
+                        );
                     }
                 }
             }
@@ -424,7 +443,11 @@ impl PlayerSim for RollbackData {
             game_settings,
             game_mode,
         );
-        game_mode.update(&mut self.rollback_state.players, &mut self.rollback_state.projectiles, self.delta_time);
+        game_mode.update(
+            &mut self.rollback_state.players,
+            &mut self.rollback_state.projectiles,
+            self.delta_time,
+        );
         if leaving_players.len() > 0 {
             for player_idx in leaving_players.iter() {
                 self.rollback_state.players.remove(*player_idx);
@@ -584,7 +607,12 @@ impl PlayerSim for RollbackData {
         &self.entity_metadata
     }
 
-    fn network_update(&mut self, settings: &GameSettings, card_manager: &mut CardManager, game_mode: &Box<dyn GameMode>) {
+    fn network_update(
+        &mut self,
+        settings: &GameSettings,
+        card_manager: &mut CardManager,
+        game_mode: &Box<dyn GameMode>,
+    ) {
         let Some(network_connection) = self.network_connection.as_mut() else {
             return;
         };
@@ -694,7 +722,6 @@ impl PlayerSim for RollbackData {
         }
     }
 
-    
     fn send_gamemode_packet(&mut self, packet: String) {
         self.send_action(
             Action {
@@ -708,7 +735,8 @@ impl PlayerSim for RollbackData {
             self.current_time,
         );
         if let Some(network_connection) = self.network_connection.as_mut() {
-            network_connection.queue_packet(NetworkPacket::GamemodePacket(self.current_time, packet));
+            network_connection
+                .queue_packet(NetworkPacket::GamemodePacket(self.current_time, packet));
         }
     }
 
@@ -764,8 +792,7 @@ impl PlayerSim for RollbackData {
                 mouse_match!(backward);
                 for cooldown in self.controls.iter_mut() {
                     for ability in cooldown.iter_mut() {
-                        ability
-                            .update(&Control::Mouse(*button), state == &ElementState::Pressed);
+                        ability.update(&Control::Mouse(*button), state == &ElementState::Pressed);
                     }
                 }
             }
@@ -789,10 +816,8 @@ impl PlayerSim for RollbackData {
                     key_match!(backward);
                     for cooldown in self.controls.iter_mut() {
                         for ability in cooldown.iter_mut() {
-                            ability.update(
-                                &Control::Key(key),
-                                input.state == ElementState::Pressed,
-                            );
+                            ability
+                                .update(&Control::Key(key), input.state == ElementState::Pressed);
                         }
                     }
                     match key {
@@ -991,11 +1016,13 @@ impl RollbackData {
         (first_player.abilities, first_player.passive_abilities) =
             abilities_from_cooldowns(deck, card_manager);
         rollback_state.players.push(first_player.clone());
-        entity_metadata.push(EntityMetaData::Player(deck.clone(), VecDeque::from(vec![
-            Action::empty();
-            game_settings.rollback_buffer_size
-                as usize
-        ])));
+        entity_metadata.push(EntityMetaData::Player(
+            deck.clone(),
+            VecDeque::from(vec![
+                Action::empty();
+                game_settings.rollback_buffer_size as usize
+            ]),
+        ));
 
         let network_connection =
             lobby_id.map(|lobby_id| NetworkConnection::new(settings, &game_settings, lobby_id));
@@ -1172,7 +1199,11 @@ impl PlayerSim for ReplayData {
             game_settings,
             game_mode,
         );
-        game_mode.update(&mut self.state.players, &mut self.state.projectiles, self.delta_time);
+        game_mode.update(
+            &mut self.state.players,
+            &mut self.state.projectiles,
+            self.delta_time,
+        );
         if leaving_players.len() > 0 {
             for player_idx in leaving_players.iter() {
                 self.state.players.remove(*player_idx);
@@ -1271,7 +1302,13 @@ impl PlayerSim for ReplayData {
         &self.entity_metadata
     }
 
-    fn network_update(&mut self, _settings: &GameSettings, _card_manager: &mut CardManager, _game_mode: &Box<dyn GameMode>) {}
+    fn network_update(
+        &mut self,
+        _settings: &GameSettings,
+        _card_manager: &mut CardManager,
+        _game_mode: &Box<dyn GameMode>,
+    ) {
+    }
     fn send_gamemode_packet(&mut self, _packet: String) {}
 
     fn visable_player_buffer(&self) -> Subbuffer<[UploadPlayer; 128]> {
@@ -1574,7 +1611,8 @@ impl WorldState {
             }
         }
 
-        let proj_collisions = self.get_player_proj_collisions(&player_stats, card_manager, game_mode, time_step);
+        let proj_collisions =
+            self.get_player_proj_collisions(&player_stats, card_manager, game_mode, time_step);
 
         proj_collisions
             .iter()
@@ -1592,12 +1630,8 @@ impl WorldState {
                         let mut adj_vec_end = vec_end;
                         adj_vec_start -= Vector3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
                         adj_vec_end -= Vector3::new(proj2.pos[0], proj2.pos[1], proj2.pos[2]);
-                        let proj2_rot = Quaternion::new(
-                            proj2.dir[3],
-                            proj2.dir[0],
-                            proj2.dir[1],
-                            proj2.dir[2],
-                        );
+                        let proj2_rot =
+                            Quaternion::new(proj2.dir[3], proj2.dir[0], proj2.dir[1], proj2.dir[2]);
                         let proj2_rot_inv = proj2_rot.invert();
                         adj_vec_start = proj2_rot_inv.rotate_vector(adj_vec_start);
                         adj_vec_end = proj2_rot_inv.rotate_vector(adj_vec_end);
@@ -1925,13 +1959,19 @@ impl WorldState {
         }
     }
 
-    fn get_player_proj_collisions(&self, player_stats: &Vec<PlayerEffectStats>, card_manager: &CardManager, game_mode: &Box<dyn GameMode>, time_step: f32) -> Vec<(usize, usize, Point3<f32>, Hitsphere)> {
+    fn get_player_proj_collisions(
+        &self,
+        player_stats: &Vec<PlayerEffectStats>,
+        card_manager: &CardManager,
+        game_mode: &Box<dyn GameMode>,
+        time_step: f32,
+    ) -> Vec<(usize, usize, Point3<f32>, Hitsphere)> {
         let mut proj_collisions = Vec::new();
         for (player_idx, player) in self.players.iter().enumerate() {
             if player.respawn_timer > 0.0 || player_stats[player_idx].invincible {
                 continue;
             }
-    
+
             // check piercing invincibility at start to prevent order from mattering
             let player_piercing_invincibility = player.player_piercing_invincibility > 0.0;
             // check for collision with projectiles
@@ -1941,8 +1981,10 @@ impl WorldState {
                     continue;
                 }
                 let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
-    
-                if proj_card.no_friendly_fire && game_mode.are_friends(proj.owner, player_idx as u32, &self.players) {
+
+                if proj_card.no_friendly_fire
+                    && game_mode.are_friends(proj.owner, player_idx as u32, &self.players)
+                {
                     continue;
                 }
                 if proj_card.no_enemy_fire && proj.owner != player_idx as u32 {
@@ -1951,7 +1993,7 @@ impl WorldState {
                 if player_piercing_invincibility && proj_card.pierce_players {
                     continue;
                 }
-    
+
                 let projectile_rot =
                     Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
                 let projectile_vectors = [
@@ -2002,7 +2044,7 @@ impl WorldState {
         }
         proj_collisions
     }
-    
+
     fn get_player_effect_stats(&self) -> Vec<PlayerEffectStats> {
         self.players
             .iter()
@@ -2111,7 +2153,7 @@ impl WorldState {
         &self,
         card_manager: &CardManager,
         time_step: f32,
-        game_mode: &Box<dyn GameMode>
+        game_mode: &Box<dyn GameMode>,
     ) -> Vec<(usize, usize)> {
         let mut collision_pairs = Vec::new();
         for i in 0..self.projectiles.len() {
@@ -2659,8 +2701,7 @@ impl Entity {
                     directional_density += overlapping_volume
                         * density
                         * (voxel_pos.map(|c| c as f32 + 0.5)
-                            - self.pos
-                            - self.size * PLAYER_HITBOX_OFFSET)
+                            - (self.pos + self.size * PLAYER_HITBOX_OFFSET))
                         / self.size;
                 }
             }
@@ -2674,7 +2715,9 @@ impl Entity {
             * player_stats[player_idx].gravity
             * 11.428571428571429
             * time_step;
-        self.vel -= 0.5 * directional_density * time_step;
+        if directional_density.magnitude() * time_step > 0.001 {
+            self.vel -= 0.5 * directional_density * time_step;
+        }
         if self.vel.magnitude() > 0.0 {
             self.vel -= nearby_density * 0.0375 * self.vel * self.vel.magnitude() * time_step
                 + 0.2 * self.vel.normalize() * time_step;
@@ -2713,20 +2756,19 @@ impl Entity {
         game_state: &GameState,
         game_settings: &GameSettings,
     ) {
-        let mut player_move_pos = self.pos
-            + PLAYER_HITBOX_OFFSET * self.size
-            + self
-                .vel
-                .map(|c| c.signum())
-                .zip(PLAYER_HITBOX_SIZE, |a, b| a * b)
-                * 0.5
-                * self.size;
+        let collision_corner_offset = self
+            .vel
+            .map(|c| c.signum())
+            .zip(PLAYER_HITBOX_SIZE, |a, b| a * b)
+            * 0.5
+            * self.size;
         let mut distance_to_move = self.vel * time_step;
         let mut iteration_counter = 0;
 
         while distance_to_move.magnitude() > 0.0 {
             iteration_counter += 1;
 
+            let player_move_pos = self.pos + PLAYER_HITBOX_OFFSET * self.size + collision_corner_offset;
             let vel_dir = distance_to_move.normalize();
             let delta = ray_box_dist(player_move_pos, vel_dir);
             let mut dist_diff = delta.x.min(delta.y).min(delta.z);
@@ -2741,6 +2783,9 @@ impl Entity {
                 if delta.z != 0.0 {
                     dist_diff = dist_diff.min(delta.z);
                 }
+            } else if dist_diff > distance_to_move.magnitude() {
+                self.pos += distance_to_move;
+                break;
             }
 
             if iteration_counter > 100 {
@@ -2751,46 +2796,33 @@ impl Entity {
                 break;
             }
 
-            if dist_diff > distance_to_move.magnitude() {
-                self.pos += distance_to_move;
-                player_move_pos += distance_to_move;
-                break;
-            }
-
             distance_to_move -= dist_diff * vel_dir;
-            self.pos += dist_diff * vel_dir;
-            player_move_pos += dist_diff * vel_dir;
-            for component in 0..3 {
+            'component_loop: for component in 0..3 {
+                let mut fake_pos = self.pos;
+                fake_pos[component] += dist_diff * vel_dir[component];
+                let player_move_pos = fake_pos + PLAYER_HITBOX_OFFSET * self.size + collision_corner_offset;
                 if delta[component] <= delta[(component + 1) % 3]
                     && delta[component] <= delta[(component + 2) % 3]
                 {
-                    let x_iter_count = (self.size
-                        * PLAYER_HITBOX_SIZE[(component + 1) % 3])
-                        .ceil()
-                        + 1.0;
-                    let z_iter_count = (self.size
-                        * PLAYER_HITBOX_SIZE[(component + 2) % 3])
-                        .ceil()
-                        + 1.0;
-                    let x_dist = (self.size
-                        * PLAYER_HITBOX_SIZE[(component + 1) % 3])
-                        / x_iter_count;
-                    let z_dist = (self.size
-                        * PLAYER_HITBOX_SIZE[(component + 2) % 3])
-                        / z_iter_count;
-                    let mut start_pos = self.pos + PLAYER_HITBOX_OFFSET * self.size
+                    let mut start_pos = fake_pos + PLAYER_HITBOX_OFFSET * self.size
                         - 0.5 * self.size * PLAYER_HITBOX_SIZE;
                     start_pos[component] = player_move_pos[component];
+                    let x_iter_count = (start_pos[(component + 1) % 3]
+                        + self.size * PLAYER_HITBOX_SIZE[(component + 1) % 3])
+                        .floor()
+                        - (start_pos[(component + 1) % 3]).floor();
+                    let z_iter_count = (start_pos[(component + 2) % 3]
+                        + self.size * PLAYER_HITBOX_SIZE[(component + 2) % 3])
+                        .floor()
+                        - (start_pos[(component + 2) % 3]).floor();
 
                     let mut x_vec = Vector3::new(0.0, 0.0, 0.0);
                     let mut z_vec = Vector3::new(0.0, 0.0, 0.0);
                     x_vec[(component + 1) % 3] = 1.0;
                     z_vec[(component + 2) % 3] = 1.0;
-                    'outer: for x_iter in 0..=(x_iter_count as u32) {
+                    for x_iter in 0..=(x_iter_count as u32) {
                         for z_iter in 0..=(z_iter_count as u32) {
-                            let pos = start_pos
-                                + x_dist * x_iter as f32 * x_vec
-                                + z_dist * z_iter as f32 * z_vec;
+                            let pos = start_pos + x_iter as f32 * x_vec + z_iter as f32 * z_vec;
                             let voxel_pos = pos.map(|c| c.floor() as u32);
                             let voxel = if let Some(index) =
                                 get_index(voxel_pos, cpu_chunks, game_state, game_settings)
@@ -2813,12 +2845,11 @@ impl Entity {
                                         game_settings,
                                     )
                                 {
+                                    self.pos = fake_pos;
                                     self.pos[1] += 1.0;
-                                    player_move_pos[1] += 1.0;
-                                    break 'outer;
+                                    continue 'component_loop;
                                 }
 
-                                self.pos[component] -= dist_diff * vel_dir[component];
                                 self.vel[component] = 0.0;
                                 // apply friction
                                 let perp_vel = Vector2::new(
@@ -2827,23 +2858,30 @@ impl Entity {
                                 );
                                 if perp_vel.magnitude() > 0.0 {
                                     let friction_factor = voxel_material.get_friction();
-                                    self.vel[(component + 1) % 3] -=
+                                    let friction = Vector2::new(
                                         (friction_factor * 0.5 * perp_vel.normalize().x
                                             + friction_factor * perp_vel.x)
-                                            * time_step;
-                                    self.vel[(component + 2) % 3] -=
+                                            * time_step,
                                         (friction_factor * 0.5 * perp_vel.normalize().y
                                             + friction_factor * perp_vel.y)
-                                            * time_step;
+                                            * time_step,
+                                    );
+                                    if friction.magnitude() > perp_vel.magnitude() {
+                                        self.vel[(component + 1) % 3] = 0.0;
+                                        self.vel[(component + 2) % 3] = 0.0;
+                                    } else {
+                                        self.vel[(component + 1) % 3] -= friction.x;
+                                        self.vel[(component + 2) % 3] -= friction.y;
+                                    }
                                 }
-
                                 self.collision_vec[component] = -vel_dir[component].signum() as i32;
                                 distance_to_move[component] = 0.0;
-                                break 'outer;
+                                continue 'component_loop;
                             }
                         }
                     }
                 }
+                self.pos = fake_pos;
             }
         }
     }
@@ -2857,16 +2895,18 @@ impl Entity {
         game_state: &GameState,
         game_settings: &GameSettings,
     ) -> bool {
-        let x_iter_count =
-            (0.99 * self.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]).ceil() + 1.0;
-        let z_iter_count =
-            (0.99 * self.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]).ceil() + 1.0;
-        let x_dist = (0.99 * self.size * PLAYER_HITBOX_SIZE[(component + 1) % 3]) / x_iter_count;
-        let z_dist = (0.99 * self.size * PLAYER_HITBOX_SIZE[(component + 2) % 3]) / z_iter_count;
         let mut start_pos = self.pos + PLAYER_HITBOX_OFFSET * self.size
-            - 0.99 * 0.5 * self.size * PLAYER_HITBOX_SIZE
-            + Vector3::new(0.0, 1.0, 0.0);
+            - 0.5 * self.size * PLAYER_HITBOX_SIZE;
         start_pos[component] = player_move_pos[component];
+        start_pos[1] += 1.0;
+        let x_iter_count = (start_pos[(component + 1) % 3]
+            + self.size * PLAYER_HITBOX_SIZE[(component + 1) % 3])
+            .floor()
+            - (start_pos[(component + 1) % 3]).floor();
+        let z_iter_count = (start_pos[(component + 2) % 3]
+            + self.size * PLAYER_HITBOX_SIZE[(component + 2) % 3])
+            .floor()
+            - (start_pos[(component + 2) % 3]).floor();
 
         let mut x_vec = Vector3::new(0.0, 0.0, 0.0);
         let mut z_vec = Vector3::new(0.0, 0.0, 0.0);
@@ -2875,7 +2915,7 @@ impl Entity {
         for x_iter in 0..=(x_iter_count as u32) {
             for z_iter in 0..=(z_iter_count as u32) {
                 let pos =
-                    start_pos + x_dist * x_iter as f32 * x_vec + z_dist * z_iter as f32 * z_vec;
+                    start_pos + x_iter as f32 * x_vec + z_iter as f32 * z_vec;
                 let voxel_pos = pos.map(|c| c.floor() as u32);
                 let voxel = if let Some(index) =
                     get_index(voxel_pos, cpu_chunks, game_state, game_settings)
