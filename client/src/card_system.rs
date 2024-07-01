@@ -1218,7 +1218,7 @@ impl BaseCard {
                         if is_direct {
                             vec![CardValue {
                                 damage: 0.0,
-                                generic: -0.35 * *damage as f32,
+                                generic: -0.08 * *damage as f32,
                                 range_probabilities: core::array::from_fn(|idx| {
                                     if idx == 0 {
                                         1.0
@@ -1243,7 +1243,7 @@ impl BaseCard {
                     } else {
                         vec![CardValue {
                             damage: 0.0,
-                            generic: -0.35 * *damage as f32,
+                            generic: -0.08 * *damage as f32,
                             range_probabilities: core::array::from_fn(|idx| {
                                 if idx == 0 {
                                     1.0
@@ -1400,11 +1400,11 @@ impl BaseCard {
                                 }],
                             }
                         }
-                        StatusEffect::UnsignedSimpleStatusEffect(effect_type, stacks) => {
+                        StatusEffect::UnsignedSimpleStatusEffect(effect_type, _stacks) => {
                             match effect_type {
                                 UnsignedSimpleStatusEffectType::Overheal => vec![CardValue {
                                     damage: 0.0,
-                                    generic: 0.35
+                                    generic: 0.12
                                         * (1.0 - (-true_duration).exp())
                                         * effect.get_effect_value(),
                                     range_probabilities: core::array::from_fn(|idx| {

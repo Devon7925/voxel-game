@@ -1527,6 +1527,9 @@ impl WorldState {
                         health_adjustment +=
                             -10.0 * player_stats.damage_taken * *stacks as f32 * time_step;
                     }
+                    ReferencedStatusEffect::Overheal(stacks) => {
+                        player.health.push(HealthSection::Overhealth(10.0 * *stacks as f32 * time_step / BaseCard::EFFECT_LENGTH_SCALE, BaseCard::EFFECT_LENGTH_SCALE));
+                    }
                     _ => {}
                 }
             }
@@ -1814,6 +1817,10 @@ impl WorldState {
                         } => Some(hit_card),
                         _ => None,
                     })
+                    .chain(player1.passive_abilities.iter().filter_map(|effect| match effect {
+                        ReferencedStatusEffect::OnHit(hit_card) => Some(hit_card),
+                        _ => None,
+                    }))
                     .map(|hit_effect| {
                         card_manager.get_effects_from_base_card(
                             *hit_effect,
@@ -2970,7 +2977,7 @@ impl Entity {
         (current_health, max_health)
     }
 
-    pub fn get_effect_stats(&self) -> PlayerEffectStats {
+    fn get_effect_stats(&self) -> PlayerEffectStats {
         let mut speed = 1.0;
         let mut damage_taken = 1.0;
         let mut gravity = Vector3::new(0.0, -1.0, 0.0);
