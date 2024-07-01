@@ -323,7 +323,7 @@ pub enum ProjectileModifier {
     OnExpiry(BaseCard),
     OnTrigger(u32, BaseCard),
     Trail(u32, BaseCard),
-    LockToOwner,
+    LockToOwner(DirectionCard),
     PiercePlayers,
     WallBounce,
 }
@@ -977,7 +977,7 @@ impl BaseCard {
                                     .map(|v| (v, *freq as f32)),
                             );
                         }
-                        ProjectileModifier::LockToOwner => {}
+                        ProjectileModifier::LockToOwner(_) => {}
                         ProjectileModifier::PiercePlayers => pierce_players = true,
                     }
                 }
@@ -1544,7 +1544,7 @@ impl BaseCard {
                         }
                         ProjectileModifier::NoEnemyFire => {}
                         ProjectileModifier::FriendlyFire => {}
-                        ProjectileModifier::LockToOwner => {}
+                        ProjectileModifier::LockToOwner(_) => {}
                         ProjectileModifier::PiercePlayers => {}
                         ProjectileModifier::WallBounce => {}
                     }
@@ -1658,7 +1658,7 @@ impl ProjectileModifier {
             ProjectileModifier::OnExpiry(_) => true,
             ProjectileModifier::OnTrigger(_, _) => true,
             ProjectileModifier::Trail(_, _) => true,
-            ProjectileModifier::LockToOwner => false,
+            ProjectileModifier::LockToOwner(_) => false,
             ProjectileModifier::PiercePlayers => false,
             ProjectileModifier::WallBounce => false,
         }
@@ -1702,7 +1702,7 @@ impl ProjectileModifier {
             ProjectileModifier::Trail(freq, _) => {
                 format!("Every {}s, activate the following card", 1.0 / *freq as f32)
             }
-            ProjectileModifier::LockToOwner => {
+            ProjectileModifier::LockToOwner(_) => {
                 format!("Locks the projectile's position to the player's position")
             }
             ProjectileModifier::PiercePlayers => {
@@ -1750,7 +1750,7 @@ impl ProjectileModifier {
             ProjectileModifier::OnExpiry(_) => panic!(),
             ProjectileModifier::OnTrigger(_, _) => panic!(),
             ProjectileModifier::Trail(_, _) => panic!(),
-            ProjectileModifier::LockToOwner => panic!(),
+            ProjectileModifier::LockToOwner(_) => panic!(),
             ProjectileModifier::PiercePlayers => panic!(),
             ProjectileModifier::WallBounce => panic!(),
         }
@@ -1776,7 +1776,7 @@ impl ProjectileModifier {
             ProjectileModifier::OnExpiry(_) => "On Expiry",
             ProjectileModifier::OnTrigger(_, _) => "On Trigger",
             ProjectileModifier::Trail(_, _) => "Trail",
-            ProjectileModifier::LockToOwner => "Lock To Owner",
+            ProjectileModifier::LockToOwner(_) => "Lock To Owner",
             ProjectileModifier::PiercePlayers => "Pierce Players",
             ProjectileModifier::WallBounce => "Wall Bounce",
         }
@@ -1959,7 +1959,7 @@ pub struct ReferencedProjectile {
     pub health: f32,
     pub no_friendly_fire: bool,
     pub no_enemy_fire: bool,
-    pub lock_owner: bool,
+    pub lock_owner: Option<DirectionCard>,
     pub pierce_players: bool,
     pub wall_bounce: bool,
     pub on_hit: Vec<ReferencedBaseCard>,
@@ -2085,7 +2085,7 @@ impl CardManager {
                 let mut on_expiry = Vec::new();
                 let mut on_trigger = Vec::new();
                 let mut trail = Vec::new();
-                let mut lock_owner = false;
+                let mut lock_owner: Option<DirectionCard> = None;
                 let mut pierce_players = false;
                 let mut wall_bounce = false;
                 for modifier in modifiers {
@@ -2144,7 +2144,7 @@ impl CardManager {
                         ProjectileModifier::Trail(freq, card) => {
                             trail.push((1.0 / (freq as f32), self.register_base_card(card)))
                         }
-                        ProjectileModifier::LockToOwner => lock_owner = true,
+                        ProjectileModifier::LockToOwner(direction) => lock_owner = Some(direction),
                         ProjectileModifier::PiercePlayers => pierce_players = true,
                         ProjectileModifier::WallBounce => wall_bounce = true,
                     }
@@ -2351,7 +2351,7 @@ impl CardManager {
             } => {
                 let proj_stats = self.get_referenced_proj(card_idx);
                 let proj_damage = proj_stats.damage as f32;
-                let should_collide_with_terrain = !proj_stats.lock_owner
+                let should_collide_with_terrain = proj_stats.lock_owner.is_none()
                     || !proj_stats.on_hit.is_empty()
                     || !proj_stats.on_headshot.is_empty();
                 projectiles.push(Projectile {

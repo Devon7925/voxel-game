@@ -2015,7 +2015,7 @@ impl WorldState {
                     projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0)),
                 ];
                 let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
-                let adjusted_projectile_size = if proj_card.lock_owner {
+                let adjusted_projectile_size = if proj_card.lock_owner.is_some() {
                     Vector3::new(proj.size[0], proj.size[1], proj.size[2])
                 } else {
                     Vector3::new(
@@ -2184,7 +2184,7 @@ impl WorldState {
                 proj1.size[0],
                 proj1.size[1],
                 proj1.size[2]
-                    + if !proj1_card.lock_owner {
+                    + if proj1_card.lock_owner.is_none() {
                         proj1.vel * time_step / 2.0
                     } else {
                         0.0
@@ -2241,7 +2241,7 @@ impl WorldState {
                     proj2.size[0],
                     proj2.size[1],
                     proj2.size[2]
-                        + if !proj2_card.lock_owner {
+                        + if proj2_card.lock_owner.is_none() {
                             proj2.vel * time_step / 2.0
                         } else {
                             0.0
@@ -2324,15 +2324,49 @@ impl Projectile {
         let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
         let mut proj_vel = projectile_dir * self.vel;
 
-        let new_projectile_rot: Quaternion<f32> = if proj_card.lock_owner {
+        let new_projectile_rot: Quaternion<f32> = if let Some(direction) = &proj_card.lock_owner {
             let player_dir = players[self.owner as usize].dir;
             let player_up = players[self.owner as usize].up;
-            let proj_pos = players[self.owner as usize].pos + 0.1 * proj_card.speed * player_dir
-                - 0.25 * proj_card.gravity * player_up;
-            for i in 0..3 {
-                self.pos[i] = proj_pos[i];
+            match direction {
+                DirectionCard::Forward => {
+                    let proj_pos = players[self.owner as usize].pos
+                        + 0.1 * proj_card.speed * player_dir
+                        - 0.25 * proj_card.gravity * player_up;
+                    for i in 0..3 {
+                        self.pos[i] = proj_pos[i];
+                    }
+                    players[self.owner as usize].rot
+                }
+                DirectionCard::Up => {
+                    let proj_pos = players[self.owner as usize].pos
+                        + 0.1 * proj_card.speed * Vector3::new(0.0, 1.0, 0.0)
+                        - 0.25 * proj_card.gravity * player_up;
+                    for i in 0..3 {
+                        self.pos[i] = proj_pos[i];
+                    }
+                    Quaternion::from_arc(projectile_dir, Vector3::new(0.0, 1.0, 0.0), None)
+                        * projectile_rot
+                }
+                DirectionCard::Movement => {
+                    let proj_pos = players[self.owner as usize].pos
+                        + 0.1 * proj_card.speed * players[self.owner as usize].movement_direction
+                        - 0.25 * proj_card.gravity * player_up;
+                    for i in 0..3 {
+                        self.pos[i] = proj_pos[i];
+                    }
+                    Quaternion::from_arc(projectile_dir, players[self.owner as usize].movement_direction, None)
+                        * projectile_rot
+                }
+                DirectionCard::None => {
+                    let proj_pos = players[self.owner as usize].pos
+                        + 0.1 * proj_card.speed * player_dir
+                        - 0.25 * proj_card.gravity * player_up;
+                    for i in 0..3 {
+                        self.pos[i] = proj_pos[i];
+                    }
+                    projectile_rot
+                }
             }
-            players[self.owner as usize].rot
         } else {
             proj_vel.y -= proj_card.gravity * time_step;
             for i in 0..3 {

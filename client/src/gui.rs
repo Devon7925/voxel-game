@@ -17,7 +17,10 @@ use itertools::Itertools;
 
 use crate::{
     card_system::{
-        Ability, BaseCard, Cooldown, CooldownModifier, Deck, DirectionCard, DragableCard, Effect, Keybind, MultiCastModifier, PassiveCard, ProjectileModifier, ReferencedStatusEffect, SignedSimpleCooldownModifier, SimpleCooldownModifier, SimpleProjectileModifierType, SimpleStatusEffectType, StatusEffect, UnsignedSimpleStatusEffectType, VoxelMaterial
+        Ability, BaseCard, Cooldown, CooldownModifier, Deck, DirectionCard, DragableCard, Effect,
+        Keybind, MultiCastModifier, PassiveCard, ProjectileModifier, ReferencedStatusEffect,
+        SignedSimpleCooldownModifier, SimpleCooldownModifier, SimpleProjectileModifierType,
+        SimpleStatusEffectType, StatusEffect, UnsignedSimpleStatusEffectType, VoxelMaterial,
     },
     game_manager::Game,
     lobby_browser::LobbyBrowser,
@@ -1014,9 +1017,25 @@ impl DrawableCard for ProjectileModifier {
                 path,
                 edit_mode,
             ),
+
+            ProjectileModifier::LockToOwner(direction) => {
+                draw_modifier(
+                    ui,
+                    item_id,
+                    name,
+                    None::<&mut u32>,
+                    hover_text,
+                    true,
+                    modify_path,
+                    path,
+                    edit_mode,
+                );
+                path.push_back(0);
+                direction.draw(ui, path, source_path, dest_path, modify_path, edit_mode);
+                path.pop_back();
+            }
             ProjectileModifier::NoEnemyFire
             | ProjectileModifier::FriendlyFire
-            | ProjectileModifier::LockToOwner
             | ProjectileModifier::PiercePlayers
             | ProjectileModifier::WallBounce
             | ProjectileModifier::None => draw_modifier(
@@ -1127,7 +1146,7 @@ impl DrawableCard for ProjectileModifier {
                     ModificationType::Other => {}
                 },
                 ProjectileModifier::FriendlyFire
-                | ProjectileModifier::LockToOwner
+                | ProjectileModifier::LockToOwner(_)
                 | ProjectileModifier::NoEnemyFire
                 | ProjectileModifier::PiercePlayers
                 | ProjectileModifier::OnHeadshot(_)
@@ -1167,6 +1186,9 @@ impl DrawableCard for ProjectileModifier {
         } else {
             assert!(path.pop_front().unwrap() == 0);
             if path.is_empty() {
+                if let ProjectileModifier::LockToOwner(direction) = self {
+                    return direction.take_from_path(path);
+                }
                 let card_ref = match self {
                     ProjectileModifier::OnHit(ref mut card)
                     | ProjectileModifier::OnHeadshot(ref mut card)
@@ -1202,6 +1224,7 @@ impl DrawableCard for ProjectileModifier {
             | ProjectileModifier::OnExpiry(ref mut card)
             | ProjectileModifier::OnTrigger(_, ref mut card)
             | ProjectileModifier::Trail(_, ref mut card) => card.insert_to_path(path, item),
+            ProjectileModifier::LockToOwner(direction) => direction.insert_to_path(path, item),
             _ => panic!("Invalid state"),
         }
     }
@@ -1214,6 +1237,7 @@ impl DrawableCard for ProjectileModifier {
             | ProjectileModifier::OnExpiry(ref mut card)
             | ProjectileModifier::OnTrigger(_, ref mut card)
             | ProjectileModifier::Trail(_, ref mut card) => card.cleanup(path),
+            ProjectileModifier::LockToOwner(direction) => direction.cleanup(path),
             ref invalid => panic!(
                 "Invalid state: cannot follow path {:?} into {:?}",
                 path, invalid
@@ -1333,11 +1357,17 @@ impl DrawableCard for StatusEffect {
                 ModificationType::Remove => *stacks -= 1,
                 ModificationType::Other => {}
             },
-            StatusEffect::UnsignedSimpleStatusEffect(_, ref mut stacks) => match modification_type {
-                ModificationType::Add => *stacks += 1,
-                ModificationType::Remove => if *stacks > 0 {*stacks -= 1},
-                ModificationType::Other => {}
-            },
+            StatusEffect::UnsignedSimpleStatusEffect(_, ref mut stacks) => {
+                match modification_type {
+                    ModificationType::Add => *stacks += 1,
+                    ModificationType::Remove => {
+                        if *stacks > 0 {
+                            *stacks -= 1
+                        }
+                    }
+                    ModificationType::Other => {}
+                }
+            }
             StatusEffect::None
             | StatusEffect::Invincibility
             | StatusEffect::Trapped
@@ -2721,7 +2751,9 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                         )),
                         DragableCard::ProjectileModifier(ProjectileModifier::NoEnemyFire),
                         DragableCard::ProjectileModifier(ProjectileModifier::FriendlyFire),
-                        DragableCard::ProjectileModifier(ProjectileModifier::LockToOwner),
+                        DragableCard::ProjectileModifier(ProjectileModifier::LockToOwner(
+                            DirectionCard::None,
+                        )),
                         DragableCard::ProjectileModifier(ProjectileModifier::PiercePlayers),
                     ],
                     PaletteState::BaseCards => vec![
