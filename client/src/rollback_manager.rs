@@ -691,6 +691,12 @@ impl PlayerSim for RollbackData {
                         game_mode.cooldowns_reset_on_deck_swap(),
                     );
 
+                    let new_player_effect_stats = new_player.get_effect_stats();
+                    new_player.health = vec![HealthSection::Health(
+                        new_player_effect_stats.max_health,
+                        new_player_effect_stats.max_health,
+                    )];
+
                     self.rollback_state.players.push(new_player);
                     self.entity_metadata.push(EntityMetaData::Player(
                         cards.clone(),
@@ -1021,6 +1027,13 @@ impl RollbackData {
         first_player.pos = game_mode.spawn_location(&first_player);
         (first_player.abilities, first_player.passive_abilities) =
             abilities_from_cooldowns(deck, card_manager, game_mode.cooldowns_reset_on_deck_swap());
+            
+
+        let first_player_effect_stats = first_player.get_effect_stats();
+        first_player.health = vec![HealthSection::Health(
+            first_player_effect_stats.max_health,
+            first_player_effect_stats.max_health,
+        )];
         rollback_state.players.push(first_player.clone());
         entity_metadata.push(EntityMetaData::Player(
             deck.clone(),
@@ -1421,6 +1434,12 @@ impl ReplayData {
                     card_manager,
                     game_mode.cooldowns_reset_on_deck_swap(),
                 );
+                
+                let new_player_effect_stats = new_player.get_effect_stats();
+                new_player.health = vec![HealthSection::Health(
+                    new_player_effect_stats.max_health,
+                    new_player_effect_stats.max_health,
+                )];
                 state.players.push(new_player);
                 entity_metadata.push(EntityMetaData::Player(deck.clone(), VecDeque::new()));
             } else if let Some(_time_stamp_string) = line.strip_prefix("TIME ") {
@@ -2059,107 +2078,7 @@ impl WorldState {
     }
 
     fn get_player_effect_stats(&self) -> Vec<PlayerEffectStats> {
-        self.players
-            .iter()
-            .map(|player| {
-                let mut speed = 1.0;
-                let mut damage_taken = 1.0;
-                let mut gravity = Vector3::new(0.0, -1.0, 0.0);
-                let mut size = 1.0;
-                let mut max_health = PLAYER_BASE_MAX_HEALTH;
-                let mut invincible = false;
-                let mut lockout = false;
-
-                for status_effect in player
-                    .status_effects
-                    .iter()
-                    .map(|e| &e.effect)
-                    .chain(player.passive_abilities.iter())
-                {
-                    match status_effect {
-                        ReferencedStatusEffect::DamageOverTime(_) => {
-                            // wait for damage taken to be calculated
-                        }
-                        ReferencedStatusEffect::Speed(stacks) => {
-                            speed *= StatusEffect::SimpleStatusEffect(
-                                SimpleStatusEffectType::Speed,
-                                *stacks,
-                            )
-                            .get_effect_value();
-                        }
-                        ReferencedStatusEffect::IncreaseDamageTaken(stacks) => {
-                            damage_taken *= StatusEffect::SimpleStatusEffect(
-                                SimpleStatusEffectType::IncreaseDamageTaken,
-                                *stacks,
-                            )
-                            .get_effect_value();
-                        }
-                        ReferencedStatusEffect::IncreaseGravity(direction, stacks) => {
-                            gravity += StatusEffect::SimpleStatusEffect(
-                                SimpleStatusEffectType::IncreaseGravity(direction.clone()),
-                                *stacks,
-                            )
-                            .get_effect_value()
-                                * match direction {
-                                    DirectionCard::Forward => player.dir,
-                                    DirectionCard::Up => Vector3::new(0.0, 1.0, 0.0),
-                                    DirectionCard::Movement => {
-                                        if player.movement_direction.magnitude() == 0.0 {
-                                            Vector3::new(0.0, 0.0, 0.0)
-                                        } else {
-                                            player.movement_direction.normalize()
-                                        }
-                                    }
-                                    DirectionCard::None => Vector3::new(0.0, 0.0, 0.0),
-                                };
-                        }
-                        ReferencedStatusEffect::Overheal(_) => {
-                            // managed seperately
-                        }
-                        ReferencedStatusEffect::Grow(stacks) => {
-                            size *= StatusEffect::SimpleStatusEffect(
-                                SimpleStatusEffectType::Grow,
-                                *stacks,
-                            )
-                            .get_effect_value();
-                        }
-                        ReferencedStatusEffect::IncreaseMaxHealth(stacks) => {
-                            max_health += StatusEffect::SimpleStatusEffect(
-                                SimpleStatusEffectType::IncreaseMaxHealth,
-                                *stacks,
-                            )
-                            .get_effect_value();
-                        }
-                        ReferencedStatusEffect::Invincibility => {
-                            invincible = true;
-                        }
-                        ReferencedStatusEffect::Trapped => {
-                            speed *= 0.0;
-                        }
-                        ReferencedStatusEffect::Lockout => {
-                            lockout = true;
-                        }
-                        ReferencedStatusEffect::OnHit(_) => {
-                            // managed seperately
-                        }
-                    }
-                }
-
-                if size > 5.0 {
-                    size = 5.0;
-                }
-
-                PlayerEffectStats {
-                    speed,
-                    damage_taken,
-                    gravity,
-                    size,
-                    max_health,
-                    invincible,
-                    lockout,
-                }
-            })
-            .collect()
+        self.players.iter().map(Entity::get_effect_stats).collect()
     }
 
     fn get_collision_pairs(
@@ -2354,8 +2273,11 @@ impl Projectile {
                     for i in 0..3 {
                         self.pos[i] = proj_pos[i];
                     }
-                    Quaternion::from_arc(projectile_dir, players[self.owner as usize].movement_direction, None)
-                        * projectile_rot
+                    Quaternion::from_arc(
+                        projectile_dir,
+                        players[self.owner as usize].movement_direction,
+                        None,
+                    ) * projectile_rot
                 }
                 DirectionCard::None => {
                     let proj_pos = players[self.owner as usize].pos
@@ -2570,7 +2492,10 @@ impl Entity {
             if self.respawn_timer <= 0.0 {
                 self.pos = game_mode.spawn_location(&self);
                 self.vel = Vector3::new(0.0, 0.0, 0.0);
-                self.health = vec![HealthSection::Health(100.0, 100.0)];
+                self.health = vec![HealthSection::Health(
+                    player_stats[player_idx].max_health,
+                    player_stats[player_idx].max_health,
+                )];
                 self.status_effects.clear();
             }
             return;
@@ -3043,6 +2968,100 @@ impl Entity {
             }
         }
         (current_health, max_health)
+    }
+
+    pub fn get_effect_stats(&self) -> PlayerEffectStats {
+        let mut speed = 1.0;
+        let mut damage_taken = 1.0;
+        let mut gravity = Vector3::new(0.0, -1.0, 0.0);
+        let mut size = 1.0;
+        let mut max_health = PLAYER_BASE_MAX_HEALTH;
+        let mut invincible = false;
+        let mut lockout = false;
+
+        for status_effect in self
+            .status_effects
+            .iter()
+            .map(|e| &e.effect)
+            .chain(self.passive_abilities.iter())
+        {
+            match status_effect {
+                ReferencedStatusEffect::DamageOverTime(_) => {
+                    // wait for damage taken to be calculated
+                }
+                ReferencedStatusEffect::Speed(stacks) => {
+                    speed *=
+                        StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Speed, *stacks)
+                            .get_effect_value();
+                }
+                ReferencedStatusEffect::IncreaseDamageTaken(stacks) => {
+                    damage_taken *= StatusEffect::SimpleStatusEffect(
+                        SimpleStatusEffectType::IncreaseDamageTaken,
+                        *stacks,
+                    )
+                    .get_effect_value();
+                }
+                ReferencedStatusEffect::IncreaseGravity(direction, stacks) => {
+                    gravity += StatusEffect::SimpleStatusEffect(
+                        SimpleStatusEffectType::IncreaseGravity(direction.clone()),
+                        *stacks,
+                    )
+                    .get_effect_value()
+                        * match direction {
+                            DirectionCard::Forward => self.dir,
+                            DirectionCard::Up => Vector3::new(0.0, 1.0, 0.0),
+                            DirectionCard::Movement => {
+                                if self.movement_direction.magnitude() == 0.0 {
+                                    Vector3::new(0.0, 0.0, 0.0)
+                                } else {
+                                    self.movement_direction.normalize()
+                                }
+                            }
+                            DirectionCard::None => Vector3::new(0.0, 0.0, 0.0),
+                        };
+                }
+                ReferencedStatusEffect::Overheal(_) => {
+                    // managed seperately
+                }
+                ReferencedStatusEffect::Grow(stacks) => {
+                    size *= StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, *stacks)
+                        .get_effect_value();
+                }
+                ReferencedStatusEffect::IncreaseMaxHealth(stacks) => {
+                    max_health += StatusEffect::SimpleStatusEffect(
+                        SimpleStatusEffectType::IncreaseMaxHealth,
+                        *stacks,
+                    )
+                    .get_effect_value();
+                }
+                ReferencedStatusEffect::Invincibility => {
+                    invincible = true;
+                }
+                ReferencedStatusEffect::Trapped => {
+                    speed *= 0.0;
+                }
+                ReferencedStatusEffect::Lockout => {
+                    lockout = true;
+                }
+                ReferencedStatusEffect::OnHit(_) => {
+                    // managed seperately
+                }
+            }
+        }
+
+        if size > 5.0 {
+            size = 5.0;
+        }
+
+        PlayerEffectStats {
+            speed,
+            damage_taken,
+            gravity,
+            size,
+            max_health,
+            invincible,
+            lockout,
+        }
     }
 }
 

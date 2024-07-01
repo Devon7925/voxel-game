@@ -240,6 +240,9 @@ impl GameMode for ControlMode {
         let mut team_1_capturers = 0;
         let mut team_2_capturers = 0;
         for entity in entities.iter_mut() {
+            if entity.respawn_timer > 0.0 {
+                continue;
+            }
             let entity_team = entity.gamemode_data.get(0).unwrap_or(&0);
             let vec_from_point = entity.pos - Point3::new(10000.0, 1800.0, 10000.0);
             match entity_team {
