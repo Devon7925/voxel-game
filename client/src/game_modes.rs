@@ -70,8 +70,8 @@ pub fn game_mode_from_type(game_mode: GameModeSettings) -> Box<dyn GameMode> {
 }
 
 impl GameMode for PracticeRangeMode {
-    fn are_friends(&self, _player1: u32, _player2: u32, _entities: &Vec<Entity>) -> bool {
-        false
+    fn are_friends(&self, player1: u32, player2: u32, _entities: &Vec<Entity>) -> bool {
+        player1 == player2
     }
 
     fn spawn_location(&self, _entity: &Entity) -> Point3<f32> {

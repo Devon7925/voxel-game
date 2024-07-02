@@ -1,6 +1,5 @@
 use std::f32::consts::PI;
 
-
 use cgmath::{
     vec3, ElementWise, EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation,
     Rotation3, Vector2, Vector3,
@@ -14,7 +13,13 @@ use crate::{
         BaseCard, CardManager, DirectionCard, ReferencedCooldown, ReferencedEffect,
         ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType,
         StatusEffect, VoxelMaterial,
-    }, game_manager::GameState, game_modes::GameMode, rollback_manager::Action, voxel_sim_manager::{Projectile, VoxelComputePipeline}, CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE, RESPAWN_TIME
+    },
+    game_manager::GameState,
+    game_modes::GameMode,
+    rollback_manager::Action,
+    voxel_sim_manager::{Projectile, VoxelComputePipeline},
+    CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
+    RESPAWN_TIME,
 };
 use voxel_shared::GameSettings;
 
@@ -37,14 +42,15 @@ pub struct Entity {
     pub health: Vec<HealthSection>,
     pub abilities: Vec<PlayerAbility>,
     pub passive_abilities: Vec<ReferencedStatusEffect>,
-    pub respawn_timer: f32,
     pub collision_vec: Vector3<i32>,
     pub movement_direction: Vector3<f32>,
     pub status_effects: Vec<AppliedStatusEffect>,
-    pub player_piercing_invincibility: f32,
     pub hitmarker: (f32, f32),
     pub hurtmarkers: Vec<(Vector3<f32>, f32, f32)>,
     pub gamemode_data: Vec<u32>,
+    pub respawn_timer: f32,
+    pub player_piercing_invincibility: f32,
+    pub on_hit_passive_cooldown: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -95,14 +101,15 @@ impl Default for Entity {
             )],
             abilities: Vec::new(),
             passive_abilities: Vec::new(),
-            respawn_timer: 0.0,
             collision_vec: Vector3::new(0, 0, 0),
             movement_direction: Vector3::new(0.0, 0.0, 0.0),
             status_effects: Vec::new(),
-            player_piercing_invincibility: 0.0,
             hitmarker: (0.0, 0.0),
             hurtmarkers: Vec::new(),
             gamemode_data: Vec::new(),
+            respawn_timer: 0.0,
+            player_piercing_invincibility: 0.0,
+            on_hit_passive_cooldown: 0.0,
         }
     }
 }
@@ -424,7 +431,7 @@ impl WorldState {
             if player1.respawn_timer > 0.0 || player_stats[i].invincible {
                 continue;
             }
-            for j in i+1..self.players.len() {
+            for j in 0..self.players.len() {
                 if game_mode.are_friends(i as u32, j as u32, &self.players) {
                     continue;
                 }
@@ -465,12 +472,14 @@ impl WorldState {
                                 } => Some(hit_card),
                                 _ => None,
                             })
-                            .chain(player1.passive_abilities.iter().filter_map(
-                                |effect| match effect {
-                                    ReferencedStatusEffect::OnHit(hit_card) => Some(hit_card),
-                                    _ => None,
-                                },
-                            ))
+                            .chain((player1.on_hit_passive_cooldown <= 0.0).then_some(
+                                player1.passive_abilities.iter().filter_map(
+                                    |effect| match effect {
+                                        ReferencedStatusEffect::OnHit(hit_card) => Some(hit_card),
+                                        _ => None,
+                                    },
+                                ),
+                            ).into_iter().flatten())
                             .map(|hit_effect| {
                                 card_manager.get_effects_from_base_card(
                                     *hit_effect,
@@ -489,6 +498,9 @@ impl WorldState {
                         } => false,
                         _ => true,
                     });
+                    if player1.on_hit_passive_cooldown <= 0.0 {
+                        player1.on_hit_passive_cooldown = 0.5;
+                    }
                     hit_effects
                 };
             for (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) in
@@ -1159,6 +1171,9 @@ impl Entity {
         }
         if self.player_piercing_invincibility > 0.0 {
             self.player_piercing_invincibility -= time_step;
+        }
+        if self.on_hit_passive_cooldown > 0.0 {
+            self.on_hit_passive_cooldown -= time_step;
         }
         if let Some(action) = action.primary_action {
             self.facing[0] = (self.facing[0] - action.aim[0] + 2.0 * PI) % (2.0 * PI);
