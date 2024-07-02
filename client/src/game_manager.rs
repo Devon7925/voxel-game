@@ -7,7 +7,7 @@ use cgmath::{EuclideanSpace, Point3};
 
 use crate::{
     app::CreationInterface,
-    card_system::{CardManager, Cooldown, Deck},
+    card_system::{CardManager, Deck},
     game_modes::{game_mode_from_type, GameMode},
     rollback_manager::{PlayerSim, ReplayData, RollbackData},
     settings_manager::Settings,
@@ -38,7 +38,7 @@ impl Game {
         creation_interface: &CreationInterface,
         lobby_id: Option<RoomId>,
     ) -> Self {
-        let game_mode = game_mode_from_type(game_settings.game_mode.clone());
+        let mut game_mode = game_mode_from_type(game_settings.game_mode.clone());
         let game_state = GameState {
             start_pos: game_mode.get_initial_center().zip(
                 Point3::from_vec(game_settings.render_size),
@@ -48,7 +48,7 @@ impl Game {
         };
         let mut card_manager = CardManager::default();
 
-        let rollback_data: Box<dyn PlayerSim> = Box::new(RollbackData::new(
+        let mut rollback_data: Box<dyn PlayerSim> = Box::new(RollbackData::new(
             &creation_interface.memory_allocator,
             &settings,
             &game_settings,
@@ -61,6 +61,8 @@ impl Game {
         let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);
 
         voxel_compute.queue_update_from_world_pos(&game_mode.get_initial_center(), &game_settings);
+
+        game_mode.initialize(&mut rollback_data, &mut card_manager);
 
         Game {
             voxel_compute,
@@ -88,7 +90,7 @@ impl Game {
             }
             panic!("No game settings found in replay file");
         };
-        let game_mode = game_mode_from_type(game_settings.game_mode.clone());
+        let mut game_mode = game_mode_from_type(game_settings.game_mode.clone());
 
         let game_state = GameState {
             start_pos: game_mode.get_initial_center().zip(
@@ -99,7 +101,7 @@ impl Game {
         };
         let mut card_manager = CardManager::default();
 
-        let rollback_data: Box<dyn PlayerSim> = Box::new(ReplayData::new(
+        let mut rollback_data: Box<dyn PlayerSim> = Box::new(ReplayData::new(
             &creation_interface.memory_allocator,
             &game_settings,
             &mut replay_lines,
@@ -110,6 +112,8 @@ impl Game {
         let mut voxel_compute = VoxelComputePipeline::new(creation_interface, &game_settings);
 
         voxel_compute.queue_update_from_world_pos(&game_mode.get_initial_center(), &game_settings);
+
+        game_mode.initialize(&mut rollback_data, &mut card_manager);
 
         Game {
             voxel_compute,

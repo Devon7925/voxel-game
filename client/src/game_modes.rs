@@ -5,10 +5,7 @@ use egui_winit_vulkano::egui::{Slider, Ui};
 use voxel_shared::GameModeSettings;
 
 use crate::{
-    gui::EditMode,
-    rollback_manager::{Entity, PlayerSim},
-    voxel_sim_manager::Projectile,
-    RESPAWN_TIME,
+    card_system::{CardManager, Deck}, cpu_simulation::Entity, gui::EditMode, rollback_manager::{EntityMetaData, PlayerSim}, voxel_sim_manager::Projectile, RESPAWN_TIME
 };
 
 pub trait GameMode {
@@ -23,6 +20,7 @@ pub trait GameMode {
     fn mode_gui(&mut self, _ui: &mut Ui, _sim: &mut Box<dyn PlayerSim>) {}
     fn overlay(&self, _ui: &mut Ui, _sim: &Box<dyn PlayerSim>) {}
     fn send_action(&self, _player_idx: usize, _action: String, _entities: &mut Vec<Entity>) {}
+    fn initialize(&mut self, _player_sim: &mut Box<dyn PlayerSim>, _card_manager: &mut CardManager) {}
     fn update(
         &mut self,
         _entities: &mut Vec<Entity>,
@@ -73,7 +71,7 @@ pub fn game_mode_from_type(game_mode: GameModeSettings) -> Box<dyn GameMode> {
 
 impl GameMode for PracticeRangeMode {
     fn are_friends(&self, _player1: u32, _player2: u32, _entities: &Vec<Entity>) -> bool {
-        true
+        false
     }
 
     fn spawn_location(&self, _entity: &Entity) -> Point3<f32> {
@@ -94,6 +92,10 @@ impl GameMode for PracticeRangeMode {
 
     fn cooldowns_reset_on_deck_swap(&self) -> bool {
         true
+    }
+
+    fn initialize(&mut self, player_sim: &mut Box<dyn PlayerSim>, card_manager: &mut CardManager) {
+        player_sim.add_player(&Deck::empty(), card_manager, self, EntityMetaData::TrainingBot);
     }
 }
 

@@ -12,6 +12,7 @@ mod rollback_manager;
 mod settings_manager;
 mod utils;
 mod voxel_sim_manager;
+mod cpu_simulation;
 
 use crate::{
     app::RenderPipeline,

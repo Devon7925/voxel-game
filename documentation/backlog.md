@@ -40,7 +40,6 @@
     * Buff wall jump
     * Make diagonal movement faster but not root 2 faster
     * Nerf jump decreased gravity
-    * Fix step up bug
 * Other
     * Fix DOT hitmarkers
 

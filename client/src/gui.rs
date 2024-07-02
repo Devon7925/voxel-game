@@ -24,7 +24,8 @@ use crate::{
     },
     game_manager::Game,
     lobby_browser::LobbyBrowser,
-    rollback_manager::{AppliedStatusEffect, Entity, EntityMetaData, HealthSection, PlayerAbility},
+    rollback_manager::EntityMetaData,
+    cpu_simulation::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
     settings_manager::Control,
     utils::{translate_egui_key_code, translate_egui_pointer_button},
 };

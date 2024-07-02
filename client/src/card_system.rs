@@ -44,6 +44,15 @@ impl Deck {
         )
         .filter(|s| !s.is_empty())
     }
+    
+    pub fn empty() -> Deck {
+        Deck {
+            cooldowns: vec![],
+            passive: PassiveCard {
+                passive_effects: vec![],
+            }
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

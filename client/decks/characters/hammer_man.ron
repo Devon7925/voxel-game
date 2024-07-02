@@ -14,7 +14,7 @@
                             SimpleModify(Length, -15),
                             SimpleModify(Health, 11),
                             SimpleModify(Lifetime, -2),
-                            LockToOwner,
+                            LockToOwner(Forward),
                             PiercePlayers,
                         ]),
                         StatusEffects(3, [
@@ -31,7 +31,7 @@
                         SimpleModify(Speed, -1),
                         SimpleModify(Lifetime, -6),
                         SimpleModify(Gravity, 2),
-                        LockToOwner,
+                        LockToOwner(Forward),
                         PiercePlayers,
                         OnHit(Effect(Damage(42))),
                         OnHit(Effect(Knockback(1, Forward))),

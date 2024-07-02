@@ -34,7 +34,7 @@ use vulkano::{
     render_pass::Subpass,
 };
 
-use crate::{rollback_manager::WorldState, PLAYER_HITBOX_OFFSET, RASTER_FAR_PLANE};
+use crate::{cpu_simulation::WorldState, PLAYER_HITBOX_OFFSET, RASTER_FAR_PLANE};
 
 pub struct RasterizerSystem {
     gfx_queue: Arc<Queue>,

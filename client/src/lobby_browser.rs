@@ -1,4 +1,4 @@
-use tokio::{runtime::Runtime, sync::broadcast::error};
+use tokio::runtime::Runtime;
 
 use crate::settings_manager::Settings;
 use std::sync::{Arc, Mutex};
