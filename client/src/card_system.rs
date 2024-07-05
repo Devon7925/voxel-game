@@ -44,13 +44,13 @@ impl Deck {
         )
         .filter(|s| !s.is_empty())
     }
-    
+
     pub fn empty() -> Deck {
         Deck {
             cooldowns: vec![],
             passive: PassiveCard {
                 passive_effects: vec![],
-            }
+            },
         }
     }
 }
@@ -217,6 +217,7 @@ impl Cooldown {
     }
 
     pub fn generate_cooldown_cache(&mut self) -> bool {
+        puffin::profile_function!();
         let mut has_anything_changed = false;
         for ability in self
             .abilities
@@ -537,7 +538,10 @@ impl StatusEffect {
                     self.get_effect_value()
                 )
             }
-            StatusEffect::UnsignedSimpleStatusEffect(UnsignedSimpleStatusEffectType::Overheal, _) => {
+            StatusEffect::UnsignedSimpleStatusEffect(
+                UnsignedSimpleStatusEffectType::Overheal,
+                _,
+            ) => {
                 format!("Overheal (10 per) {}", self.get_effect_value())
             }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, _) => {
@@ -592,9 +596,10 @@ impl StatusEffect {
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseGravity(_), _) => {
                 "Increase gravity"
             }
-            StatusEffect::UnsignedSimpleStatusEffect(UnsignedSimpleStatusEffectType::Overheal, _) => {
-                "Overheal"
-            }
+            StatusEffect::UnsignedSimpleStatusEffect(
+                UnsignedSimpleStatusEffectType::Overheal,
+                _,
+            ) => "Overheal",
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, _) => "Grow",
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::IncreaseMaxHealth, _) => {
                 "Increase max health"
@@ -718,17 +723,18 @@ fn convolve_range_probabilities<const COUNT: usize>(
     new_range_probabilities
 }
 
-const DAMAGE_CALCULATION_FLOAT_SCALE: f32 = 5.0;
+const DAMAGE_CALCULATION_FLOAT_SCALE: f32 = 2.0;
 const SCALED_PLAYER_BASE_MAX_HEALTH: i32 =
     (PLAYER_BASE_MAX_HEALTH * DAMAGE_CALCULATION_FLOAT_SCALE) as i32;
 const TIME_TO_FIRST_SHOT: f32 = 0.5;
 const HEALING_RATE: f32 = 12.8;
 fn gen_cooldown_for_ttk(damage_profile: Vec<(f32, f32)>, goal_ttk: f32) -> f32 {
+    puffin::profile_function!();
     let minimum_damage = damage_profile.get(0).unwrap().0;
     if minimum_damage >= PLAYER_BASE_MAX_HEALTH {
         return 120.0;
     }
-    let mut healing = 128;
+    let mut healing = (HEALING_RATE * DAMAGE_CALCULATION_FLOAT_SCALE) as i32;
     let mut delta = healing;
     while delta > 1 {
         delta /= 2;
@@ -736,7 +742,7 @@ fn gen_cooldown_for_ttk(damage_profile: Vec<(f32, f32)>, goal_ttk: f32) -> f32 {
             &damage_profile,
             healing,
             SCALED_PLAYER_BASE_MAX_HEALTH,
-            100,
+            50,
             &mut HashMap::new(),
         ) - TIME_TO_FIRST_SHOT)
             * healing as f32
@@ -762,7 +768,24 @@ fn get_avg_ttk(
     if current_health <= healing {
         0.0
     } else if iterations == 0 {
-        0.0
+        let avg_damage = damage_profile
+            .iter()
+            .map(|dp| dp.0 * DAMAGE_CALCULATION_FLOAT_SCALE * dp.1)
+            .sum::<f32>();
+        let one_shot_chance = damage_profile
+            .iter()
+            .filter(|dp| {
+                dp.0 * DAMAGE_CALCULATION_FLOAT_SCALE > SCALED_PLAYER_BASE_MAX_HEALTH as f32
+            })
+            .map(|dp| dp.1)
+            .sum::<f32>();
+        let mut result: f32 = 20.0;
+        if avg_damage > healing as f32 {
+            result = result.min(current_health as f32 / (avg_damage - healing as f32));
+        } else {
+            result = result.min(1.0 / (1.0 - one_shot_chance));
+        }
+        result
     } else if current_health > SCALED_PLAYER_BASE_MAX_HEALTH {
         get_avg_ttk(
             damage_profile,
@@ -822,6 +845,7 @@ impl BaseCard {
     }
 
     pub fn get_cooldown(&self) -> f32 {
+        puffin::profile_function!();
         let card_values = self.evaluate_value(true);
         let generic_value = card_values
             .iter()
@@ -910,6 +934,7 @@ impl BaseCard {
     }
 
     fn evaluate_value(&self, is_direct: bool) -> Vec<CardValue> {
+        puffin::profile_function!();
         match self {
             BaseCard::Projectile(modifiers) => {
                 let mut hit_value = vec![];
@@ -2310,7 +2335,10 @@ impl CardManager {
                 SimpleStatusEffectType::IncreaseGravity(direction),
                 stacks,
             ) => vec![ReferencedStatusEffect::IncreaseGravity(direction, stacks)],
-            StatusEffect::UnsignedSimpleStatusEffect(UnsignedSimpleStatusEffectType::Overheal, stacks) => {
+            StatusEffect::UnsignedSimpleStatusEffect(
+                UnsignedSimpleStatusEffectType::Overheal,
+                stacks,
+            ) => {
                 vec![ReferencedStatusEffect::Overheal(stacks)]
             }
             StatusEffect::SimpleStatusEffect(SimpleStatusEffectType::Grow, stacks) => {
