@@ -11,7 +11,7 @@
                     card: Projectile([
                         SimpleModify(Size, -5),
                         SimpleModify(Length, 4),
-                        SimpleModify(Speed, 12),
+                        SimpleModify(Speed, 5),
                         OnHit(Effect(Damage(20))),
                         OnHit(Projectile([
                             SimpleModify(Speed, -5),
