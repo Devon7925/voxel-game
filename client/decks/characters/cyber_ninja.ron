@@ -60,7 +60,7 @@
                         Projectile([
                             SimpleModify(Health, 9),
                             SimpleModify(Lifetime, -1),
-                            LockToOwner,
+                            LockToOwner(Forward),
                             SimpleModify(Size, 3),
                             SimpleModify(Length, -8),
                         ]),
