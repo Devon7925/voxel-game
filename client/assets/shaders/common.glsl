@@ -85,6 +85,22 @@ const bool is_transparent[] = {
     false,  //MAT_UNBREAKABLE
     };
 
+const int weights[] = {
+    0,  //MAT_AIR
+    10,  //MAT_STONE
+    0,  //MAT_OOB
+    5,  //MAT_DIRT
+    4,  //MAT_GRASS
+    0,  //MAT_PROJECTILE
+    3,  //MAT_ICE
+    2,  //MAT_WATER
+    0,  //MAT_PLAYER
+    0,  //MAT_AIR_OOB
+    7,  //MAT_WOOD
+    6,  //MAT_LEAF
+    11,  //MAT_UNBREAKABLE
+};
+
 struct HeightData {
     float offset;
     vec3 scale;
