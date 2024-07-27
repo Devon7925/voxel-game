@@ -730,7 +730,7 @@ const TIME_TO_FIRST_SHOT: f32 = 0.5;
 const HEALING_RATE: f32 = 12.8;
 fn gen_cooldown_for_ttk(damage_profile: Vec<(f32, f32)>, goal_ttk: f32) -> f32 {
     puffin::profile_function!();
-    let minimum_damage = damage_profile.get(0).unwrap().0;
+    let minimum_damage = damage_profile.first().unwrap().0;
     if minimum_damage >= PLAYER_BASE_MAX_HEALTH {
         return 120.0;
     }
@@ -896,18 +896,21 @@ impl BaseCard {
                     .collect()
             })
             .collect();
-
+        
         let range_cds = ranged_damage_profiles
             .into_iter()
             .map(|damage_profile| gen_cooldown_for_ttk(damage_profile, 3.5))
             .collect_vec();
         let average_cd = range_cds.iter().sum::<f32>() / range_cds.len() as f32;
-        let std_cd = (range_cds
+        let mut std_cd = (range_cds
             .iter()
             .map(|cd| (cd - average_cd).powi(2))
             .sum::<f32>()
             / range_cds.len() as f32)
             .sqrt();
+        if std_cd == 0.0 {
+            std_cd = 1.0;
+        }
         let range_cd_weights = range_cds
             .iter()
             .map(|cd| ((cd - average_cd) / std_cd).exp())
