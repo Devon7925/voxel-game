@@ -172,7 +172,19 @@ fn main() {
                         .map(|game| game.rollback_data.get_delta_time())
                         .unwrap_or(DEFAULT_DELTA_TIME);
                     next_frame_time += std::time::Duration::from_secs_f32(delta_time);
-                    gui_state.cooldown_cache_refresh_delay -= delta_time;
+
+                    if matches!(gui_state.menu_stack.last(), Some(GuiElement::CardEditor)) {
+                        if gui_state.cooldown_cache_refresh_delay <= 0.0 {
+                            for cooldown in gui_state.render_deck.cooldowns.iter_mut() {
+                                if cooldown.generate_cooldown_cache() {
+                                    gui_state.cooldown_cache_refresh_delay = 0.5;
+                                }
+                            }
+                        } else {
+                            gui_state.cooldown_cache_refresh_delay -= delta_time;
+                        }
+                    }
+
                     let skip_render = if app.game.is_some() && !gui_state.game_just_started {
                         if (Instant::now() - last_frame_time).as_secs_f32() > 2.0 {
                             // enforce minimum frame rate of 0.5fps

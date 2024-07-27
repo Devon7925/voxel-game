@@ -2881,14 +2881,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                             let total_impact = gui_state.render_deck.get_total_impact();
-
-                            if gui_state.cooldown_cache_refresh_delay <= 0.0 {
-                                for cooldown in gui_state.render_deck.cooldowns.iter_mut() {
-                                    if cooldown.generate_cooldown_cache() {
-                                        gui_state.cooldown_cache_refresh_delay = 0.5;
-                                    }
-                                }
-                            }
+                            
                             ui.horizontal_top(|ui| {
                                 gui_state.render_deck.passive.draw(
                                     ui,
