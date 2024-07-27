@@ -477,10 +477,6 @@ impl VoxelComputePipeline {
                     projectiles.extend(effects.0);
                     new_voxels.extend(effects.1);
                 }
-                if proj_card.pierce_players {
-                    projectiles.push(projectile);
-                }
-                continue;
             }
             projectiles.push(projectile);
         }
