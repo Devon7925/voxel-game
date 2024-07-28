@@ -11,7 +11,7 @@ use egui_winit_vulkano::egui::{
     text::LayoutJob,
     vec2, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label, LayerId,
     Layout, Order, Pos2, Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke,
-    TextFormat, TextStyle, Ui, Vec2,
+    TextFormat, TextStyle, Ui, Vec2, Widget,
 };
 use itertools::Itertools;
 
@@ -22,10 +22,10 @@ use crate::{
         SignedSimpleCooldownModifier, SimpleCooldownModifier, SimpleProjectileModifierType,
         SimpleStatusEffectType, StatusEffect, UnsignedSimpleStatusEffectType, VoxelMaterial,
     },
+    cpu_simulation::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
     game_manager::Game,
     lobby_browser::LobbyBrowser,
     rollback_manager::EntityMetaData,
-    cpu_simulation::{AppliedStatusEffect, Entity, HealthSection, PlayerAbility},
     settings_manager::Control,
     utils::{translate_egui_key_code, translate_egui_pointer_button},
 };
@@ -2424,6 +2424,10 @@ fn draw_modifier<T: std::fmt::Display + Numeric + Copy>(
             ui.style_mut().visuals.widgets.active.bg_fill = Color32::TRANSPARENT;
             ui.style_mut().visuals.widgets.active.weak_bg_fill = Color32::TRANSPARENT;
             ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::TRANSPARENT;
+            ui.style_mut().visuals.widgets.active.fg_stroke = Stroke::new(0.0, Color32::WHITE);
+            ui.style_mut().visuals.widgets.inactive.fg_stroke = Stroke::new(0.0, Color32::WHITE);
+            ui.style_mut().visuals.widgets.noninteractive.fg_stroke =
+                Stroke::new(0.0, Color32::WHITE);
             ui.style_mut().text_styles = [
                 (
                     TextStyle::Heading,
@@ -2458,16 +2462,24 @@ fn draw_modifier<T: std::fmt::Display + Numeric + Copy>(
             let response = ui.add(Label::new(job)).on_hover_text(hover_text);
             if let Some(count) = count {
                 ui.vertical(|ui| {
-                    if ui
-                        .add_enabled(
-                            edit_mode.can_edit_modifiers(),
-                            DragValue::new(count).speed(0.1),
-                        )
-                        .changed()
-                    {
-                        if modify_path.is_none() {
-                            *modify_path = Some((path.clone(), ModificationType::Other));
+                    if edit_mode.can_edit_modifiers() {
+                        if ui.add(DragValue::new(count).speed(0.1)).changed() {
+                            if modify_path.is_none() {
+                                *modify_path = Some((path.clone(), ModificationType::Other));
+                            }
                         }
+                    } else {
+                        let mut job = LayoutJob::default();
+                        job.append(
+                            &count.to_string(),
+                            0.0,
+                            TextFormat {
+                                color: Color32::WHITE,
+                                font_id: FontId::new(7.0, egui::FontFamily::Proportional),
+                                ..Default::default()
+                            },
+                        );
+                        ui.add(Label::new(job));
                     }
                 });
             }
@@ -2881,7 +2893,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
                             let total_impact = gui_state.render_deck.get_total_impact();
-                            
+
                             ui.horizontal_top(|ui| {
                                 gui_state.render_deck.passive.draw(
                                     ui,
