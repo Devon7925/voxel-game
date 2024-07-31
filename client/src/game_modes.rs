@@ -6,7 +6,7 @@ use voxel_shared::GameModeSettings;
 
 use crate::{
     card_system::{CardManager, Deck},
-    cpu_simulation::Entity,
+    cpu_simulation::{Entity, PlayerEffectStats},
     gui::EditMode,
     rollback_manager::{EntityMetaData, PlayerSim},
     voxel_sim_manager::Projectile,
@@ -23,6 +23,10 @@ pub trait GameMode {
         } else {
             PlayerMode::Normal
         }
+    }
+
+    fn has_immunity(&self, entity: &Entity, player_stats: &PlayerEffectStats) -> bool {
+        !self.player_mode(entity).has_entity_collison() || player_stats.invincible
     }
 
     fn get_initial_center(&self) -> Point3<f32>;
@@ -225,6 +229,20 @@ impl GameMode for ControlMode {
             PlayerMode::Spectator
         } else {
             PlayerMode::Normal
+        }
+    }
+
+    fn has_immunity(&self, entity: &Entity, player_stats: &PlayerEffectStats) -> bool {
+        if !self.player_mode(entity).has_entity_collison() || player_stats.invincible {
+            return true
+        }
+
+        let team = entity.gamemode_data.get(0).unwrap_or(&0);
+        match team {
+            0 => true,
+            1 => entity.pos.x - 10000.0 < -SPAWN_ROOM_OFFSET as f32,
+            2 => entity.pos.x - 10000.0 > SPAWN_ROOM_OFFSET as f32,
+            _ => panic!("Invalid Team"),
         }
     }
 

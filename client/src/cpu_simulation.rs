@@ -641,7 +641,7 @@ impl WorldState {
         let mut player_player_collision_pairs: Vec<(usize, usize)> = vec![];
         for i in 0..self.players.len() {
             let player1 = self.players.get(i).unwrap();
-            if !game_mode.player_mode(player1).has_entity_collison() || player_stats[i].invincible {
+            if game_mode.has_immunity(player1, &player_stats[i]) {
                 continue;
             }
             for j in 0..self.players.len() {
@@ -649,9 +649,7 @@ impl WorldState {
                     continue;
                 }
                 let player2 = self.players.get(j).unwrap();
-                if !game_mode.player_mode(player2).has_entity_collison()
-                    || player_stats[j].invincible
-                {
+                if game_mode.has_immunity(player2, &player_stats[j]) {
                     continue;
                 }
                 if 5.0 * (player1.size + player2.size) > (player1.pos - player2.pos).magnitude() {
@@ -682,9 +680,7 @@ impl WorldState {
     ) -> Vec<(usize, usize, Point3<f32>, Hitsphere)> {
         let mut proj_collisions = Vec::new();
         for (player_idx, player) in self.players.iter().enumerate() {
-            if !game_mode.player_mode(player).has_entity_collison()
-                || player_stats[player_idx].invincible
-            {
+            if game_mode.has_immunity(player, &player_stats[player_idx]) {
                 continue;
             }
 
