@@ -1740,6 +1740,7 @@ impl Entity {
         }
 
         if size > 5.0 {
+            damage_taken *= size - 4.0;
             size = 5.0;
         }
 

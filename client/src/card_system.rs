@@ -1409,10 +1409,10 @@ impl BaseCard {
                                 }],
                                 SimpleStatusEffectType::Grow => vec![CardValue {
                                     damage: 0.0,
-                                    generic: (if is_direct && stacks > &0 { -0.5 } else { 1.0 })
+                                    generic: (if is_direct && stacks > &0 { -0.4 } else { 1.0 })
                                         * 0.1
                                         * true_duration
-                                        * effect.get_effect_value(),
+                                        * stacks.abs() as f32,
                                     range_probabilities: core::array::from_fn(|idx| {
                                         if idx == 0 {
                                             1.0
