@@ -5,12 +5,26 @@ use egui_winit_vulkano::egui::{Slider, Ui};
 use voxel_shared::GameModeSettings;
 
 use crate::{
-    card_system::{CardManager, Deck}, cpu_simulation::Entity, gui::EditMode, rollback_manager::{EntityMetaData, PlayerSim}, voxel_sim_manager::Projectile, RESPAWN_TIME
+    card_system::{CardManager, Deck},
+    cpu_simulation::Entity,
+    gui::EditMode,
+    rollback_manager::{EntityMetaData, PlayerSim},
+    voxel_sim_manager::Projectile,
+    RESPAWN_TIME,
 };
 
 pub trait GameMode {
     fn are_friends(&self, player1: u32, player2: u32, entities: &Vec<Entity>) -> bool;
     fn spawn_location(&self, entity: &Entity) -> Point3<f32>;
+
+    fn player_mode(&self, entity: &Entity) -> PlayerMode {
+        if entity.respawn_timer > 0.0 {
+            PlayerMode::Spectator
+        } else {
+            PlayerMode::Normal
+        }
+    }
+
     fn get_initial_center(&self) -> Point3<f32>;
     fn fixed_center(&self) -> bool;
     fn deck_swapping(&self, player: &Entity) -> EditMode;
@@ -20,7 +34,12 @@ pub trait GameMode {
     fn mode_gui(&mut self, _ui: &mut Ui, _sim: &mut Box<dyn PlayerSim>) {}
     fn overlay(&self, _ui: &mut Ui, _sim: &Box<dyn PlayerSim>) {}
     fn send_action(&self, _player_idx: usize, _action: String, _entities: &mut Vec<Entity>) {}
-    fn initialize(&mut self, _player_sim: &mut Box<dyn PlayerSim>, _card_manager: &mut CardManager) {}
+    fn initialize(
+        &mut self,
+        _player_sim: &mut Box<dyn PlayerSim>,
+        _card_manager: &mut CardManager,
+    ) {
+    }
     fn update(
         &mut self,
         _entities: &mut Vec<Entity>,
@@ -30,6 +49,34 @@ pub trait GameMode {
     }
     fn cooldowns_reset_on_deck_swap(&self) -> bool {
         false
+    }
+}
+
+pub enum PlayerMode {
+    Normal,
+    Spectator,
+}
+
+impl PlayerMode {
+    pub fn has_entity_collison(&self) -> bool {
+        match self {
+            PlayerMode::Normal => true,
+            PlayerMode::Spectator => false,
+        }
+    }
+
+    pub fn has_world_collison(&self) -> bool {
+        match self {
+            PlayerMode::Normal => true,
+            PlayerMode::Spectator => false,
+        }
+    }
+
+    pub fn can_interact(&self) -> bool {
+        match self {
+            PlayerMode::Normal => true,
+            PlayerMode::Spectator => false,
+        }
     }
 }
 
@@ -95,7 +142,12 @@ impl GameMode for PracticeRangeMode {
     }
 
     fn initialize(&mut self, player_sim: &mut Box<dyn PlayerSim>, card_manager: &mut CardManager) {
-        player_sim.add_player(&Deck::empty(), card_manager, self, EntityMetaData::TrainingBot);
+        player_sim.add_player(
+            &Deck::empty(),
+            card_manager,
+            self,
+            EntityMetaData::TrainingBot,
+        );
     }
 }
 
@@ -164,6 +216,15 @@ impl GameMode for ControlMode {
             1 => Point3::new(10000.0 - SPAWN_ROOM_OFFSET as f32 - 2.0, 1805.0, 10000.0),
             2 => Point3::new(10000.0 + SPAWN_ROOM_OFFSET as f32 + 2.0, 1805.0, 10000.0),
             _ => panic!("Invalid Team"),
+        }
+    }
+
+    fn player_mode(&self, entity: &Entity) -> PlayerMode {
+        let player_team = entity.gamemode_data.get(0).unwrap_or(&0);
+        if entity.respawn_timer > 0.0 || *player_team == 0 {
+            PlayerMode::Spectator
+        } else {
+            PlayerMode::Normal
         }
     }
 

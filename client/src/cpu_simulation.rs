@@ -15,7 +15,7 @@ use crate::{
         StatusEffect, VoxelMaterial,
     },
     game_manager::GameState,
-    game_modes::GameMode,
+    game_modes::{GameMode, PlayerMode},
     rollback_manager::Action,
     voxel_sim_manager::{Projectile, VoxelComputePipeline},
     CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
@@ -425,84 +425,57 @@ impl WorldState {
                 }
             });
 
-        let mut player_player_collision_pairs: Vec<(usize, usize)> = vec![];
-        for i in 0..self.players.len() {
-            let player1 = self.players.get(i).unwrap();
-            if player1.respawn_timer > 0.0 || player_stats[i].invincible {
-                continue;
-            }
-            for j in 0..self.players.len() {
-                if game_mode.are_friends(i as u32, j as u32, &self.players) {
-                    continue;
-                }
-                let player2 = self.players.get(j).unwrap();
-                if player2.respawn_timer > 0.0 || player_stats[j].invincible {
-                    continue;
-                }
-                if 5.0 * (player1.size + player2.size) > (player1.pos - player2.pos).magnitude() {
-                    for si in 0..Entity::HITSPHERES.len() {
-                        for sj in 0..Entity::HITSPHERES.len() {
-                            let pos1 = player1.pos + player1.size * Entity::HITSPHERES[si].offset;
-                            let pos2 = player2.pos + player2.size * Entity::HITSPHERES[sj].offset;
-                            if (pos1 - pos2).magnitude()
-                                < (Entity::HITSPHERES[si].radius + Entity::HITSPHERES[sj].radius)
-                                    * (player1.size + player2.size)
-                            {
-                                player_player_collision_pairs.push((i, j));
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        let player_player_collision_pairs =
+            self.get_player_player_collisions(&player_stats, game_mode);
         for (i, j) in player_player_collision_pairs {
             let player1_pos = self.players.get(i).unwrap().pos;
             let player2_pos = self.players.get(j).unwrap().pos;
-            let hit_effects =
-                {
-                    let player1 = self.players.get_mut(i).unwrap();
-                    let hit_effects =
-                        player1
-                            .status_effects
-                            .iter()
-                            .filter_map(|effect| match effect {
-                                AppliedStatusEffect {
-                                    effect: ReferencedStatusEffect::OnHit(hit_card),
-                                    time_left: _,
-                                } => Some(hit_card),
-                                _ => None,
-                            })
-                            .chain((player1.on_hit_passive_cooldown <= 0.0).then_some(
-                                player1.passive_abilities.iter().filter_map(
-                                    |effect| match effect {
-                                        ReferencedStatusEffect::OnHit(hit_card) => Some(hit_card),
-                                        _ => None,
-                                    },
-                                ),
-                            ).into_iter().flatten())
-                            .map(|hit_effect| {
-                                card_manager.get_effects_from_base_card(
-                                    *hit_effect,
-                                    &player1.pos,
-                                    &player1.rot,
-                                    i as u32,
-                                    false,
-                                )
-                            })
-                            .collect::<Vec<_>>();
-
-                    player1.status_effects.retain(|effect| match effect {
+            let hit_effects = {
+                let player1 = self.players.get_mut(i).unwrap();
+                let hit_effects = player1
+                    .status_effects
+                    .iter()
+                    .filter_map(|effect| match effect {
                         AppliedStatusEffect {
-                            effect: ReferencedStatusEffect::OnHit(_),
+                            effect: ReferencedStatusEffect::OnHit(hit_card),
                             time_left: _,
-                        } => false,
-                        _ => true,
-                    });
-                    if player1.on_hit_passive_cooldown <= 0.0 {
-                        player1.on_hit_passive_cooldown = 0.5;
-                    }
-                    hit_effects
-                };
+                        } => Some(hit_card),
+                        _ => None,
+                    })
+                    .chain(
+                        (player1.on_hit_passive_cooldown <= 0.0)
+                            .then_some(player1.passive_abilities.iter().filter_map(|effect| {
+                                match effect {
+                                    ReferencedStatusEffect::OnHit(hit_card) => Some(hit_card),
+                                    _ => None,
+                                }
+                            }))
+                            .into_iter()
+                            .flatten(),
+                    )
+                    .map(|hit_effect| {
+                        card_manager.get_effects_from_base_card(
+                            *hit_effect,
+                            &player1.pos,
+                            &player1.rot,
+                            i as u32,
+                            false,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+
+                player1.status_effects.retain(|effect| match effect {
+                    AppliedStatusEffect {
+                        effect: ReferencedStatusEffect::OnHit(_),
+                        time_left: _,
+                    } => false,
+                    _ => true,
+                });
+                if player1.on_hit_passive_cooldown <= 0.0 {
+                    player1.on_hit_passive_cooldown = 0.5;
+                }
+                hit_effects
+            };
             for (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) in
                 hit_effects
             {
@@ -660,6 +633,46 @@ impl WorldState {
         }
     }
 
+    fn get_player_player_collisions(
+        &mut self,
+        player_stats: &Vec<PlayerEffectStats>,
+        game_mode: &Box<dyn GameMode>,
+    ) -> Vec<(usize, usize)> {
+        let mut player_player_collision_pairs: Vec<(usize, usize)> = vec![];
+        for i in 0..self.players.len() {
+            let player1 = self.players.get(i).unwrap();
+            if !game_mode.player_mode(player1).has_entity_collison() || player_stats[i].invincible {
+                continue;
+            }
+            for j in 0..self.players.len() {
+                if game_mode.are_friends(i as u32, j as u32, &self.players) {
+                    continue;
+                }
+                let player2 = self.players.get(j).unwrap();
+                if !game_mode.player_mode(player2).has_entity_collison()
+                    || player_stats[j].invincible
+                {
+                    continue;
+                }
+                if 5.0 * (player1.size + player2.size) > (player1.pos - player2.pos).magnitude() {
+                    for si in 0..Entity::HITSPHERES.len() {
+                        for sj in 0..Entity::HITSPHERES.len() {
+                            let pos1 = player1.pos + player1.size * Entity::HITSPHERES[si].offset;
+                            let pos2 = player2.pos + player2.size * Entity::HITSPHERES[sj].offset;
+                            if (pos1 - pos2).magnitude()
+                                < (Entity::HITSPHERES[si].radius + Entity::HITSPHERES[sj].radius)
+                                    * (player1.size + player2.size)
+                            {
+                                player_player_collision_pairs.push((i, j));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        player_player_collision_pairs
+    }
+
     fn get_player_proj_collisions(
         &self,
         player_stats: &Vec<PlayerEffectStats>,
@@ -669,7 +682,9 @@ impl WorldState {
     ) -> Vec<(usize, usize, Point3<f32>, Hitsphere)> {
         let mut proj_collisions = Vec::new();
         for (player_idx, player) in self.players.iter().enumerate() {
-            if player.respawn_timer > 0.0 || player_stats[player_idx].invincible {
+            if !game_mode.player_mode(player).has_entity_collison()
+                || player_stats[player_idx].invincible
+            {
                 continue;
             }
 
@@ -1167,7 +1182,6 @@ impl Entity {
                 )];
                 self.status_effects.clear();
             }
-            return;
         }
         if self.player_piercing_invincibility > 0.0 {
             self.player_piercing_invincibility -= time_step;
@@ -1240,44 +1254,47 @@ impl Entity {
                         .zip(Vector3::new(0.3, 13.0, 0.3), |c, m| c as f32 * m);
             }
 
-            for (cooldown_idx, cooldown) in self.abilities.iter_mut().enumerate() {
-                if cooldown.remaining_charges > 0 && cooldown.recovery <= 0.0 {
-                    for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate() {
-                        if *action
-                            .activate_ability
-                            .get(cooldown_idx)
-                            .map(|cd| cd.get(ability_idx).unwrap_or(&false))
-                            .unwrap_or(&false)
-                            && !player_stats[player_idx].lockout
+            if game_mode.player_mode(self).can_interact() {
+                for (cooldown_idx, cooldown) in self.abilities.iter_mut().enumerate() {
+                    if cooldown.remaining_charges > 0 && cooldown.recovery <= 0.0 {
+                        for (ability_idx, ability) in cooldown.ability.abilities.iter().enumerate()
                         {
-                            cooldown.remaining_charges -= 1;
-                            cooldown.recovery = cooldown.value.1[ability_idx];
-                            let (proj_effects, vox_effects, effects, status_effects, triggers) =
-                                card_manager.get_effects_from_base_card(
-                                    ability.0,
-                                    &self.pos,
-                                    &self.rot,
-                                    player_idx as u32,
-                                    true,
-                                );
-                            new_effects.new_projectiles.extend(proj_effects);
-                            for (pos, material) in vox_effects {
-                                new_effects
-                                    .voxels_to_write
-                                    .push((pos, material.to_memory()));
+                            if *action
+                                .activate_ability
+                                .get(cooldown_idx)
+                                .map(|cd| cd.get(ability_idx).unwrap_or(&false))
+                                .unwrap_or(&false)
+                                && !player_stats[player_idx].lockout
+                            {
+                                cooldown.remaining_charges -= 1;
+                                cooldown.recovery = cooldown.value.1[ability_idx];
+                                let (proj_effects, vox_effects, effects, status_effects, triggers) =
+                                    card_manager.get_effects_from_base_card(
+                                        ability.0,
+                                        &self.pos,
+                                        &self.rot,
+                                        player_idx as u32,
+                                        true,
+                                    );
+                                new_effects.new_projectiles.extend(proj_effects);
+                                for (pos, material) in vox_effects {
+                                    new_effects
+                                        .voxels_to_write
+                                        .push((pos, material.to_memory()));
+                                }
+                                for effect in effects {
+                                    new_effects.new_effects.push((
+                                        player_idx, player_idx, false, self.pos, self.dir, effect,
+                                    ));
+                                }
+                                for status_effects in status_effects {
+                                    new_effects
+                                        .new_status_effects
+                                        .push((player_idx, status_effects));
+                                }
+                                new_effects.step_triggers.extend(triggers);
+                                break;
                             }
-                            for effect in effects {
-                                new_effects.new_effects.push((
-                                    player_idx, player_idx, false, self.pos, self.dir, effect,
-                                ));
-                            }
-                            for status_effects in status_effects {
-                                new_effects
-                                    .new_status_effects
-                                    .push((player_idx, status_effects));
-                            }
-                            new_effects.step_triggers.extend(triggers);
-                            break;
                         }
                     }
                 }
@@ -1355,27 +1372,32 @@ impl Entity {
         directional_density /=
             self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
 
-        self.vel += (PLAYER_DENSITY - nearby_density)
-            * player_stats[player_idx].gravity
-            * 11.428571428571429
-            * time_step;
-        if directional_density.magnitude() * time_step > 0.001 {
-            self.vel -= 0.5 * directional_density * time_step;
+        if game_mode.player_mode(self).has_world_collison() {
+            self.vel += (PLAYER_DENSITY - nearby_density)
+                * player_stats[player_idx].gravity
+                * 11.428571428571429
+                * time_step;
+            if directional_density.magnitude() * time_step > 0.001 {
+                self.vel -= 0.5 * directional_density * time_step;
+            }
+            if self.vel.magnitude() > 0.0 {
+                self.vel -= nearby_density * 0.0375 * self.vel * self.vel.magnitude() * time_step
+                    + 0.2 * self.vel.normalize() * time_step;
+            }
+            let prev_collision_vec = self.collision_vec.clone();
+            self.collision_vec = Vector3::new(0, 0, 0);
+            self.collide_player(
+                time_step,
+                voxel_reader,
+                cpu_chunks,
+                prev_collision_vec,
+                game_state,
+                game_settings,
+            );
+        } else {
+            self.pos += self.vel;
+            self.vel *= 0.5;
         }
-        if self.vel.magnitude() > 0.0 {
-            self.vel -= nearby_density * 0.0375 * self.vel * self.vel.magnitude() * time_step
-                + 0.2 * self.vel.normalize() * time_step;
-        }
-        let prev_collision_vec = self.collision_vec.clone();
-        self.collision_vec = Vector3::new(0, 0, 0);
-        self.collide_player(
-            time_step,
-            voxel_reader,
-            cpu_chunks,
-            prev_collision_vec,
-            game_state,
-            game_settings,
-        );
 
         for health_section in self.health.iter_mut() {
             match health_section {
