@@ -2,7 +2,7 @@ use crate::{settings_manager::Control, voxel_sim_manager::Projectile, PLAYER_BAS
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Deck {
@@ -726,8 +726,9 @@ fn convolve_range_probabilities<const COUNT: usize>(
 const DAMAGE_CALCULATION_FLOAT_SCALE: f32 = 2.0;
 const SCALED_PLAYER_BASE_MAX_HEALTH: i32 =
     (PLAYER_BASE_MAX_HEALTH * DAMAGE_CALCULATION_FLOAT_SCALE) as i32;
-const TIME_TO_FIRST_SHOT: f32 = 0.5;
-const HEALING_RATE: f32 = 12.8;
+const TIME_TO_FIRST_SHOT: f32 = 0.7;
+const HEALING_RATE: f32 = 25.6;
+const HEALING_PROBABILITY: f32 = 0.3;
 fn gen_cooldown_for_ttk(damage_profile: Vec<(f32, f32)>, goal_ttk: f32) -> f32 {
     puffin::profile_function!();
     let minimum_damage = damage_profile.first().unwrap().0;
@@ -735,12 +736,27 @@ fn gen_cooldown_for_ttk(damage_profile: Vec<(f32, f32)>, goal_ttk: f32) -> f32 {
         return 120.0;
     }
     let mut healing = (HEALING_RATE * DAMAGE_CALCULATION_FLOAT_SCALE) as i32;
+    while (get_avg_ttk(
+        &damage_profile,
+        healing,
+        HEALING_PROBABILITY,
+        SCALED_PLAYER_BASE_MAX_HEALTH,
+        50,
+        &mut HashMap::new(),
+    ) - TIME_TO_FIRST_SHOT)
+        * healing as f32
+        / HEALING_RATE
+        / DAMAGE_CALCULATION_FLOAT_SCALE
+        < goal_ttk {
+        healing *= 2
+    }
     let mut delta = healing;
     while delta > 1 {
         delta /= 2;
         if (get_avg_ttk(
             &damage_profile,
             healing,
+            HEALING_PROBABILITY,
             SCALED_PLAYER_BASE_MAX_HEALTH,
             50,
             &mut HashMap::new(),
@@ -761,13 +777,12 @@ fn gen_cooldown_for_ttk(damage_profile: Vec<(f32, f32)>, goal_ttk: f32) -> f32 {
 fn get_avg_ttk(
     damage_profile: &Vec<(f32, f32)>,
     healing: i32,
+    healing_probability: f32,
     current_health: i32,
     iterations: usize,
     table: &mut HashMap<i32, (f32, usize)>,
 ) -> f32 {
-    if current_health <= healing {
-        0.0
-    } else if iterations == 0 {
+    if iterations == 0 {
         let avg_damage = damage_profile
             .iter()
             .map(|dp| dp.0 * DAMAGE_CALCULATION_FLOAT_SCALE * dp.1)
@@ -780,8 +795,9 @@ fn get_avg_ttk(
             .map(|dp| dp.1)
             .sum::<f32>();
         let mut result: f32 = 20.0;
-        if avg_damage > healing as f32 {
-            result = result.min(current_health as f32 / (avg_damage - healing as f32));
+        if avg_damage > healing_probability * healing as f32 {
+            result = result
+                .min(current_health as f32 / (avg_damage - healing_probability * healing as f32));
         } else {
             result = result.min(1.0 / (1.0 - one_shot_chance));
         }
@@ -790,6 +806,7 @@ fn get_avg_ttk(
         get_avg_ttk(
             damage_profile,
             healing,
+            healing_probability,
             SCALED_PLAYER_BASE_MAX_HEALTH,
             iterations,
             table,
@@ -803,16 +820,30 @@ fn get_avg_ttk(
         let result = 1.0
             + (0..damage_profile.len())
                 .map(|idx| {
-                    damage_profile[idx].1
-                        * get_avg_ttk(
-                            damage_profile,
-                            healing,
-                            current_health
-                                - (damage_profile[idx].0 * DAMAGE_CALCULATION_FLOAT_SCALE) as i32
-                                + healing,
-                            iterations - 1,
-                            table,
-                        )
+                    let next_health = current_health
+                        - (damage_profile[idx].0 * DAMAGE_CALCULATION_FLOAT_SCALE) as i32;
+                    (if next_health <= 0 {
+                        0.0
+                    } else {
+                        healing_probability
+                            * get_avg_ttk(
+                                damage_profile,
+                                healing,
+                                healing_probability,
+                                next_health + healing,
+                                iterations - 1,
+                                table,
+                            )
+                            + (1.0 - healing_probability)
+                                * get_avg_ttk(
+                                    damage_profile,
+                                    healing,
+                                    healing_probability,
+                                    next_health,
+                                    iterations - 1,
+                                    table,
+                                )
+                    }) * damage_profile[idx].1
                 })
                 .sum::<f32>();
         table.insert(current_health, (result, iterations));
@@ -899,7 +930,7 @@ impl BaseCard {
         
         let range_cds = ranged_damage_profiles
             .into_iter()
-            .map(|damage_profile| gen_cooldown_for_ttk(damage_profile, 3.5))
+            .map(|damage_profile| gen_cooldown_for_ttk(damage_profile, 5.0))
             .collect_vec();
         let average_cd = range_cds.iter().sum::<f32>() / range_cds.len() as f32;
         let mut std_cd = (range_cds
