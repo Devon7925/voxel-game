@@ -18,6 +18,7 @@ layout(push_constant) uniform SimData {
     uvec3 voxel_update_offset;
     float dt;
     uint projectile_count;
+    uint player_count;
     uint worldgen_count;
     int unload_index;
     uint unload_component;

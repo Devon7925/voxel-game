@@ -32,6 +32,27 @@ struct Player {
     vec4 right;
 };
 
+struct Collision {
+    uint id1;
+    uint id2;
+    uint properties;
+};
+
+struct Hitsphere {
+    vec3 offset;
+    float radius;
+    bool headshot;
+};
+
+const Hitsphere HITSPHERES[] = {
+    Hitsphere(vec3(0.0, 0.0, 0.0), 0.6, true),
+    Hitsphere(vec3(0.0, -1.3, 0.0), 0.6, false),
+    Hitsphere(vec3(0.0, -1.9, 0.0), 0.9, false),
+    Hitsphere(vec3(0.0, -2.6, 0.0), 0.8, false),
+    Hitsphere(vec3(0.0, -3.3, 0.0), 0.6, false),
+    Hitsphere(vec3(0.0, -3.8, 0.0), 0.6, false),
+    };
+
 const uint MAT_AIR = 0;
 const uint MAT_STONE = 1;
 const uint MAT_OOB = 2;
@@ -70,19 +91,19 @@ const PhysicsProperties physics_properties[] = {
     };
 
 const bool is_transparent[] = {
-    true,  //MAT_AIR
-    false,  //MAT_STONE
-    false,  //MAT_OOB
-    false,  //MAT_DIRT
-    false,  //MAT_GRASS
-    false,  //MAT_PROJECTILE
-    true,  //MAT_ICE
-    true,  //MAT_WATER
-    false,  //MAT_PLAYER
-    true,  //MAT_AIR_OOB
-    false,  //MAT_WOOD
-    true,  //MAT_LEAF
-    false,  //MAT_UNBREAKABLE
+    true, //MAT_AIR
+    false, //MAT_STONE
+    false, //MAT_OOB
+    false, //MAT_DIRT
+    false, //MAT_GRASS
+    false, //MAT_PROJECTILE
+    true, //MAT_ICE
+    true, //MAT_WATER
+    false, //MAT_PLAYER
+    true, //MAT_AIR_OOB
+    false, //MAT_WOOD
+    true, //MAT_LEAF
+    false, //MAT_UNBREAKABLE
     };
 
 struct HeightData {
@@ -199,7 +220,7 @@ const MaterialRenderProps material_render_props[] = {
             MaterialNoiseLayer(vec3(9.5), 0.3, 0.2, -0.5, vec3(0.1, -0.2, 0.1), vec3(0.05, 0.1, 0.05)),
             MaterialNoiseLayer(vec3(3.5), 0.05, 0.0, 0.00, vec3(0.0), vec3(0.05))
         ), 0.05, 0.6, 0.4, 0.4, vec3(0.1, 0.6, 0.1)),
-    
+
     // UNBREAKABLE
     MaterialRenderProps(MaterialNoiseLayer[3](
             MaterialNoiseLayer(vec3(2.0), 0.175, 0.1, 0.0, vec3(0.0), vec3(0.15)),
@@ -213,6 +234,10 @@ uvec4 get_indicies(uvec3 global_pos, uvec3 render_size) {
     uvec3 pos_in_chunk = global_pos & POS_IN_CHUNK_MASK;
     uint idx_in_chunk = pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE + pos_in_chunk.y * CHUNK_SIZE + pos_in_chunk.z;
     return uvec4(chunk_pos, idx_in_chunk);
+}
+
+uint get_dist(uint voxel_data, uint offset) {
+    return (voxel_data >> (offset * 3)) & 0x7;
 }
 
 vec3 quat_transform(vec4 q, vec3 v) {
@@ -247,12 +272,12 @@ uvec2 pcg2d(uvec2 v)
     v.x += v.y * 1664525u;
     v.y += v.x * 1664525u;
 
-    v = v ^ (v>>16u);
+    v = v ^ (v >> 16u);
 
     v.x += v.y * 1664525u;
     v.y += v.x * 1664525u;
 
-    v = v ^ (v>>16u);
+    v = v ^ (v >> 16u);
 
     return v;
 }

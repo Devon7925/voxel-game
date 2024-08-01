@@ -19,6 +19,7 @@ layout(push_constant) uniform SimData {
     uvec3 voxel_update_offset;
     float dt;
     uint projectile_count;
+    uint player_count;
     uint worldgen_count;
     int unload_index;
     uint unload_component;
@@ -63,16 +64,16 @@ const float WALL_SCALE = 0.03;
 const float PATH_SCALE = 0.03;
 const float GAP_SCALE = 0.06;
 
-vec2 hash2( vec2 p, uint seed )
-{	
-    // procedural white noise	
-	return vec2(pcg3d(ivec3(p, seed)).xy & 0xFF) / 256.0;
+vec2 hash2(vec2 p, uint seed)
+{
+    // procedural white noise
+    return vec2(pcg3d(ivec3(p, seed)).xy & 0xFF) / 256.0;
 }
 
-vec3 hash23( vec2 p, uint seed )
-{	
-    // procedural white noise	
-	return vec3(pcg3d(ivec3(p, seed)) & 0xFF) / 256.0;
+vec3 hash23(vec2 p, uint seed)
+{
+    // procedural white noise
+    return vec3(pcg3d(ivec3(p, seed)) & 0xFF) / 256.0;
 }
 
 struct VoronoiResult {
@@ -82,7 +83,7 @@ struct VoronoiResult {
     float edge_distance;
 };
 
-VoronoiResult voronoi_edge_dist( in vec2 x, uint seed )
+VoronoiResult voronoi_edge_dist(in vec2 x, uint seed)
 {
     vec2 ip = floor(x);
     vec2 fp = fract(x);
@@ -90,30 +91,30 @@ VoronoiResult voronoi_edge_dist( in vec2 x, uint seed )
     //----------------------------------
     // first pass: regular voronoi
     //----------------------------------
-	vec2 mr;
+    vec2 mr;
     float h;
 
     float md = 8.0;
-    for( int j=-1; j<=1; j++ )
-    for( int i=-1; i<=1; i++ )
-    {
-        vec2 g = vec2(float(i),float(j));
-        vec2 coords = ip + g;
-        coords.x = abs(coords.x);
-		vec3 o = hash23( coords, seed );
-        vec2 r = g + o.xy - fp;
-        float d = dot(r,r);
-
-        if( d<md )
+    for (int j = -1; j <= 1; j++)
+        for (int i = -1; i <= 1; i++)
         {
-            md = d;
-            mr = r;
-            h = o.z;
+            vec2 g = vec2(float(i), float(j));
+            vec2 coords = ip + g;
+            coords.x = abs(coords.x);
+            vec3 o = hash23(coords, seed);
+            vec2 r = g + o.xy - fp;
+            float d = dot(r, r);
+
+            if (d < md)
+            {
+                md = d;
+                mr = r;
+                h = o.z;
+            }
         }
-    }
     // Set center of search based on which half of the cell we are in,
     // since 4x4 is not centered around "n".
-    vec2 mg = step(.5,fp) - 1.;
+    vec2 mg = step(.5, fp) - 1.;
 
     //----------------------------------
     // second pass: distance to borders
@@ -121,61 +122,61 @@ VoronoiResult voronoi_edge_dist( in vec2 x, uint seed )
     md = 8.0;
     float mh = h;
     vec2 max_edge_dir = vec2(0.0);
-    for( int j=-1; j<=2; j++ )
-    for( int i=-1; i<=2; i++ )
-    {
-        vec2 g = mg + vec2(float(i),float(j));
-        vec2 coords = ip + g;
-        coords.x = abs(coords.x);
-		vec3 o = hash23( coords, seed );
-        vec2 r = g + o.xy - fp;
+    for (int j = -1; j <= 2; j++)
+        for (int i = -1; i <= 2; i++)
+        {
+            vec2 g = mg + vec2(float(i), float(j));
+            vec2 coords = ip + g;
+            coords.x = abs(coords.x);
+            vec3 o = hash23(coords, seed);
+            vec2 r = g + o.xy - fp;
 
-        if( dot(mr-r,mr-r)>0.00001 ) {
-            vec2 edge_dir = normalize(r-mr);
-            float d = dot( 0.5*(mr+r), edge_dir);
-            if (d < md) {
-                md = d;
-                mh = o.z;
-                max_edge_dir = edge_dir;
+            if (dot(mr - r, mr - r) > 0.00001) {
+                vec2 edge_dir = normalize(r - mr);
+                float d = dot(0.5 * (mr + r), edge_dir);
+                if (d < md) {
+                    md = d;
+                    mh = o.z;
+                    max_edge_dir = edge_dir;
+                }
             }
         }
-    }
 
-    return VoronoiResult( max_edge_dir, h, mh, md );
+    return VoronoiResult(max_edge_dir, h, mh, md);
 }
 
-vec2 blurred_voronoi( in vec2 x, float w, uint seed )
+vec2 blurred_voronoi(in vec2 x, float w, uint seed)
 {
-    vec2 n = floor( x );
-    vec2 f = fract( x );
+    vec2 n = floor(x);
+    vec2 f = fract(x);
 
-	vec2 m = vec2( 8.0, 0.0);
-    for( int j=-2; j<=2; j++ )
-    for( int i=-2; i<=2; i++ )
-    {
-        vec2 g = vec2( float(i),float(j) );
-        vec2 coords = n + g;
-        coords.x = abs(coords.x);
-        vec3 o = hash23( coords, seed );
+    vec2 m = vec2(8.0, 0.0);
+    for (int j = -2; j <= 2; j++)
+        for (int i = -2; i <= 2; i++)
+        {
+            vec2 g = vec2(float(i), float(j));
+            vec2 coords = n + g;
+            coords.x = abs(coords.x);
+            vec3 o = hash23(coords, seed);
 
-        // distance to cell		
-		float d = length(g - f + o.xy);
-        float height = 30.0 * o.z - 15.0;
-        if (height < -13) continue;
-        
-        // do the smooth min for heights and distances		
-		float h = smoothstep( -1.0, 1.0, (m.x-d)/w );
-	    m.x   = mix( m.x,     d, h ) - h*(1.0-h)*w/(1.0+3.0*w); // distance
-		m.y = mix( m.y, height, h ) - h*(1.0-h)*w/(1.0+3.0*w); // height
-    }
-	
-	return m;
+            // distance to cell
+            float d = length(g - f + o.xy);
+            float height = 30.0 * o.z - 15.0;
+            if (height < -13) continue;
+
+            // do the smooth min for heights and distances
+            float h = smoothstep(-1.0, 1.0, (m.x - d) / w);
+            m.x = mix(m.x, d, h) - h * (1.0 - h) * w / (1.0 + 3.0 * w); // distance
+            m.y = mix(m.y, height, h) - h * (1.0 - h) * w / (1.0 + 3.0 * w); // height
+        }
+
+    return m;
 }
 
-float sdBox( in vec2 p, in vec2 b )
+float sdBox(in vec2 p, in vec2 b)
 {
-    vec2 d = abs(p)-b;
-    return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+    vec2 d = abs(p) - b;
+    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
 }
 
 const int SPAWN_HEIGHT = 15;
@@ -197,7 +198,7 @@ uint get_worldgen(uvec3 global_pos) {
     if (signed_pos.y < -13) {
         return MAT_AIR << 24;
     }
-    if (signed_pos.x < SPAWN_ROOM_OFFSET + SPAWN_DEPTH-1 && signed_pos.x > SPAWN_ROOM_OFFSET && signed_pos.y < SPAWN_HEIGHT-1 && signed_pos.y > 0 && abs(signed_pos.z) < SPAWN_WIDTH-1) {
+    if (signed_pos.x < SPAWN_ROOM_OFFSET + SPAWN_DEPTH - 1 && signed_pos.x > SPAWN_ROOM_OFFSET && signed_pos.y < SPAWN_HEIGHT - 1 && signed_pos.y > 0 && abs(signed_pos.z) < SPAWN_WIDTH - 1) {
         return MAT_AIR << 24;
     }
     if (signed_pos.x < SPAWN_ROOM_OFFSET + SPAWN_DEPTH && signed_pos.x > SPAWN_ROOM_OFFSET && signed_pos.y < SPAWN_HEIGHT && abs(signed_pos.z) < SPAWN_WIDTH) {

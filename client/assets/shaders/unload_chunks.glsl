@@ -3,13 +3,13 @@ layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks_image;
 
-
 layout(push_constant) uniform SimData {
     uvec3 render_size;
     uvec3 start_pos;
     uvec3 voxel_update_offset;
     float dt;
     uint projectile_count;
+    uint player_count;
     uint worldgen_count;
     int unload_index;
     uint unload_component;

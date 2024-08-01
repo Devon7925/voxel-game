@@ -15,9 +15,9 @@ use crate::{
         StatusEffect, VoxelMaterial,
     },
     game_manager::GameState,
-    game_modes::{GameMode, PlayerMode},
+    game_modes::GameMode,
     rollback_manager::Action,
-    voxel_sim_manager::{Projectile, VoxelComputePipeline},
+    voxel_sim_manager::{Collision, Projectile, VoxelComputePipeline},
     CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
     RESPAWN_TIME,
 };
@@ -158,6 +158,7 @@ impl WorldState {
         game_state: &GameState,
         game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
+        collisions: Option<Vec<Collision>>,
     ) {
         let voxels = vox_compute.voxels();
         let mut new_effects = NewEffects::default();
@@ -299,14 +300,25 @@ impl WorldState {
             }
         }
 
-        let proj_collisions =
-            self.get_player_proj_collisions(&player_stats, card_manager, game_mode, time_step);
+        let proj_collisions = if is_real_update {
+            if let Some(collisions) = collisions {
+                collisions.iter().map(|collision| {
+                    let proj = self.projectiles[collision.id1 as usize];
+                    let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
+                    (collision.id2 as usize, collision.id1 as usize, projectile_pos, self.players[collision.id2 as usize].pos, collision.properties > 1)
+                }).collect_vec()
+            } else {
+                panic!("No provided collisions for real update");
+            }
+        } else {
+            self.get_player_proj_collisions(&player_stats, card_manager, game_mode, time_step)
+        };
 
         proj_collisions
             .iter()
-            .filter(|(_, proj_idx, damage_source_location, collision)| {
+            .filter(|(_, proj_idx, damage_source_location, damage_end_location, headshot)| {
                 let vec_start = damage_source_location.to_vec();
-                let vec_end = collision.offset;
+                let vec_end = damage_end_location.to_vec();
                 self.projectiles
                     .iter()
                     .enumerate()
@@ -352,7 +364,8 @@ impl WorldState {
             })
             .collect_vec()
             .iter()
-            .for_each(|(player_idx, proj_idx, _, collision)| {
+            .for_each(|(player_idx, proj_idx, start_pos, end_pos, headshot)| {
+                println!("player: {}, proj: {}", player_idx, proj_idx);
                 let player = self.players.get_mut(*player_idx).unwrap();
                 let proj = self.projectiles.get_mut(*proj_idx).unwrap();
                 let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
@@ -377,7 +390,7 @@ impl WorldState {
                     .iter()
                     .map(|x| (x.clone(), false))
                     .collect::<Vec<_>>();
-                if collision.headshot {
+                if *headshot {
                     hit_cards.extend(
                         card_manager
                             .get_referenced_proj(proj.proj_card_idx as usize)
@@ -409,8 +422,8 @@ impl WorldState {
                             *player_idx,
                             proj.owner as usize,
                             was_headshot,
-                            Point3::from_vec(collision.offset),
-                            ((collision.offset - projectile_pos.to_vec()).normalize()
+                            *start_pos,
+                            ((end_pos.to_vec() - projectile_pos.to_vec()).normalize()
                                 + projectile_vectors[2] * proj.vel)
                                 .normalize(),
                             effect,
@@ -571,6 +584,9 @@ impl WorldState {
             new_effects.new_effects
         {
             let player = self.players.get_mut(affected_idx).unwrap();
+            if game_mode.has_immunity(player, &player_stats[affected_idx]) {
+                continue;
+            }
             match effect {
                 ReferencedEffect::Damage(damage) => {
                     player.adjust_health(-player_stats[affected_idx].damage_taken * damage as f32);
@@ -582,10 +598,12 @@ impl WorldState {
                         ));
                     }
                     let actor = self.players.get_mut(actor_idx).unwrap();
-                    if was_headshot {
-                        actor.hitmarker.1 += damage as f32;
-                    } else {
-                        actor.hitmarker.0 += damage as f32;
+                    if is_real_update {
+                        if was_headshot {
+                            actor.hitmarker.1 += damage as f32;
+                        } else {
+                            actor.hitmarker.0 += damage as f32;
+                        }
                     }
                 }
                 ReferencedEffect::Knockback(knockback, direction) => {
@@ -677,7 +695,7 @@ impl WorldState {
         card_manager: &CardManager,
         game_mode: &Box<dyn GameMode>,
         time_step: f32,
-    ) -> Vec<(usize, usize, Point3<f32>, Hitsphere)> {
+    ) -> Vec<(usize, usize, Point3<f32>, Point3<f32>, bool)> {
         let mut proj_collisions = Vec::new();
         for (player_idx, player) in self.players.iter().enumerate() {
             if game_mode.has_immunity(player, &player_stats[player_idx]) {
@@ -750,7 +768,7 @@ impl WorldState {
                     collision = Some(hitsphere.clone());
                 }
                 if let Some(collision) = collision {
-                    proj_collisions.push((player_idx, proj_idx, projectile_pos, collision));
+                    proj_collisions.push((player_idx, proj_idx, projectile_pos, player.pos, collision.headshot));
                 }
             }
         }

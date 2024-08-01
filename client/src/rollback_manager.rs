@@ -10,6 +10,7 @@ use bytemuck::{Pod, Zeroable};
 use cgmath::{
     Point3, Quaternion, Vector2,
 };
+use itertools::Itertools;
 use matchbox_socket::{PeerId, PeerState};
 use serde::{Deserialize, Serialize};
 use vulkano::{
@@ -21,7 +22,7 @@ use winit::event::{ElementState, WindowEvent};
 use crate::{
     card_system::{
         CardManager, Deck, ReferencedStatusEffect, StateKeybind,
-    }, cpu_simulation::{Entity, HealthSection, PlayerAbility, WorldState}, game_manager::GameState, game_modes::GameMode, gui::{GuiElement, GuiState}, networking::{NetworkConnection, NetworkPacket}, settings_manager::{Control, Settings}, voxel_sim_manager::{Projectile, VoxelComputePipeline}, WindowProperties
+    }, cpu_simulation::{Entity, HealthSection, PlayerAbility, WorldState}, game_manager::GameState, game_modes::GameMode, gui::{GuiElement, GuiState}, networking::{NetworkConnection, NetworkPacket}, settings_manager::{Control, Settings}, voxel_sim_manager::{Collision, Projectile, VoxelComputePipeline}, WindowProperties
 };
 use voxel_shared::{GameSettings, RoomId};
 
@@ -41,6 +42,7 @@ pub trait PlayerSim {
         game_state: &GameState,
         game_settings: &GameSettings,
         game_mode: &mut Box<dyn GameMode>,
+        collisions: Vec<Collision>,
     );
     fn step_visuals(
         &mut self,
@@ -57,13 +59,15 @@ pub trait PlayerSim {
         card_manager: &CardManager,
         voxel_compute: &mut VoxelComputePipeline,
         game_settings: &GameSettings,
-    );
+        game_mode: &Box<dyn GameMode>,
+    ) -> Vec<Collision>;
 
     fn get_camera(&self) -> Camera;
     fn get_spectate_player(&self) -> Option<Entity>;
 
     fn get_delta_time(&self) -> f32;
     fn get_rollback_projectiles(&self) -> &Vec<Projectile>;
+    fn get_rollback_players(&self) -> Vec<UploadPlayer>;
     fn get_render_projectiles(&self) -> &Vec<Projectile>;
     fn get_players(&self) -> &Vec<Entity>;
     fn player_count(&self) -> usize;
@@ -212,6 +216,25 @@ pub struct UploadPlayer {
     pub right: [f32; 4],
 }
 
+impl From<&Entity> for UploadPlayer {
+    fn from(player: &Entity) -> Self {
+        UploadPlayer {
+            pos: [player.pos.x, player.pos.y, player.pos.z, 0.0],
+            rot: [
+                player.rot.v[0],
+                player.rot.v[1],
+                player.rot.v[2],
+                player.rot.s,
+            ],
+            size: [player.size, player.size, player.size, 0.0],
+            vel: [player.vel.x, player.vel.y, player.vel.z, 0.0],
+            dir: [player.dir.x, player.dir.y, player.dir.z, 0.0],
+            up: [player.up.x, player.up.y, player.up.z, 0.0],
+            right: [player.right.x, player.right.y, player.right.z, 0.0],
+        }
+    }
+}
+
 impl Default for PlayerAction {
     fn default() -> Self {
         PlayerAction {
@@ -292,6 +315,7 @@ impl PlayerSim for RollbackData {
         game_state: &GameState,
         game_settings: &GameSettings,
         game_mode: &mut Box<dyn GameMode>,
+        collisions: Vec<Collision>,
     ) {
         let rollback_actions: Vec<Action> = self
             .entity_metadata
@@ -352,6 +376,7 @@ impl PlayerSim for RollbackData {
             game_state,
             game_settings,
             game_mode,
+            Some(collisions)
         );
         game_mode.update(
             &mut self.rollback_state.players,
@@ -455,20 +480,7 @@ impl PlayerSim for RollbackData {
             let mut player_buffer = self.rendered_player_buffer.write().unwrap();
             for i in 0..player_count {
                 let player = self.cached_current_state.players.get(i).unwrap();
-                player_buffer[i] = UploadPlayer {
-                    pos: [player.pos.x, player.pos.y, player.pos.z, 0.0],
-                    rot: [
-                        player.rot.v[0],
-                        player.rot.v[1],
-                        player.rot.v[2],
-                        player.rot.s,
-                    ],
-                    size: [player.size, player.size, player.size, 0.0],
-                    vel: [player.vel.x, player.vel.y, player.vel.z, 0.0],
-                    dir: [player.dir.x, player.dir.y, player.dir.z, 0.0],
-                    up: [player.up.x, player.up.y, player.up.z, 0.0],
-                    right: [player.right.x, player.right.y, player.right.z, 0.0],
-                };
+                player_buffer[i] = player.into();
             }
         }
     }
@@ -478,9 +490,12 @@ impl PlayerSim for RollbackData {
         card_manager: &CardManager,
         vox_compute: &mut VoxelComputePipeline,
         game_settings: &GameSettings,
-    ) {
-        self.rollback_state.projectiles =
-            vox_compute.download_projectiles(card_manager, game_settings);
+        game_mode: &Box<dyn GameMode>,
+    ) -> Vec<Collision> {
+        let (new_projectiles, collisions) =
+            vox_compute.download_projectiles(card_manager, game_settings, &mut self.rollback_state, game_mode);
+        self.rollback_state.projectiles = new_projectiles;
+        collisions
     }
 
     fn get_camera(&self) -> Camera {
@@ -499,6 +514,10 @@ impl PlayerSim for RollbackData {
 
     fn get_rollback_projectiles(&self) -> &Vec<Projectile> {
         &self.rollback_state.projectiles
+    }
+
+    fn get_rollback_players(&self) -> Vec<UploadPlayer> {
+        self.rollback_state.players.iter().map(|p| p.into()).collect_vec()
     }
 
     fn get_render_projectiles(&self) -> &Vec<Projectile> {
@@ -1010,6 +1029,7 @@ impl RollbackData {
                 game_state,
                 game_settings,
                 game_mode,
+                None,
             );
         }
         state
@@ -1077,6 +1097,7 @@ impl PlayerSim for ReplayData {
         game_state: &GameState,
         game_settings: &GameSettings,
         game_mode: &mut Box<dyn GameMode>,
+        collisions: Vec<Collision>,
     ) {
         if self.actions.is_empty() {
             return;
@@ -1117,6 +1138,7 @@ impl PlayerSim for ReplayData {
             game_state,
             game_settings,
             game_mode,
+            Some(collisions),
         );
         game_mode.update(
             &mut self.state.players,
@@ -1183,8 +1205,12 @@ impl PlayerSim for ReplayData {
         card_manager: &CardManager,
         vox_compute: &mut VoxelComputePipeline,
         game_settings: &GameSettings,
-    ) {
-        self.state.projectiles = vox_compute.download_projectiles(card_manager, game_settings);
+        game_mode: &Box<dyn GameMode>,
+    ) -> Vec<Collision> {
+        let (new_projectiles, collisions) =
+            vox_compute.download_projectiles(card_manager, game_settings, &mut self.state, game_mode);
+        self.state.projectiles = new_projectiles;
+        collisions
     }
 
     fn get_camera(&self) -> Camera {
@@ -1203,6 +1229,10 @@ impl PlayerSim for ReplayData {
 
     fn get_rollback_projectiles(&self) -> &Vec<Projectile> {
         &self.state.projectiles
+    }
+
+    fn get_rollback_players(&self) -> Vec<UploadPlayer> {
+        self.state.players.iter().map(|p| p.into()).collect_vec()
     }
 
     fn get_render_projectiles(&self) -> &Vec<Projectile> {

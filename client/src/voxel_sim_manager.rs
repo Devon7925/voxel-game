@@ -8,12 +8,7 @@
 // according to those terms.
 
 use crate::{
-    app::CreationInterface,
-    card_system::{CardManager, VoxelMaterial},
-    game_manager::GameState,
-    utils::{Direction, QueueMap, QueueSet, VoxelUpdateQueue},
-    CHUNK_SIZE, MAX_CHUNK_UPDATE_RATE, MAX_VOXEL_UPDATE_RATE, MAX_WORLDGEN_RATE, SUB_CHUNK_COUNT,
-    WORLDGEN_CHUNK_COUNT,
+    app::CreationInterface, card_system::{CardManager, VoxelMaterial}, cpu_simulation::WorldState, game_manager::GameState, game_modes::GameMode, rollback_manager::UploadPlayer, utils::{Direction, QueueMap, QueueSet, VoxelUpdateQueue}, CHUNK_SIZE, MAX_CHUNK_UPDATE_RATE, MAX_VOXEL_UPDATE_RATE, MAX_WORLDGEN_RATE, SUB_CHUNK_COUNT, WORLDGEN_CHUNK_COUNT
 };
 use bytemuck::{Pod, Zeroable};
 use cgmath::{MetricSpace, Point3, Quaternion, Vector3, Zero};
@@ -34,14 +29,14 @@ use vulkano::{
         },
         PersistentDescriptorSet, WriteDescriptorSet,
     },
-    device::{self, Device, Queue},
+    device::{Device, Queue},
     format::Format,
     image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         compute::ComputePipelineCreateInfo,
         layout::{
-            PipelineDescriptorSetLayoutCreateInfo, PipelineLayoutCreateInfo, PushConstantRange,
+            PipelineLayoutCreateInfo, PushConstantRange,
         },
         ComputePipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
@@ -71,6 +66,14 @@ pub struct Projectile {
     pub _filler2: u32,
 }
 
+#[derive(Clone, Copy, Zeroable, Debug, Pod)]
+#[repr(C)]
+pub struct Collision {
+    pub id1: u32,
+    pub id2: u32,
+    pub properties: u32,
+}
+
 /// Pipeline holding double buffered grid & color image. Grids are used to calculate the state, and
 /// color image is used to show the output. Because on each step we determine state in parallel, we
 /// need to write the output to another grid. Otherwise the state would not be correctly determined
@@ -89,6 +92,11 @@ pub struct VoxelComputePipeline {
     
     projectile_buffer: Subbuffer<[Projectile; 1024]>,
     upload_projectile_count: usize,
+
+    player_buffer: Subbuffer<[UploadPlayer; 1024]>,
+    upload_player_count: usize,
+
+    collision_buffer: Subbuffer<[Collision; 1024]>,
 
     gpu_chunks: Arc<ImageView>,
     voxel_buffer: Subbuffer<[u32]>,
@@ -282,6 +290,24 @@ impl VoxelComputePipeline {
                             )
                         },
                     ),
+                    (
+                        7,
+                        DescriptorSetLayoutBinding {
+                            stages: ShaderStages::COMPUTE,
+                            ..DescriptorSetLayoutBinding::descriptor_type(
+                                DescriptorType::StorageBuffer,
+                            )
+                        },
+                    ),
+                    (
+                        8,
+                        DescriptorSetLayoutBinding {
+                            stages: ShaderStages::COMPUTE,
+                            ..DescriptorSetLayoutBinding::descriptor_type(
+                                DescriptorType::StorageBuffer,
+                            )
+                        },
+                    ),
                 ]
                 .into(),
                 ..Default::default()
@@ -314,6 +340,34 @@ impl VoxelComputePipeline {
         let compute_voxel_update_pipeline = get_pipeline(compute_updates_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
 
         let projectile_buffer = Buffer::new_sized(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let player_buffer = Buffer::new_sized(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let collision_buffer = Buffer::new_sized(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER,
@@ -400,6 +454,8 @@ impl VoxelComputePipeline {
             command_buffer_allocator: creation_interface.command_buffer_allocator.clone(),
             descriptor_set_allocator: creation_interface.descriptor_set_allocator.clone(),
             projectile_buffer,
+            player_buffer,
+            collision_buffer,
             cpu_chunks_copy,
             gpu_chunks,
             voxel_buffer,
@@ -419,6 +475,7 @@ impl VoxelComputePipeline {
             worldgen_updates,
             worldgen_results,
             upload_projectile_count: 0,
+            upload_player_count: 0,
             last_update_priorities: Vec::new(),
             last_update_count: 0,
             last_worldgen_count: 0,
@@ -429,11 +486,17 @@ impl VoxelComputePipeline {
         self.projectile_buffer.clone()
     }
 
+    pub fn players(&self) -> Subbuffer<[UploadPlayer; 1024]> {
+        self.player_buffer.clone()
+    }
+
     pub fn download_projectiles(
         &mut self,
         card_manager: &CardManager,
         game_settings: &GameSettings,
-    ) -> Vec<Projectile> {
+        world_state: &mut WorldState,
+        game_mode: &Box<dyn GameMode>,
+    ) -> (Vec<Projectile>, Vec<Collision>) {
         let mut projectiles = Vec::new();
         let mut new_voxels = Vec::new();
         let projectiles_buffer = self.projectile_buffer.read().unwrap();
@@ -488,7 +551,42 @@ impl VoxelComputePipeline {
             }
         }
 
-        projectiles
+        let collisions_buffer = self.collision_buffer.read().unwrap();
+        let mut collisions = vec![];
+        for i in 0..1024 {
+            if collisions_buffer[i].properties == 0 {
+                break;
+            }
+            let collision = collisions_buffer[i];
+            let player_idx = collision.id2 as usize;
+            let player = &world_state.players[player_idx];
+            let proj = projectiles_buffer[collision.id1 as usize];
+
+            // check piercing invincibility at start to prevent order from mattering
+            let player_piercing_invincibility = player.player_piercing_invincibility > 0.0;
+
+            if player_idx as u32 == proj.owner && proj.lifetime < 1.0 && proj.is_from_head == 1
+            {
+                continue;
+            }
+            let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
+
+            if proj_card.no_friendly_fire
+                && game_mode.are_friends(proj.owner, player_idx as u32, &world_state.players)
+            {
+                continue;
+            }
+            if proj_card.no_enemy_fire && proj.owner != player_idx as u32 {
+                continue;
+            }
+            if player_piercing_invincibility && proj_card.pierce_players {
+                continue;
+            }
+
+            collisions.push(collision);
+        }
+
+        (projectiles, collisions)
     }
 
     pub fn cpu_chunks(&self) -> &Vec<Vec<Vec<u32>>> {
@@ -681,6 +779,7 @@ impl VoxelComputePipeline {
         game_state: &mut GameState,
         game_settings: &GameSettings,
         projectiles: &Vec<Projectile>,
+        players: Vec<UploadPlayer>,
     ) -> Box<dyn GpuFuture>
     where
         F: GpuFuture + 'static,
@@ -693,6 +792,24 @@ impl VoxelComputePipeline {
             for i in 0..self.upload_projectile_count {
                 let projectile = projectiles.get(i).unwrap();
                 projectiles_writer[i] = projectile.clone();
+            }
+        }
+        self.upload_player_count = 1024.min(players.len());
+        {
+            let mut players_writer = self.player_buffer.write().unwrap();
+            for i in 0..self.upload_player_count {
+                let player = players.get(i).unwrap();
+                players_writer[i] = player.clone();
+            }
+        }
+        {
+            let mut collision_writer = self.collision_buffer.write().unwrap();
+            for i in 0..1024 {
+                collision_writer[i] = Collision {
+                    id1: 0,
+                    id2: 0,
+                    properties: 0,
+                };
             }
         }
         //send chunk updates
@@ -727,6 +844,8 @@ impl VoxelComputePipeline {
                 WriteDescriptorSet::buffer(4, self.worldgen_results.clone()),
                 WriteDescriptorSet::buffer(5, self.chunk_updates.clone()),
                 WriteDescriptorSet::buffer(6, self.voxel_writes.clone()),
+                WriteDescriptorSet::buffer(7, self.players()),
+                WriteDescriptorSet::buffer(8, self.collision_buffer.clone()),
             ],
             [],
         )
@@ -737,6 +856,7 @@ impl VoxelComputePipeline {
             voxel_update_offset: self.chunk_update_queue.queue_set_idx().into(),
             dt: game_settings.delta_time,
             projectile_count: self.upload_projectile_count as u32,
+            player_count: self.upload_player_count as u32,
             worldgen_count: self.last_worldgen_count as u32,
             
             unload_index: self.slice_to_unload.map(|direction| if direction.is_positive() {

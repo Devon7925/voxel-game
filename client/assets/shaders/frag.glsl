@@ -56,10 +56,6 @@ uint get_data(uvec3 global_pos) {
     return get_data_unchecked(global_pos);
 }
 
-uint get_dist(uint voxel_data, uint offset) {
-    return (voxel_data >> (offset * 3)) & 0x7;
-}
-
 vec3 ray_box_dist(vec3 pos, vec3 ray, vec3 vmin, vec3 vmax) {
     vec3 normMinDiff = (vmin - pos) / ray;
     vec3 normMaxDiff = (vmax - pos) / ray;
@@ -656,7 +652,7 @@ vec3 get_color(vec3 pos, vec3 ray, RaycastResult primary_ray) {
             color += multiplier * mix(vec3(0.35, 0.4, 0.8), vec3(0.629, 0.908, 1.0), sky_brightness);
             break;
         }
-        MaterialProperties mat_props = position_material(primary_ray.layers[i], ray, 3 - i/2);
+        MaterialProperties mat_props = position_material(primary_ray.layers[i], ray, 3 - i / 2);
         color += (1.0 - mat_props.transparency) * multiplier * mat_props.albedo * mat_props.emmision;
 
         SimpleRaycastResult shade_check = simple_raycast_w_projectiles(primary_ray.layers[i].pos + epsilon * primary_ray.layers[i].normal, -light_dir, push_constants.shadow_ray_dist);

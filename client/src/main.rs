@@ -508,10 +508,11 @@ fn compute_then_render(
                 }
 
                 // Compute.
-                game.rollback_data.download_projectiles(
+                let collisions = game.rollback_data.download_projectiles(
                     &game.card_manager,
                     &mut game.voxel_compute,
                     &game.game_settings,
+                    &game.game_mode,
                 );
                 game.rollback_data.step_rollback(
                     &mut game.card_manager,
@@ -519,6 +520,7 @@ fn compute_then_render(
                     &game.game_state,
                     &game.game_settings,
                     &mut game.game_mode,
+                    collisions,
                 );
                 game.rollback_data.step_visuals(
                     &mut game.card_manager,
@@ -577,6 +579,7 @@ fn compute_then_render(
                     &mut game.game_state,
                     &game.game_settings,
                     game.rollback_data.get_rollback_projectiles(),
+                    game.rollback_data.get_rollback_players(),
                 )
             } else {
                 game.rollback_data.step_visuals(
