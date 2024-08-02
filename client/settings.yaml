@@ -53,7 +53,7 @@ preset_settings:
   max_loaded_chunks: 8192
   max_worldgen_rate: 128
   max_update_rate: 128
-  world_gen: Control
+  world_gen: !Control 3646
 - name: "Practice Range"
   delta_time: 0.02
   is_remote: false
@@ -86,5 +86,5 @@ create_lobby_settings:
   max_loaded_chunks: 2048
   max_worldgen_rate: 128
   max_update_rate: 128
-  world_gen: Control
+  world_gen: !Control 3645
   fixed_center: false

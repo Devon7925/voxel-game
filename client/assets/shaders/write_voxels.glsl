@@ -22,6 +22,7 @@ layout(push_constant) uniform SimData {
     int unload_index;
     uint unload_component;
     uint voxel_write_count;
+    uint worldgen_seed;
 } sim_data;
 
 uint get_index(uvec3 global_pos) {

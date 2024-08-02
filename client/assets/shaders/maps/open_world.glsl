@@ -24,6 +24,7 @@ layout(push_constant) uniform SimData {
     int unload_index;
     uint unload_component;
     uint voxel_write_count;
+    uint worldgen_seed;
 } sim_data;
 
 void set_data_in_chunk(uvec3 global_pos, uint chunk_idx, uint data) {

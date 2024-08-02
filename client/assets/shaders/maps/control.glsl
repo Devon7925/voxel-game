@@ -24,6 +24,7 @@ layout(push_constant) uniform SimData {
     int unload_index;
     uint unload_component;
     uint voxel_write_count;
+    uint worldgen_seed;
 } sim_data;
 
 void set_data_in_chunk(uvec3 global_pos, uint chunk_idx, uint data) {
@@ -55,9 +56,6 @@ vec4 max_gradient(vec4 a, vec4 b) {
 vec4 mul_gradient(vec4 a, vec4 b) {
     return vec4(a.xyz * b.w + a.w * b.xyz, a.w * b.w);
 }
-
-uint WALL_SEED = 80679522;
-uint PATH_SEED = 35685335;
 
 const int SPAWN_ROOM_OFFSET = 150;
 const float WALL_SCALE = 0.03;
@@ -184,6 +182,9 @@ const int SPAWN_DEPTH = 15;
 const int SPAWN_WIDTH = 15;
 
 uint get_worldgen(uvec3 global_pos) {
+    uint WALL_SEED = sim_data.worldgen_seed;
+    uint PATH_SEED = sim_data.worldgen_seed + 1;
+
     ivec3 signed_pos = ivec3(global_pos);
     signed_pos.x = abs(signed_pos.x - 10000);
     signed_pos.y = signed_pos.y - 1800;
@@ -217,7 +218,7 @@ uint get_worldgen(uvec3 global_pos) {
     vec2 path_center = path_noise.edge_distance / PATH_SCALE * path_noise.edge_dir + true_pos.xz;
     vec2 wall_noise_at_path_center = blurred_voronoi(WALL_SCALE * path_center, 0.5, WALL_SEED);
     vec4 gap_noise = grad_noise(vec3(GAP_SCALE * true_pos.x, 0.0, GAP_SCALE * true_pos.z));
-    float flattening_factor = min(0.1 * length(true_pos - vec3(SPAWN_ROOM_OFFSET, 0.0, 0.0)), 1.0) * min(0.07 * sdBox(true_pos.xz, vec2(12.0)), 1.0);
+    float flattening_factor = min(0.025 * length(true_pos.xz - vec2(SPAWN_ROOM_OFFSET, 0.0)), 1.0) * min(0.07 * sdBox(true_pos.xz, vec2(12.0)), 1.0);
     float adj_terrain_height = wall_noise.height * flattening_factor;
     float adj_path_height = wall_noise_at_path_center.y * flattening_factor;
     if (path_noise.edge_distance < 0.1 && adj_path_height >= -13) {
@@ -232,7 +233,7 @@ uint get_worldgen(uvec3 global_pos) {
     if (true_pos.y < adj_terrain_height) {
         return MAT_STONE << 24;
     }
-    if (wall_noise.edge_distance < 0.05 && true_pos.y < 12.0 + adj_terrain_height && wall_noise.height > wall_noise.nearest_height && gap_noise.w < 0.0) {
+    if (wall_noise.edge_distance < 0.05 && true_pos.y < 12.0 + adj_terrain_height && wall_noise.height > wall_noise.nearest_height && gap_noise.w < 0.0 && flattening_factor > 0.2) {
         return MAT_STONE << 24;
     }
     return MAT_AIR << 24;

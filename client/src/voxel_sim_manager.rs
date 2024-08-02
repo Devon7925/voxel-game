@@ -333,7 +333,7 @@ impl VoxelComputePipeline {
         let unload_chunks_pipeline = get_pipeline(unload_chunks_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
         let compute_worldgen_pipeline = match game_settings.world_gen {
             WorldGenSettings::Normal => get_pipeline(normal_world_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone()),
-            WorldGenSettings::Control => get_pipeline(control_world_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone()),
+            WorldGenSettings::Control(_) => get_pipeline(control_world_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone()),
         };
         let complete_worldgen_pipeline = get_pipeline(complete_worldgen_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
         let write_voxels_pipeline = get_pipeline(write_voxels_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
@@ -868,6 +868,7 @@ impl VoxelComputePipeline {
             } as i32).unwrap_or(0),
             unload_component: self.slice_to_unload.map(|slice| slice.component_index() as u32).unwrap_or(0),
             voxel_write_count: voxel_write_count as u32,
+            worldgen_seed: game_settings.world_gen.get_seed(),
         };
 
         builder
