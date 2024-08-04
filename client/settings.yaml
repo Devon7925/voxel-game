@@ -2,6 +2,7 @@ local_url: 127.0.0.1:3536/
 remote_url: primd.net:3536/
 fullscreen_toggle: F11
 card_file: decks/movement.ron
+card_dir: decks
 movement_controls:
   forward: !Key W
   backward: !Key S

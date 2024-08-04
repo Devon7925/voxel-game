@@ -2,7 +2,7 @@ use crate::{settings_manager::Control, voxel_sim_manager::Projectile, PLAYER_BAS
 use cgmath::{Point3, Quaternion, Rad, Rotation3};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Deck {
@@ -747,8 +747,9 @@ fn gen_cooldown_for_ttk(damage_profile: Vec<(f32, f32)>, goal_ttk: f32) -> f32 {
         * healing as f32
         / HEALING_RATE
         / DAMAGE_CALCULATION_FLOAT_SCALE
-        < goal_ttk {
-        healing *= 2
+        < goal_ttk
+    {
+        healing *= 2;
     }
     let mut delta = healing;
     while delta > 1 {
@@ -927,7 +928,7 @@ impl BaseCard {
                     .collect()
             })
             .collect();
-        
+
         let range_cds = ranged_damage_profiles
             .into_iter()
             .map(|damage_profile| gen_cooldown_for_ttk(damage_profile, 5.0))
@@ -1537,7 +1538,7 @@ impl BaseCard {
                         }],
                         StatusEffect::OnHit(card) => {
                             let range_probabilities: [f32; 15] = core::array::from_fn(|idx| {
-                                (0.1 * (10.0 - idx as f32 / true_duration)).min(1.0)
+                                (1.0 * true_duration / (idx as f32 * RANGE_PROBABILITIES_SCALE)).min(1.0)
                             });
                             let hit_value = card.evaluate_value(false);
                             hit_value

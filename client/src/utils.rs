@@ -1,7 +1,5 @@
 use std::{
-    array::from_fn,
-    collections::{HashMap, HashSet, VecDeque},
-    hash::Hash,
+    array::from_fn, collections::{HashMap, HashSet, VecDeque}, fs::read_dir, hash::Hash, path::{Path, PathBuf}
 };
 use egui_winit_vulkano::egui::{self};
 use priority_queue::PriorityQueue;
@@ -399,4 +397,25 @@ pub fn translate_egui_pointer_button(button: egui::PointerButton) -> winit::even
         egui::PointerButton::Extra1 => winit::event::MouseButton::Other(1),
         egui::PointerButton::Extra2 => winit::event::MouseButton::Other(2),
     }
+}
+
+pub fn recurse_files(path: impl AsRef<Path>) -> std::io::Result<Vec<PathBuf>> {
+    let mut buf = vec![];
+    let entries = read_dir(path)?;
+
+    for entry in entries {
+        let entry = entry?;
+        let meta = entry.metadata()?;
+
+        if meta.is_dir() {
+            let mut subdir = recurse_files(entry.path())?;
+            buf.append(&mut subdir);
+        }
+
+        if meta.is_file() {
+            buf.push(entry.path());
+        }
+    }
+
+    Ok(buf)
 }

@@ -10,6 +10,7 @@ pub struct Settings {
     pub local_url: String,
     pub remote_url: String,
     pub card_file: String,
+    pub card_dir: String,
     pub fullscreen_toggle: VirtualKeyCode,
     pub movement_controls: ControlSettings,
     pub graphics_settings: GraphicsSettings,

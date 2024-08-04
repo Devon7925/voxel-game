@@ -14,7 +14,7 @@ use egui_winit_vulkano::{
     Gui, GuiConfig,
 };
 use rfd::FileDialog;
-use std::sync::Arc;
+use std::{fs, sync::Arc};
 use vulkano::{
     buffer::BufferContents,
     command_buffer::{
@@ -35,12 +35,7 @@ use vulkano::{
 use winit::event_loop::EventLoop;
 
 use crate::{
-    app::CreationInterface,
-    game_manager::Game,
-    gui::{card_editor, cooldown, healthbar, horizontal_centerer, vertical_centerer, GuiElement},
-    raytracer::PointLightingSystem,
-    settings_manager::Settings,
-    GuiState,
+    app::CreationInterface, game_manager::Game, gui::{card_editor, cooldown, healthbar, horizontal_centerer, vertical_centerer, GuiElement}, raytracer::PointLightingSystem, settings_manager::Settings, utils::recurse_files, GuiState
 };
 use voxel_shared::RoomId;
 
@@ -734,6 +729,9 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                         if ui.button("Multiplayer").clicked() {
                                             gui_state.menu_stack.push(GuiElement::MultiplayerMenu);
                                         }
+                                        if ui.button("Deck Picker").clicked() {
+                                            gui_state.menu_stack.push(GuiElement::DeckPicker);
+                                        }
                                         if ui.button("Play Replay").clicked() {
                                             let mut replay_folder_path =
                                                 std::env::current_dir().unwrap();
@@ -1115,6 +1113,41 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
                                         if ui.button("Back").clicked() {
                                             gui_state.menu_stack.pop();
                                             *game = None;
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                }
+                Some(GuiElement::DeckPicker) => {
+                    egui::Area::new("deck picker")
+                        .anchor(Align2::LEFT_TOP, Vec2::new(0.0, 0.0))
+                        .show(&ctx, |ui| {
+                            let menu_size = Rect::from_center_size(
+                                ui.available_rect_before_wrap().center(),
+                                ui.available_rect_before_wrap().size(),
+                            );
+
+                            ui.allocate_ui_at_rect(menu_size, |ui| {
+                                ui.painter().rect_filled(
+                                    ui.available_rect_before_wrap(),
+                                    0.0,
+                                    Color32::BLACK,
+                                );
+                                vertical_centerer(ui, |ui| {
+                                    ui.vertical_centered(|ui| {
+                                        let Ok(decks) = recurse_files(settings.card_dir.clone()) else {
+                                            panic!("Cannot read directory {}", settings.card_dir);
+                                        };
+                                        for deck in decks {
+                                            if ui.button(deck.file_name().unwrap().to_str().unwrap()).clicked() {
+                                                gui_state.gui_deck = ron::from_str(fs::read_to_string(deck.as_path()).unwrap().as_str()).unwrap();
+                                                gui_state.menu_stack.pop();
+                                                gui_state.menu_stack.push(GuiElement::CardEditor);
+                                            }
+                                        }
+                                        if ui.button("Back").clicked() {
+                                            gui_state.menu_stack.pop();
                                         }
                                     });
                                 });

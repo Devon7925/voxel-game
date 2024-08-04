@@ -42,6 +42,7 @@ pub enum GuiElement {
     LobbyQueue,
     SingleplayerMenu,
     ModeGui,
+    DeckPicker,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
