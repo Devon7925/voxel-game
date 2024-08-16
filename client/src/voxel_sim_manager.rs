@@ -72,6 +72,7 @@ pub struct Collision {
     pub id1: u32,
     pub id2: u32,
     pub properties: u32,
+    pub when: f32,
 }
 
 /// Pipeline holding double buffered grid & color image. Grids are used to calculate the state, and
@@ -809,6 +810,7 @@ impl VoxelComputePipeline {
                     id1: 0,
                     id2: 0,
                     properties: 0,
+                    when: 0.0,
                 };
             }
         }

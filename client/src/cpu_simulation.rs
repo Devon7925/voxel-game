@@ -304,7 +304,9 @@ impl WorldState {
             if let Some(collisions) = collisions {
                 collisions.iter().map(|collision| {
                     let proj = self.projectiles[collision.id1 as usize];
-                    let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]);
+                    let projectile_rot = Quaternion::new(proj.dir[3], proj.dir[0], proj.dir[1], proj.dir[2]);
+                    let projectile_dir = projectile_rot.rotate_vector(Vector3::new(0.0, 0.0, 1.0));
+                    let projectile_pos = Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]) + (collision.when - proj.vel * time_step) * projectile_dir;
                     (collision.id2 as usize, collision.id1 as usize, projectile_pos, self.players[collision.id2 as usize].pos, collision.properties > 1)
                 }).collect_vec()
             } else {
@@ -316,14 +318,14 @@ impl WorldState {
 
         proj_collisions
             .iter()
-            .filter(|(_, proj_idx, damage_source_location, damage_end_location, headshot)| {
+            .filter(|(_player_idx, proj_idx, damage_source_location, damage_end_location, _headshot)| {
                 let vec_start = damage_source_location.to_vec();
                 let vec_end = damage_end_location.to_vec();
                 self.projectiles
                     .iter()
                     .enumerate()
                     .filter(|(idx, _)| {
-                        collision_pairs.contains(&(*proj_idx.min(idx), *proj_idx.max(idx)))
+                        collision_pairs.contains(&&(*proj_idx.min(idx), *proj_idx.max(idx)))
                     })
                     .all(|(_, proj2)| {
                         let mut adj_vec_start = vec_start;
@@ -349,10 +351,24 @@ impl WorldState {
                         let vec_dir = adj_vec_end - adj_vec_start;
                         let (t_min, t_max) = (0..3)
                             .map(|i| {
-                                (
-                                    (-1.0 - adj_vec_start[i]) / vec_dir[i],
-                                    (1.0 - adj_vec_start[i]) / vec_dir[i],
-                                )
+                                if vec_dir[i] == 0.0 {
+                                    if adj_vec_start[i].abs() <= 1.0 {
+                                        (
+                                            f32::NEG_INFINITY,
+                                            f32::INFINITY
+                                        )
+                                    } else {
+                                        (
+                                            f32::NEG_INFINITY,
+                                            f32::NEG_INFINITY
+                                        )
+                                    }
+                                } else {
+                                    (
+                                        (-1.0 - adj_vec_start[i]) / vec_dir[i],
+                                        (1.0 - adj_vec_start[i]) / vec_dir[i],
+                                    )
+                                }
                             })
                             .map(|t| (t.0.min(t.1), t.0.max(t.1)))
                             .reduce(|(t_min1, t_max1), (t_min2, t_max2)| {
@@ -365,7 +381,6 @@ impl WorldState {
             .collect_vec()
             .iter()
             .for_each(|(player_idx, proj_idx, start_pos, end_pos, headshot)| {
-                println!("player: {}, proj: {}", player_idx, proj_idx);
                 let player = self.players.get_mut(*player_idx).unwrap();
                 let proj = self.projectiles.get_mut(*proj_idx).unwrap();
                 let proj_card = card_manager.get_referenced_proj(proj.proj_card_idx as usize);
@@ -406,7 +421,7 @@ impl WorldState {
                     let (on_hit_projectiles, on_hit_voxels, effects, status_effects, triggers) =
                         card_manager.get_effects_from_base_card(
                             card_ref,
-                            &Point3::new(proj.pos[0], proj.pos[1], proj.pos[2]),
+                            &start_pos,
                             &proj_rot,
                             proj.owner,
                             false,

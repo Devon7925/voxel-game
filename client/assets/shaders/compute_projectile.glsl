@@ -138,6 +138,9 @@ void main() {
 
     vec3 projectile_vectors[] = { right, up, dir };
 
+    vec3 adjusted_projectile_size = projectile.size.xyz;
+    adjusted_projectile_size.z += sim_data.dt * projectile.vel / 2.0;
+
     for (int i = 0; i < sim_data.player_count; i++) {
         Player player = players[i];
         uint collision = 0;
@@ -151,7 +154,7 @@ void main() {
             }
             bool collide = true;
             for (int d = 0; d < 3; d++) {
-                if (abs(dot(transformed_hit_sphere.offset, projectile_vectors[d]) - dot(projectile.pos.xyz, projectile_vectors[d])) > projectile.size.xyz[d] + transformed_hit_sphere.radius) {
+                if (abs(dot(transformed_hit_sphere.offset, projectile_vectors[d]) - dot(projectile.pos.xyz, projectile_vectors[d])) > adjusted_projectile_size[d] + transformed_hit_sphere.radius) {
                     collide = false;
                     break;
                 }
@@ -168,7 +171,7 @@ void main() {
         }
         if (collision > 0 && los_check(projectile.pos.xyz, prev_collision)) {
             uint collision_idx = atomicAdd(collision_count, 1);
-            collisions[collision_idx] = Collision(projectile_idx, i, collision);
+            collisions[collision_idx] = Collision(projectile_idx, i, collision, dot(dir, prev_collision - projectile.pos.xyz));
         }
     }
 

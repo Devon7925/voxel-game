@@ -19,7 +19,9 @@ struct Projectile {
     uint wall_bounce;
     uint is_from_head;
     uint should_collide_with_terrain;
-    uvec3 _filler;
+    uint _filler0;
+    uint _filler1;
+    uint _filler2;
 };
 
 struct Player {
@@ -36,6 +38,7 @@ struct Collision {
     uint id1;
     uint id2;
     uint properties;
+    float when;
 };
 
 struct Hitsphere {
