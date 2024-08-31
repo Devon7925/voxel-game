@@ -7,9 +7,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use cgmath::{
-    Point3, Quaternion, Vector2,
-};
+use cgmath::{Point3, Quaternion, Vector2, Vector3};
 use itertools::Itertools;
 use matchbox_socket::{PeerId, PeerState};
 use serde::{Deserialize, Serialize};
@@ -20,9 +18,14 @@ use vulkano::{
 use winit::event::{ElementState, WindowEvent};
 
 use crate::{
-    card_system::{
-        CardManager, Deck, ReferencedStatusEffect, StateKeybind,
-    }, cpu_simulation::{Entity, HealthSection, PlayerAbility, WorldState}, game_manager::GameState, game_modes::GameMode, gui::{GuiElement, GuiState}, networking::{NetworkConnection, NetworkPacket}, settings_manager::{Control, Settings}, voxel_sim_manager::{Collision, Projectile, VoxelComputePipeline}, WindowProperties
+    card_system::{CardManager, Deck, ReferencedStatusEffect, StateKeybind},
+    cpu_simulation::{Entity, HealthSection, PlayerAbility, WorldState},
+    game_modes::GameMode,
+    gui::{GuiElement, GuiState},
+    networking::{NetworkConnection, NetworkPacket},
+    settings_manager::{Control, Settings},
+    voxel_sim_manager::{Collision, Projectile, VoxelComputePipeline},
+    WindowProperties,
 };
 use voxel_shared::{GameSettings, RoomId};
 
@@ -39,8 +42,6 @@ pub trait PlayerSim {
         &mut self,
         card_manager: &mut CardManager,
         voxel_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
-        game_settings: &GameSettings,
         game_mode: &mut Box<dyn GameMode>,
         collisions: Vec<Collision>,
     );
@@ -48,8 +49,6 @@ pub trait PlayerSim {
         &mut self,
         card_manager: &mut CardManager,
         voxel_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
-        game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
         allow_player_action: bool,
     );
@@ -99,7 +98,13 @@ pub trait PlayerSim {
     fn get_rollback_time(&self) -> u64;
     fn get_current_time(&self) -> u64;
 
-    fn add_player(&mut self, deck: &Deck, card_manager: &mut CardManager, game_mode: &dyn GameMode, entity_metadata: EntityMetaData);
+    fn add_player(
+        &mut self,
+        deck: &Deck,
+        card_manager: &mut CardManager,
+        game_mode: &dyn GameMode,
+        entity_metadata: EntityMetaData,
+    );
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -214,6 +219,7 @@ pub struct UploadPlayer {
     pub dir: [f32; 4],
     pub up: [f32; 4],
     pub right: [f32; 4],
+    pub collision_vec: [i32; 4],
 }
 
 impl From<&Entity> for UploadPlayer {
@@ -231,6 +237,12 @@ impl From<&Entity> for UploadPlayer {
             dir: [player.dir.x, player.dir.y, player.dir.z, 0.0],
             up: [player.up.x, player.up.y, player.up.z, 0.0],
             right: [player.right.x, player.right.y, player.right.z, 0.0],
+            collision_vec: [
+                player.collision_vec.x,
+                player.collision_vec.y,
+                player.collision_vec.z,
+                0,
+            ],
         }
     }
 }
@@ -312,8 +324,6 @@ impl PlayerSim for RollbackData {
         &mut self,
         card_manager: &mut CardManager,
         vox_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
-        game_settings: &GameSettings,
         game_mode: &mut Box<dyn GameMode>,
         collisions: Vec<Collision>,
     ) {
@@ -373,10 +383,8 @@ impl PlayerSim for RollbackData {
             card_manager,
             self.get_delta_time(),
             vox_compute,
-            game_state,
-            game_settings,
             game_mode,
-            Some(collisions)
+            Some(collisions),
         );
         game_mode.update(
             &mut self.rollback_state.players,
@@ -409,8 +417,6 @@ impl PlayerSim for RollbackData {
         &mut self,
         card_manager: &mut CardManager,
         vox_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
-        game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
         allow_player_action: bool,
     ) {
@@ -461,8 +467,6 @@ impl PlayerSim for RollbackData {
             card_manager,
             self.get_delta_time(),
             vox_compute,
-            game_state,
-            game_settings,
             game_mode,
         );
         //send projectiles
@@ -492,9 +496,34 @@ impl PlayerSim for RollbackData {
         game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
     ) -> Vec<Collision> {
-        let (new_projectiles, collisions) =
-            vox_compute.download_projectiles(card_manager, game_settings, &mut self.rollback_state, game_mode);
+        let (new_projectiles, collisions, players) = vox_compute.download_projectiles(
+            card_manager,
+            game_settings,
+            &mut self.rollback_state,
+            game_mode,
+        );
         self.rollback_state.projectiles = new_projectiles;
+        self.rollback_state
+            .players
+            .iter_mut()
+            .zip(players.iter())
+            .for_each(|(player, upload_player)| {
+                player.pos = Point3::new(
+                    upload_player.pos[0],
+                    upload_player.pos[1],
+                    upload_player.pos[2],
+                );
+                player.vel = Vector3::new(
+                    upload_player.vel[0],
+                    upload_player.vel[1],
+                    upload_player.vel[2],
+                );
+                player.collision_vec = Vector3::new(
+                    upload_player.collision_vec[0],
+                    upload_player.collision_vec[1],
+                    upload_player.collision_vec[2],
+                );
+            });
         collisions
     }
 
@@ -517,7 +546,11 @@ impl PlayerSim for RollbackData {
     }
 
     fn get_rollback_players(&self) -> Vec<UploadPlayer> {
-        self.rollback_state.players.iter().map(|p| p.into()).collect_vec()
+        self.rollback_state
+            .players
+            .iter()
+            .map(|p| p.into())
+            .collect_vec()
     }
 
     fn get_render_projectiles(&self) -> &Vec<Projectile> {
@@ -602,13 +635,19 @@ impl PlayerSim for RollbackData {
                     self.player_idx_map
                         .insert(peer, self.rollback_state.players.len());
 
-                    self.add_player(&cards, card_manager, game_mode.as_ref(), EntityMetaData::Player(
-                        cards.clone(),
-                        VecDeque::from(vec![
-                            Action::empty();
-                            (self.current_time - self.rollback_time + 15) as usize
-                        ]),
-                    ));
+                    self.add_player(
+                        &cards,
+                        card_manager,
+                        game_mode.as_ref(),
+                        EntityMetaData::Player(
+                            cards.clone(),
+                            VecDeque::from(vec![
+                                Action::empty();
+                                (self.current_time - self.rollback_time + 15)
+                                    as usize
+                            ]),
+                        ),
+                    );
 
                     if let Some(replay_file) = self.replay_file.as_mut() {
                         write!(replay_file, "PLAYER DECK ").unwrap();
@@ -858,8 +897,14 @@ impl PlayerSim for RollbackData {
     fn get_current_time(&self) -> u64 {
         self.current_time
     }
-    
-    fn add_player(&mut self, deck: &Deck, card_manager: &mut CardManager, game_mode: &dyn GameMode, entity_metadata: EntityMetaData) {
+
+    fn add_player(
+        &mut self,
+        deck: &Deck,
+        card_manager: &mut CardManager,
+        game_mode: &dyn GameMode,
+        entity_metadata: EntityMetaData,
+    ) {
         let mut new_player = Entity::default();
         new_player.pos = game_mode.spawn_location(&new_player);
         (new_player.abilities, new_player.passive_abilities) = abilities_from_cooldowns(
@@ -867,7 +912,7 @@ impl PlayerSim for RollbackData {
             card_manager,
             game_mode.cooldowns_reset_on_deck_swap(),
         );
-        
+
         let new_player_effect_stats = new_player.get_effect_stats();
         new_player.health = vec![HealthSection::Health(
             new_player_effect_stats.max_health,
@@ -967,13 +1012,19 @@ impl RollbackData {
             connected_player_count: 1,
             exit_reason: None,
         };
-        result.add_player(deck, card_manager, game_mode.as_ref(), EntityMetaData::Player(
-            deck.clone(),
-            VecDeque::from(vec![
-                Action::empty();
-                (result.current_time - result.rollback_time + 15) as usize
-            ]),
-        ));
+        result.add_player(
+            deck,
+            card_manager,
+            game_mode.as_ref(),
+            EntityMetaData::Player(
+                deck.clone(),
+                VecDeque::from(vec![
+                    Action::empty();
+                    (result.current_time - result.rollback_time + 15)
+                        as usize
+                ]),
+            ),
+        );
 
         let first_player = result.rollback_state.players.get(0).unwrap();
         let controls: Vec<Vec<StateKeybind>> = first_player
@@ -1009,8 +1060,6 @@ impl RollbackData {
         card_manager: &CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
-        game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
     ) -> WorldState {
         let mut state = self.rollback_state.clone();
@@ -1026,8 +1075,6 @@ impl RollbackData {
                 card_manager,
                 time_step,
                 vox_compute,
-                game_state,
-                game_settings,
                 game_mode,
                 None,
             );
@@ -1094,8 +1141,6 @@ impl PlayerSim for ReplayData {
         &mut self,
         card_manager: &mut CardManager,
         voxel_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
-        game_settings: &GameSettings,
         game_mode: &mut Box<dyn GameMode>,
         collisions: Vec<Collision>,
     ) {
@@ -1135,8 +1180,6 @@ impl PlayerSim for ReplayData {
             card_manager,
             self.get_delta_time(),
             voxel_compute,
-            game_state,
-            game_settings,
             game_mode,
             Some(collisions),
         );
@@ -1161,8 +1204,6 @@ impl PlayerSim for ReplayData {
         &mut self,
         _card_manager: &mut CardManager,
         _voxel_compute: &mut VoxelComputePipeline,
-        _game_state: &GameState,
-        _game_settings: &GameSettings,
         _game_mode: &Box<dyn GameMode>,
         _allow_player_action: bool,
     ) {
@@ -1182,20 +1223,7 @@ impl PlayerSim for ReplayData {
             let mut player_buffer = self.player_buffer.write().unwrap();
             for i in 0..player_count {
                 let player = self.state.players.get(i).unwrap();
-                player_buffer[i] = UploadPlayer {
-                    pos: [player.pos.x, player.pos.y, player.pos.z, 0.0],
-                    rot: [
-                        player.rot.v[0],
-                        player.rot.v[1],
-                        player.rot.v[2],
-                        player.rot.s,
-                    ],
-                    size: [player.size, player.size, player.size, 0.0],
-                    vel: [player.vel.x, player.vel.y, player.vel.z, 0.0],
-                    dir: [player.dir.x, player.dir.y, player.dir.z, 0.0],
-                    up: [player.up.x, player.up.y, player.up.z, 0.0],
-                    right: [player.right.x, player.right.y, player.right.z, 0.0],
-                };
+                player_buffer[i] = UploadPlayer::from(player);
             }
         }
     }
@@ -1207,9 +1235,34 @@ impl PlayerSim for ReplayData {
         game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
     ) -> Vec<Collision> {
-        let (new_projectiles, collisions) =
-            vox_compute.download_projectiles(card_manager, game_settings, &mut self.state, game_mode);
+        let (new_projectiles, collisions, players) = vox_compute.download_projectiles(
+            card_manager,
+            game_settings,
+            &mut self.state,
+            game_mode,
+        );
         self.state.projectiles = new_projectiles;
+        self.state
+            .players
+            .iter_mut()
+            .zip(players.iter())
+            .for_each(|(player, upload_player)| {
+                player.pos = Point3::new(
+                    upload_player.pos[0],
+                    upload_player.pos[1],
+                    upload_player.pos[2],
+                );
+                player.vel = Vector3::new(
+                    upload_player.vel[0],
+                    upload_player.vel[1],
+                    upload_player.vel[2],
+                );
+                player.collision_vec = Vector3::new(
+                    upload_player.collision_vec[0],
+                    upload_player.collision_vec[1],
+                    upload_player.collision_vec[2],
+                );
+            });
         collisions
     }
 
@@ -1301,8 +1354,14 @@ impl PlayerSim for ReplayData {
     fn get_current_time(&self) -> u64 {
         self.current_time
     }
-    
-    fn add_player(&mut self, deck: &Deck, card_manager: &mut CardManager, game_mode: &dyn GameMode, entity_metadata: EntityMetaData) {
+
+    fn add_player(
+        &mut self,
+        deck: &Deck,
+        card_manager: &mut CardManager,
+        game_mode: &dyn GameMode,
+        entity_metadata: EntityMetaData,
+    ) {
         let mut new_player = Entity::default();
         new_player.pos = game_mode.spawn_location(&new_player);
         (new_player.abilities, new_player.passive_abilities) = abilities_from_cooldowns(
@@ -1310,7 +1369,7 @@ impl PlayerSim for ReplayData {
             card_manager,
             game_mode.cooldowns_reset_on_deck_swap(),
         );
-        
+
         let new_player_effect_stats = new_player.get_effect_stats();
         new_player.health = vec![HealthSection::Health(
             new_player_effect_stats.max_health,
@@ -1391,7 +1450,12 @@ impl ReplayData {
             projectile_buffer,
         };
         for deck in decks {
-            result.add_player(&deck, card_manager, game_mode.as_ref(), EntityMetaData::Player(deck.clone(), VecDeque::new()));
+            result.add_player(
+                &deck,
+                card_manager,
+                game_mode.as_ref(),
+                EntityMetaData::Player(deck.clone(), VecDeque::new()),
+            );
         }
         result
     }

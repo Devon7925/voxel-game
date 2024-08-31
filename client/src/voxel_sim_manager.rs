@@ -85,6 +85,7 @@ pub struct VoxelComputePipeline {
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 
     compute_proj_pipeline: Arc<ComputePipeline>,
+    compute_entity_pipeline: Arc<ComputePipeline>,
     unload_chunks_pipeline: Arc<ComputePipeline>,
     write_voxels_pipeline: Arc<ComputePipeline>,
     compute_voxel_update_pipeline: Arc<ComputePipeline>,
@@ -331,6 +332,7 @@ impl VoxelComputePipeline {
         .unwrap();
 
         let compute_proj_pipeline = get_pipeline(compute_projs_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
+        let compute_entity_pipeline = get_pipeline(compute_entities_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
         let unload_chunks_pipeline = get_pipeline(unload_chunks_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
         let compute_worldgen_pipeline = match game_settings.world_gen {
             WorldGenSettings::Normal => get_pipeline(normal_world_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone()),
@@ -447,6 +449,7 @@ impl VoxelComputePipeline {
         VoxelComputePipeline {
             compute_queue: creation_interface.queue.clone(),
             compute_proj_pipeline,
+            compute_entity_pipeline,
             unload_chunks_pipeline,
             write_voxels_pipeline,
             compute_voxel_update_pipeline,
@@ -497,8 +500,9 @@ impl VoxelComputePipeline {
         game_settings: &GameSettings,
         world_state: &mut WorldState,
         game_mode: &Box<dyn GameMode>,
-    ) -> (Vec<Projectile>, Vec<Collision>) {
+    ) -> (Vec<Projectile>, Vec<Collision>, Vec<UploadPlayer>) {
         let mut projectiles = Vec::new();
+        let mut players = Vec::new();
         let mut new_voxels = Vec::new();
         let projectiles_buffer = self.projectile_buffer.read().unwrap();
         for i in 0..self.upload_projectile_count {
@@ -587,11 +591,12 @@ impl VoxelComputePipeline {
             collisions.push(collision);
         }
 
-        (projectiles, collisions)
-    }
-
-    pub fn cpu_chunks(&self) -> &Vec<Vec<Vec<u32>>> {
-        &self.cpu_chunks_copy
+        let entities_buffer = self.player_buffer.read().unwrap();
+        for i in 0..self.upload_player_count {
+            let player = entities_buffer[i];
+            players.push(player);
+        }
+        (projectiles, collisions, players)
     }
 
     pub fn chunks(&self) -> Arc<ImageView> {
@@ -895,6 +900,13 @@ impl VoxelComputePipeline {
                 .dispatch([((self.upload_projectile_count + 127) / 128) as u32, 1, 1])
                 .unwrap();
         }
+        if self.upload_player_count > 0 {
+            builder
+                .bind_pipeline_compute(self.compute_entity_pipeline.clone())
+                .unwrap()
+                .dispatch([((self.upload_player_count + 127) / 128) as u32, 1, 1])
+                .unwrap();
+        }
 
         if let Some(direction_to_unload) = self.slice_to_unload.clone() {
             builder
@@ -1146,10 +1158,19 @@ impl VoxelComputePipeline {
     }
 }
 
+
 mod compute_projs_cs {
     vulkano_shaders::shader! {
         ty: "compute",
         path: "assets/shaders/compute_projectile.glsl",
+        include: ["assets/shaders"],
+    }
+}
+
+mod compute_entities_cs {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "assets/shaders/compute_entity.glsl",
         include: ["assets/shaders"],
     }
 }

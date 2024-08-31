@@ -517,16 +517,12 @@ fn compute_then_render(
                 game.rollback_data.step_rollback(
                     &mut game.card_manager,
                     &mut game.voxel_compute,
-                    &game.game_state,
-                    &game.game_settings,
                     &mut game.game_mode,
                     collisions,
                 );
                 game.rollback_data.step_visuals(
                     &mut game.card_manager,
                     &mut game.voxel_compute,
-                    &game.game_state,
-                    &game.game_settings,
                     &game.game_mode,
                     gui_state.menu_stack.is_empty(),
                 );
@@ -585,8 +581,6 @@ fn compute_then_render(
                 game.rollback_data.step_visuals(
                     &mut game.card_manager,
                     &mut game.voxel_compute,
-                    &game.game_state,
-                    &game.game_settings,
                     &game.game_mode,
                     !gui_state.menu_stack.is_empty(),
                 );
