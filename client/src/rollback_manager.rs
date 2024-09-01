@@ -66,7 +66,7 @@ pub trait PlayerSim {
 
     fn get_delta_time(&self) -> f32;
     fn get_rollback_projectiles(&self) -> &Vec<Projectile>;
-    fn get_rollback_players(&self) -> Vec<UploadPlayer>;
+    fn get_rollback_players(&self, game_mode: &Box<dyn GameMode>) -> Vec<UploadPlayer>;
     fn get_render_projectiles(&self) -> &Vec<Projectile>;
     fn get_players(&self) -> &Vec<Entity>;
     fn player_count(&self) -> usize;
@@ -214,16 +214,18 @@ pub struct MetaAction {
 pub struct UploadPlayer {
     pub pos: [f32; 4],
     pub rot: [f32; 4],
-    pub size: [f32; 4],
     pub vel: [f32; 4],
     pub dir: [f32; 4],
     pub up: [f32; 4],
     pub right: [f32; 4],
-    pub collision_vec: [i32; 4],
+    pub collision_vec: [i32; 3],
+    pub size: f32,
+    pub gravity: [f32; 3],
+    pub has_world_collision: u32,
 }
 
-impl From<&Entity> for UploadPlayer {
-    fn from(player: &Entity) -> Self {
+impl UploadPlayer {
+    fn from_entity(player: &Entity, game_mode: &Box<dyn GameMode>) -> Self {
         UploadPlayer {
             pos: [player.pos.x, player.pos.y, player.pos.z, 0.0],
             rot: [
@@ -232,17 +234,18 @@ impl From<&Entity> for UploadPlayer {
                 player.rot.v[2],
                 player.rot.s,
             ],
-            size: [player.size, player.size, player.size, 0.0],
             vel: [player.vel.x, player.vel.y, player.vel.z, 0.0],
             dir: [player.dir.x, player.dir.y, player.dir.z, 0.0],
             up: [player.up.x, player.up.y, player.up.z, 0.0],
             right: [player.right.x, player.right.y, player.right.z, 0.0],
-            collision_vec: [
-                player.collision_vec.x,
-                player.collision_vec.y,
-                player.collision_vec.z,
-                0,
-            ],
+            collision_vec: player.collision_vec.into(),
+            size: player.size,
+            gravity: player.get_effect_stats().gravity.into(),
+            has_world_collision: if game_mode.player_mode(player).has_world_collison() {
+                1
+            } else {
+                0
+            }
         }
     }
 }
@@ -463,12 +466,8 @@ impl PlayerSim for RollbackData {
         self.controls
             .iter_mut()
             .for_each(|cd| cd.iter_mut().for_each(|ability| ability.clear()));
-        self.cached_current_state = self.gen_current_state(
-            card_manager,
-            self.get_delta_time(),
-            vox_compute,
-            game_mode,
-        );
+        self.cached_current_state =
+            self.gen_current_state(card_manager, self.get_delta_time(), vox_compute, game_mode);
         //send projectiles
         let projectile_count = 128.min(self.cached_current_state.projectiles.len());
         {
@@ -484,7 +483,7 @@ impl PlayerSim for RollbackData {
             let mut player_buffer = self.rendered_player_buffer.write().unwrap();
             for i in 0..player_count {
                 let player = self.cached_current_state.players.get(i).unwrap();
-                player_buffer[i] = player.into();
+                player_buffer[i] = UploadPlayer::from_entity(player, game_mode);
             }
         }
     }
@@ -545,11 +544,11 @@ impl PlayerSim for RollbackData {
         &self.rollback_state.projectiles
     }
 
-    fn get_rollback_players(&self) -> Vec<UploadPlayer> {
+    fn get_rollback_players(&self, game_mode: &Box<dyn GameMode>) -> Vec<UploadPlayer> {
         self.rollback_state
             .players
             .iter()
-            .map(|p| p.into())
+            .map(|p| UploadPlayer::from_entity(p, game_mode))
             .collect_vec()
     }
 
@@ -1204,7 +1203,7 @@ impl PlayerSim for ReplayData {
         &mut self,
         _card_manager: &mut CardManager,
         _voxel_compute: &mut VoxelComputePipeline,
-        _game_mode: &Box<dyn GameMode>,
+        game_mode: &Box<dyn GameMode>,
         _allow_player_action: bool,
     ) {
         puffin::profile_function!();
@@ -1223,7 +1222,7 @@ impl PlayerSim for ReplayData {
             let mut player_buffer = self.player_buffer.write().unwrap();
             for i in 0..player_count {
                 let player = self.state.players.get(i).unwrap();
-                player_buffer[i] = UploadPlayer::from(player);
+                player_buffer[i] = UploadPlayer::from_entity(player, game_mode);
             }
         }
     }
@@ -1284,8 +1283,8 @@ impl PlayerSim for ReplayData {
         &self.state.projectiles
     }
 
-    fn get_rollback_players(&self) -> Vec<UploadPlayer> {
-        self.state.players.iter().map(|p| p.into()).collect_vec()
+    fn get_rollback_players(&self, game_mode: &Box<dyn GameMode>) -> Vec<UploadPlayer> {
+        self.state.players.iter().map(|p| UploadPlayer::from_entity(p, game_mode)).collect_vec()
     }
 
     fn get_render_projectiles(&self) -> &Vec<Projectile> {

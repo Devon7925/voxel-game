@@ -575,7 +575,7 @@ fn compute_then_render(
                     &mut game.game_state,
                     &game.game_settings,
                     game.rollback_data.get_rollback_projectiles(),
-                    game.rollback_data.get_rollback_players(),
+                    game.rollback_data.get_rollback_players(&game.game_mode),
                 )
             } else {
                 game.rollback_data.step_visuals(

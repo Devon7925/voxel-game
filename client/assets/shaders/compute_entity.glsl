@@ -69,14 +69,14 @@ bool can_step_up(
     vec3 player_move_pos
 ) {
     vec3 start_pos =
-        player.pos.xyz + PLAYER_HITBOX_OFFSET * player.size.xyz - 0.5 * player.size.xyz * PLAYER_HITBOX_SIZE;
+        player.pos.xyz + PLAYER_HITBOX_OFFSET * player.size - 0.5 * player.size * PLAYER_HITBOX_SIZE;
     start_pos[component] = player_move_pos[component];
     start_pos[1] += 1.0;
     int x_iter_count = int(floor(start_pos[(component + 1) % 3]
-                + player.size.x * PLAYER_HITBOX_SIZE[(component + 1) % 3])
+                + player.size * PLAYER_HITBOX_SIZE[(component + 1) % 3])
             - floor(start_pos[(component + 1) % 3]));
     int z_iter_count = int(floor(start_pos[(component + 2) % 3]
-                + player.size.x * PLAYER_HITBOX_SIZE[(component + 2) % 3])
+                + player.size * PLAYER_HITBOX_SIZE[(component + 2) % 3])
             - floor(start_pos[(component + 2) % 3]));
 
     vec3 x_vec = vec3(0.0);
@@ -103,7 +103,7 @@ void collide_player(
 ) {
     vec3 collision_corner_offset = sign(player.vel.xyz) * PLAYER_HITBOX_SIZE
             * 0.5
-            * player.size.xyz;
+            * player.size;
     vec3 distance_to_move = player.vel.xyz * sim_data.dt;
     uint iteration_counter = 0;
 
@@ -111,7 +111,7 @@ void collide_player(
         iteration_counter += 1;
 
         vec3 player_move_pos =
-            player.pos.xyz + PLAYER_HITBOX_OFFSET * player.size.xyz + collision_corner_offset;
+            player.pos.xyz + PLAYER_HITBOX_OFFSET * player.size + collision_corner_offset;
         vec3 vel_dir = normalize(distance_to_move);
         vec3 delta = ray_box_dist(player_move_pos, vel_dir, floor(player_move_pos), ceil(player_move_pos));
         if(isnan(delta.x)) {delta.x = 2.0;}
@@ -143,17 +143,17 @@ void collide_player(
             vec3 fake_pos = player.pos.xyz;
             fake_pos[component] += dist_diff * vel_dir[component];
             vec3 player_move_pos =
-                fake_pos + PLAYER_HITBOX_OFFSET * player.size.xyz + collision_corner_offset;
+                fake_pos + PLAYER_HITBOX_OFFSET * player.size + collision_corner_offset;
             if (delta[component] <= delta[(component + 1) % 3]
                     && delta[component] <= delta[(component + 2) % 3]) {
-                vec3 start_pos = fake_pos + PLAYER_HITBOX_OFFSET * player.size.xyz
-                        - 0.5 * player.size.xyz * PLAYER_HITBOX_SIZE;
+                vec3 start_pos = fake_pos + PLAYER_HITBOX_OFFSET * player.size
+                        - 0.5 * player.size * PLAYER_HITBOX_SIZE;
                 start_pos[component] = player_move_pos[component];
                 int x_iter_count = int(floor(start_pos[(component + 1) % 3]
-                                + player.size.x * PLAYER_HITBOX_SIZE[(component + 1) % 3])
+                                + player.size * PLAYER_HITBOX_SIZE[(component + 1) % 3])
                             - floor(start_pos[(component + 1) % 3]));
                 int z_iter_count = int(floor(start_pos[(component + 2) % 3]
-                                + player.size.x * PLAYER_HITBOX_SIZE[(component + 2) % 3])
+                                + player.size * PLAYER_HITBOX_SIZE[(component + 2) % 3])
                             - floor(start_pos[(component + 2) % 3]));
 
                 vec3 x_vec = vec3(0);
@@ -232,9 +232,9 @@ void main() {
 
     //volume effects
     vec3 start_pos =
-        player.pos.xyz + player.size.xyz * PLAYER_HITBOX_OFFSET - player.size.xyz * PLAYER_HITBOX_SIZE / 2.0;
+        player.pos.xyz + player.size * PLAYER_HITBOX_OFFSET - player.size * PLAYER_HITBOX_SIZE / 2.0;
     vec3 end_pos =
-        player.pos.xyz + player.size.xyz * PLAYER_HITBOX_OFFSET + player.size.xyz * PLAYER_HITBOX_SIZE / 2.0;
+        player.pos.xyz + player.size * PLAYER_HITBOX_OFFSET + player.size * PLAYER_HITBOX_SIZE / 2.0;
     uvec3 start_voxel_pos = uvec3(start_pos);
     uvec3 iter_counts = uvec3(end_pos) - start_voxel_pos + uvec3(1);
     float nearby_density = 0.0;
@@ -252,21 +252,19 @@ void main() {
                 directional_density += overlapping_volume
                         * density
                         * ((vec3(voxel_pos) + vec3(0.5))
-                            - (player.pos.xyz + player.size.xyz * PLAYER_HITBOX_OFFSET))
-                        / player.size.xyz;
+                            - (player.pos.xyz + player.size * PLAYER_HITBOX_OFFSET))
+                        / player.size;
             }
         }
     }
     nearby_density /=
-        player.size.x * player.size.x * player.size.x * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
+        player.size * player.size * player.size * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
     directional_density /=
-        player.size.x * player.size.x * player.size.x * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
+        player.size * player.size * player.size * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
 
-    // if (game_mode.player_mode(player).has_world_collison()) {
-    vec3 player_gravity = vec3(0.0, -1.0, 0.0);
-    if (true) {
+    if (player.has_world_collision == 1) {
         player.vel.xyz += (PLAYER_DENSITY - nearby_density)
-                * player_gravity
+                * player.gravity
                 * 11.428571428571429
                 * sim_data.dt;
         if (length(directional_density) * sim_data.dt > 0.001) {
@@ -277,7 +275,7 @@ void main() {
                     + 0.2 * normalize(player.vel.xyz) * sim_data.dt;
         }
         vec3 prev_collision_vec = player.collision_vec.xyz;
-        player.collision_vec = ivec4(0);
+        player.collision_vec = ivec3(0);
         collide_player(
             player,
             prev_collision_vec

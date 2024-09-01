@@ -27,12 +27,14 @@ struct Projectile {
 struct Player {
     vec4 pos;
     vec4 rot;
-    vec4 size;
     vec4 vel;
     vec4 dir;
     vec4 up;
     vec4 right;
-    ivec4 collision_vec;
+    ivec3 collision_vec;
+    float size;
+    vec3 gravity;
+    uint has_world_collision;
 };
 
 struct Collision {
