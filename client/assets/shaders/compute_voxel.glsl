@@ -4,9 +4,7 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
 layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks;
-layout(set = 0, binding = 1) buffer VoxelBuffer {
-    uint voxels[];
-};
+layout(set = 0, binding = 1, r32ui) uniform uimage3D voxels;
 layout(set = 0, binding = 2) buffer Projectiles {
     Projectile projectiles[];
 };
@@ -28,13 +26,18 @@ layout(push_constant) uniform SimData {
     uint worldgen_seed;
 } sim_data;
 
-uint get_index(uvec3 global_pos) {
+ivec3 get_index(uvec3 global_pos) {
     uvec4 indicies = get_indicies(global_pos, sim_data.render_size);
-    return imageLoad(chunks, ivec3(indicies.xyz)).x * CHUNK_VOLUME + indicies.w;
+    uint z = imageLoad(chunks, ivec3(indicies.xyz)).x;
+    uint y = z/1024;
+    z = z % 1024;
+    uint x = y/1024;
+    y = y % 1024;
+    return ivec3(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE) + ivec3(global_pos % CHUNK_SIZE);
 }
 
 uint get_data_unchecked(uvec3 global_pos) {
-    return voxels[get_index(global_pos)];
+    return imageLoad(voxels, get_index(global_pos)).x;
 }
 
 uint get_data(uvec3 global_pos) {
@@ -81,8 +84,7 @@ void set_data(uvec3 global_pos, uint data) {
         }
         atomicOr(chunk_updates[gl_WorkGroupID.x].w, modification_flags);
     }
-    uint index = get_index(global_pos);
-    voxels[index] = data;
+    imageStore(voxels, get_index(global_pos), uvec4(data, 0, 0, 0));
 }
 
 void main() {
