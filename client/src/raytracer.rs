@@ -193,7 +193,7 @@ impl PointLightingSystem {
             layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, game.voxel_compute.chunks().clone()),
-                WriteDescriptorSet::buffer(1, game.voxel_compute.voxels().clone()),
+                WriteDescriptorSet::image_view(1, game.voxel_compute.voxels().clone()),
                 WriteDescriptorSet::buffer(2, sim_uniform_buffer_subbuffer),
                 WriteDescriptorSet::buffer(3, game.rollback_data.visable_player_buffer()),
                 WriteDescriptorSet::buffer(4, game.rollback_data.visable_projectile_buffer()),

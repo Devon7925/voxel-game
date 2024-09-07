@@ -3,9 +3,7 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-layout(set = 0, binding = 1) buffer VoxelBuffer {
-    uint voxels[];
-};
+layout(set = 0, binding = 1, r32ui) uniform uimage3D voxels;
 layout(set = 0, binding = 3) buffer ChunkLoads {
     ivec4 chunk_loads[];
 };
@@ -30,7 +28,12 @@ layout(push_constant) uniform SimData {
 void set_data_in_chunk(uvec3 global_pos, uint chunk_idx, uint data) {
     uvec3 pos_in_chunk = global_pos & POS_IN_CHUNK_MASK;
     uint idx_in_chunk = pos_in_chunk.x * CHUNK_SIZE * CHUNK_SIZE + pos_in_chunk.y * CHUNK_SIZE + pos_in_chunk.z;
-    voxels[chunk_idx * CHUNK_VOLUME + idx_in_chunk] = data;
+    uint z = chunk_idx;
+    uint y = z/1024;
+    z = z % 1024;
+    uint x = y/1024;
+    y = y % 1024;
+    imageStore(voxels, ivec3(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE) + ivec3(global_pos % CHUNK_SIZE), uvec4(data, 0, 0, 0));
 }
 
 vec4 y_gradient(float y, float scale, float start_y, float end_y) {

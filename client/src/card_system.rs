@@ -615,25 +615,6 @@ impl StatusEffect {
 }
 
 impl VoxelMaterial {
-    pub fn from_memory(memory: u32) -> Self {
-        match memory >> 24 {
-            0 => VoxelMaterial::Air,
-            1 => VoxelMaterial::Stone,
-            2 => VoxelMaterial::Unloaded,
-            3 => VoxelMaterial::Dirt,
-            4 => VoxelMaterial::Grass,
-            5 => VoxelMaterial::Projectile,
-            6 => VoxelMaterial::Ice,
-            7 => VoxelMaterial::Water,
-            8 => VoxelMaterial::Player,
-            9 => VoxelMaterial::UnloadedAir,
-            10 => VoxelMaterial::Wood,
-            11 => VoxelMaterial::Leaf,
-            12 => VoxelMaterial::Unbreakable,
-            _ => panic!("Invalid state"),
-        }
-    }
-
     pub fn get_material_idx(&self) -> u32 {
         match self {
             VoxelMaterial::Air => 0,
@@ -654,49 +635,6 @@ impl VoxelMaterial {
 
     pub fn to_memory(&self) -> u32 {
         self.get_material_idx() << 24
-    }
-
-    pub fn is_passthrough(&self) -> bool {
-        matches!(
-            self,
-            VoxelMaterial::Air | VoxelMaterial::Water | VoxelMaterial::UnloadedAir
-        )
-    }
-
-    pub fn density(&self) -> f32 {
-        match self {
-            VoxelMaterial::Air => 1.0,
-            VoxelMaterial::Stone => 1.0,
-            VoxelMaterial::Unloaded => 1.0,
-            VoxelMaterial::Dirt => 1.0,
-            VoxelMaterial::Grass => 1.0,
-            VoxelMaterial::Projectile => panic!("Invalid state"),
-            VoxelMaterial::Ice => 1.0,
-            VoxelMaterial::Water => 4.4,
-            VoxelMaterial::Player => panic!("Invalid state"),
-            VoxelMaterial::UnloadedAir => 1.0,
-            VoxelMaterial::Wood => 1.0,
-            VoxelMaterial::Leaf => 1.0,
-            VoxelMaterial::Unbreakable => 1.0,
-        }
-    }
-
-    pub fn get_friction(&self) -> f32 {
-        match self {
-            VoxelMaterial::Air => 0.0,
-            VoxelMaterial::Stone => 5.0,
-            VoxelMaterial::Unloaded => 0.0,
-            VoxelMaterial::Dirt => 5.0,
-            VoxelMaterial::Grass => 5.0,
-            VoxelMaterial::Projectile => 0.0,
-            VoxelMaterial::Ice => 0.1,
-            VoxelMaterial::Water => 1.0,
-            VoxelMaterial::Player => 0.0,
-            VoxelMaterial::UnloadedAir => 0.0,
-            VoxelMaterial::Wood => 5.0,
-            VoxelMaterial::Leaf => 4.0,
-            VoxelMaterial::Unbreakable => 5.0,
-        }
     }
 }
 

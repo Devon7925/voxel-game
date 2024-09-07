@@ -12,14 +12,14 @@ use crate::{
 };
 use bytemuck::{Pod, Zeroable};
 use cgmath::{MetricSpace, Point3, Quaternion, Vector3, Zero};
-use std::{collections::HashSet, iter, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 use voxel_shared::{GameSettings, WorldGenSettings};
 use vulkano::{
     buffer::{
         Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
     },
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBufferAbstract,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator,
@@ -42,7 +42,7 @@ use vulkano::{
         PipelineShaderStageCreateInfo,
     },
     shader::{ShaderModule, ShaderStages},
-    sync::GpuFuture,
+    sync::GpuFuture, DeviceSize,
 };
 
 #[derive(Clone, Copy, Zeroable, Debug, Pod)]
@@ -85,6 +85,7 @@ pub struct VoxelComputePipeline {
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 
     compute_proj_pipeline: Arc<ComputePipeline>,
+    compute_entity_pipeline: Arc<ComputePipeline>,
     unload_chunks_pipeline: Arc<ComputePipeline>,
     write_voxels_pipeline: Arc<ComputePipeline>,
     compute_voxel_update_pipeline: Arc<ComputePipeline>,
@@ -100,7 +101,7 @@ pub struct VoxelComputePipeline {
     collision_buffer: Subbuffer<[Collision; 1024]>,
 
     gpu_chunks: Arc<ImageView>,
-    voxel_buffer: Subbuffer<[u32]>,
+    voxels: Arc<ImageView>,
     cpu_chunks_copy: Vec<Vec<Vec<u32>>>,
     available_chunks: Vec<u32>,
     slice_to_unload: Option<Direction>,
@@ -153,24 +154,89 @@ fn empty_chunk_grid(
     (cpu_chunks, ImageView::new_default(image).unwrap())
 }
 
-fn empty_list(
+fn empty_voxels(
     memory_allocator: Arc<StandardMemoryAllocator>,
     game_settings: &GameSettings,
-) -> Subbuffer<[u32]> {
-    Buffer::from_iter(
-        memory_allocator,
+    creation_interface: &CreationInterface,
+) -> Arc<ImageView> {
+    let mut uploads = AutoCommandBufferBuilder::primary(
+        &creation_interface.command_buffer_allocator,
+        creation_interface.queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
+
+    let direction_chunks = [(game_settings.max_loaded_chunks - 1) / 1024 / 1024 + 1, ((game_settings.max_loaded_chunks - 1) / 1024 + 1).min(1024), game_settings.max_loaded_chunks.min(1024)];
+
+    let extent = direction_chunks.map(|c| c * CHUNK_SIZE as u32);
+
+    fn coords_to_linear(coords: [u32; 3], extent: [u32;3]) -> u32 {
+        coords[0] + coords[1] * extent[0] + coords[2] * extent[0] * extent[1]
+    }
+
+    let upload_buffer = Buffer::new_slice(
+        memory_allocator.clone(),
         BufferCreateInfo {
-            usage: BufferUsage::STORAGE_BUFFER,
+            usage: BufferUsage::TRANSFER_SRC,
             ..Default::default()
         },
         AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+            memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
-        vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * game_settings.max_loaded_chunks as usize],
+        (CHUNK_SIZE as u32 * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 * game_settings.max_loaded_chunks * 4) as DeviceSize,
     )
-    .unwrap()
+    .unwrap();
+    {
+        // set the unloaded chunk
+        let mut voxel_writer = upload_buffer.write().unwrap();
+        for x in 0..(CHUNK_SIZE as u32) {
+            for y in 0..(CHUNK_SIZE as u32) {
+                for z in 0..(CHUNK_SIZE as u32) {
+                    voxel_writer[coords_to_linear([x,y,z], extent) as usize] = VoxelMaterial::Unloaded.to_memory();
+                }
+            }
+        }
+        for x in 0..(CHUNK_SIZE as u32) {
+            for y in 0..(CHUNK_SIZE as u32) {
+                for z in 0..(CHUNK_SIZE as u32) {
+                    voxel_writer[coords_to_linear([x,y,z+16], extent) as usize] = VoxelMaterial::UnloadedAir.to_memory();
+                }
+            }
+        }
+    }
+
+    let image = Image::new(
+        memory_allocator,
+        ImageCreateInfo {
+            image_type: ImageType::Dim3d,
+            format: Format::R32_UINT,
+            extent,
+            usage: ImageUsage::STORAGE | ImageUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        AllocationCreateInfo::default(),
+    )
+    .unwrap();
+
+    uploads
+        .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+            upload_buffer,
+            image.clone(),
+        ))
+        .unwrap();
+
+    let _ = uploads
+            .build()
+            .unwrap()
+            .execute(creation_interface.queue.clone())
+            .unwrap()
+            .boxed()
+            .then_signal_fence_and_flush()
+            .unwrap();
+
+    ImageView::new_default(image).unwrap()
 }
 
 macro_rules! is_inbounds {
@@ -204,24 +270,7 @@ impl VoxelComputePipeline {
 
         let (cpu_chunks_copy, gpu_chunks) =
             empty_chunk_grid(memory_allocator.clone(), game_settings);
-        let voxel_buffer = empty_list(memory_allocator.clone(), game_settings);
-        // set the unloaded chunk
-        {
-            let mut voxel_writer = voxel_buffer.write().unwrap();
-            for (i, _) in iter::repeat(())
-                .enumerate()
-                .take((CHUNK_SIZE as usize) * (CHUNK_SIZE as usize) * (CHUNK_SIZE as usize))
-            {
-                voxel_writer[i] = VoxelMaterial::Unloaded.to_memory();
-            }
-            for (i, _) in iter::repeat(())
-                .enumerate()
-                .skip((CHUNK_SIZE as usize) * (CHUNK_SIZE as usize) * (CHUNK_SIZE as usize))
-                .take((CHUNK_SIZE as usize) * (CHUNK_SIZE as usize) * (CHUNK_SIZE as usize))
-            {
-                voxel_writer[i] = VoxelMaterial::UnloadedAir.to_memory();
-            }
-        }
+        let voxels = empty_voxels(memory_allocator.clone(), game_settings, creation_interface);
         let available_chunks = (2..game_settings.max_loaded_chunks).collect();
 
         let primary_desc_layout = DescriptorSetLayout::new(
@@ -242,7 +291,7 @@ impl VoxelComputePipeline {
                         DescriptorSetLayoutBinding {
                             stages: ShaderStages::COMPUTE,
                             ..DescriptorSetLayoutBinding::descriptor_type(
-                                DescriptorType::StorageBuffer,
+                                DescriptorType::StorageImage,
                             )
                         },
                     ),
@@ -331,6 +380,7 @@ impl VoxelComputePipeline {
         .unwrap();
 
         let compute_proj_pipeline = get_pipeline(compute_projs_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
+        let compute_entity_pipeline = get_pipeline(compute_entities_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
         let unload_chunks_pipeline = get_pipeline(unload_chunks_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone());
         let compute_worldgen_pipeline = match game_settings.world_gen {
             WorldGenSettings::Normal => get_pipeline(normal_world_cs::load(creation_interface.queue.device().clone()).unwrap(), creation_interface.queue.device().clone(), layout.clone()),
@@ -447,6 +497,7 @@ impl VoxelComputePipeline {
         VoxelComputePipeline {
             compute_queue: creation_interface.queue.clone(),
             compute_proj_pipeline,
+            compute_entity_pipeline,
             unload_chunks_pipeline,
             write_voxels_pipeline,
             compute_voxel_update_pipeline,
@@ -459,7 +510,7 @@ impl VoxelComputePipeline {
             collision_buffer,
             cpu_chunks_copy,
             gpu_chunks,
-            voxel_buffer,
+            voxels,
             available_chunks,
             chunk_update_queue: VoxelUpdateQueue::with_capacity(
                 game_settings.max_update_rate as usize,
@@ -497,8 +548,9 @@ impl VoxelComputePipeline {
         game_settings: &GameSettings,
         world_state: &mut WorldState,
         game_mode: &Box<dyn GameMode>,
-    ) -> (Vec<Projectile>, Vec<Collision>) {
+    ) -> (Vec<Projectile>, Vec<Collision>, Vec<UploadPlayer>) {
         let mut projectiles = Vec::new();
+        let mut players = Vec::new();
         let mut new_voxels = Vec::new();
         let projectiles_buffer = self.projectile_buffer.read().unwrap();
         for i in 0..self.upload_projectile_count {
@@ -587,19 +639,20 @@ impl VoxelComputePipeline {
             collisions.push(collision);
         }
 
-        (projectiles, collisions)
-    }
-
-    pub fn cpu_chunks(&self) -> &Vec<Vec<Vec<u32>>> {
-        &self.cpu_chunks_copy
+        let entities_buffer = self.player_buffer.read().unwrap();
+        for i in 0..self.upload_player_count {
+            let player = entities_buffer[i];
+            players.push(player);
+        }
+        (projectiles, collisions, players)
     }
 
     pub fn chunks(&self) -> Arc<ImageView> {
         self.gpu_chunks.clone()
     }
 
-    pub fn voxels(&self) -> Subbuffer<[u32]> {
-        self.voxel_buffer.clone()
+    pub fn voxels(&self) -> Arc<ImageView> {
+        self.voxels.clone()
     }
 
     pub fn queue_voxel_write(&mut self, write: [u32; 4]) {
@@ -840,7 +893,7 @@ impl VoxelComputePipeline {
                 .clone(),
             [
                 WriteDescriptorSet::image_view(0, self.chunks()),
-                WriteDescriptorSet::buffer(1, self.voxels()),
+                WriteDescriptorSet::image_view(1, self.voxels()),
                 WriteDescriptorSet::buffer(2, self.projectiles()),
                 WriteDescriptorSet::buffer(3, self.worldgen_updates.clone()),
                 WriteDescriptorSet::buffer(4, self.worldgen_results.clone()),
@@ -893,6 +946,13 @@ impl VoxelComputePipeline {
                 .bind_pipeline_compute(self.compute_proj_pipeline.clone())
                 .unwrap()
                 .dispatch([((self.upload_projectile_count + 127) / 128) as u32, 1, 1])
+                .unwrap();
+        }
+        if self.upload_player_count > 0 {
+            builder
+                .bind_pipeline_compute(self.compute_entity_pipeline.clone())
+                .unwrap()
+                .dispatch([((self.upload_player_count + 127) / 128) as u32, 1, 1])
                 .unwrap();
         }
 
@@ -1146,10 +1206,19 @@ impl VoxelComputePipeline {
     }
 }
 
+
 mod compute_projs_cs {
     vulkano_shaders::shader! {
         ty: "compute",
         path: "assets/shaders/compute_projectile.glsl",
+        include: ["assets/shaders"],
+    }
+}
+
+mod compute_entities_cs {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "assets/shaders/compute_entity.glsl",
         include: ["assets/shaders"],
     }
 }
