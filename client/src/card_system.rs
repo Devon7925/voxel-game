@@ -791,7 +791,7 @@ fn get_avg_ttk(
         let one_shot_chance = damage_profile
             .iter()
             .filter(|dp| {
-                dp.0 * DAMAGE_CALCULATION_FLOAT_SCALE > SCALED_PLAYER_BASE_MAX_HEALTH as f32
+                dp.0 >= PLAYER_BASE_MAX_HEALTH
             })
             .map(|dp| dp.1)
             .sum::<f32>();
@@ -799,8 +799,8 @@ fn get_avg_ttk(
         if avg_damage > healing_probability * healing as f32 {
             result = result
                 .min(current_health as f32 / (avg_damage - healing_probability * healing as f32));
-        } else {
-            result = result.min(1.0 / (1.0 - one_shot_chance));
+        } else if one_shot_chance > 0.0 {
+            result = result.min(1.0 / one_shot_chance);
         }
         result
     } else if current_health > SCALED_PLAYER_BASE_MAX_HEALTH {

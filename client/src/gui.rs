@@ -2580,7 +2580,7 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
 
             let menu_size = ui.available_rect_before_wrap().shrink2(vec2(PADDING, 0.0));
 
-            let edit_mode = if let Some(game) = game {
+            let mut edit_mode = if let Some(game) = game {
                 if gui_state.render_deck_idx > 0 {
                     EditMode::Readonly
                 } else {
@@ -2607,32 +2607,33 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                                     for (idx, metadata) in
                                         game.rollback_data.get_entity_metadata().iter().enumerate()
                                     {
-                                        if let EntityMetaData::Player(deck, _) = metadata {
-                                            if ui
-                                                .selectable_value(
-                                                    &mut gui_state.render_deck_idx,
-                                                    idx,
-                                                    format!("Player {}", idx),
-                                                )
-                                                .clicked()
-                                            {
+                                        if ui
+                                            .selectable_value(
+                                                &mut gui_state.render_deck_idx,
+                                                idx,
+                                                format!("Player {}", idx),
+                                            )
+                                            .clicked()
+                                        {
+                                            if let EntityMetaData::Player(deck, _) = metadata {
                                                 gui_state.render_deck = deck.clone();
-                                            }
-                                        } else {
-                                            if ui
-                                                .selectable_value(
-                                                    &mut gui_state.render_deck_idx,
-                                                    idx,
-                                                    format!("Player {}", idx),
-                                                )
-                                                .clicked()
-                                            {
+                                            } else {
                                                 gui_state.render_deck = Deck {
                                                     cooldowns: vec![],
                                                     passive: PassiveCard {
                                                         passive_effects: vec![],
                                                     },
                                                 };
+                                            }
+                                            edit_mode = if gui_state.render_deck_idx > 0 {
+                                                EditMode::Readonly
+                                            } else {
+                                                game.game_mode.deck_swapping(
+                                                    game.rollback_data
+                                                        .get_players()
+                                                        .get(gui_state.render_deck_idx)
+                                                        .unwrap(),
+                                                )
                                             }
                                         }
                                     }
