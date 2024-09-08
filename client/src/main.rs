@@ -351,6 +351,8 @@ fn handle_events(
                                     let exited_ui = gui_state.menu_stack.pop().unwrap();
                                     match exited_ui {
                                         GuiElement::CardEditor => {
+                                            gui_state.render_deck_idx = 0;
+                                            gui_state.render_deck = gui_state.gui_deck.clone();
                                             let config = ron::ser::PrettyConfig::default();
                                             let export = ron::ser::to_string_pretty(
                                                 &gui_state.gui_deck,

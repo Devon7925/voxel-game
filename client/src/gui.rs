@@ -2638,8 +2638,6 @@ pub fn card_editor(ctx: &egui::Context, gui_state: &mut GuiState, game: &mut Opt
                                         }
                                     }
                                 });
-                        } else {
-                            gui_state.render_deck = gui_state.gui_deck.clone();
                         }
                         if ui.button("Export to Clipboard").clicked() {
                             let export = ron::to_string(&gui_state.render_deck).unwrap();
