@@ -9,9 +9,7 @@ layout(input_attachment_index = 1, set = 0, binding = 1) uniform subpassInput u_
 layout(input_attachment_index = 2, set = 0, binding = 2) uniform subpassInput u_depth;
 
 layout(set = 1, binding = 0, r32ui) uniform uimage3D chunks;
-layout(set = 1, binding = 1) buffer VoxelBuffer {
-    uint voxels[];
-};
+layout(set = 1, binding = 1, r32ui) uniform uimage3D voxels;
 
 layout(set = 1, binding = 2) uniform SimData {
     uint projectile_count;
@@ -43,9 +41,18 @@ layout(location = 0) out vec4 f_color;
 
 const vec3 light_dir = normalize(vec3(0.5, -1, 0.25));
 
-uint get_data_unchecked(uvec3 global_pos) {
+ivec3 get_index(uvec3 global_pos) {
     uvec4 indicies = get_indicies(global_pos, sim_data.render_size);
-    return voxels[imageLoad(chunks, ivec3(indicies.xyz)).x * CHUNK_VOLUME + indicies.w];
+    uint z = imageLoad(chunks, ivec3(indicies.xyz)).x;
+    uint y = z/1024;
+    z = z % 1024;
+    uint x = y/1024;
+    y = y % 1024;
+    return ivec3(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE) + ivec3(global_pos % CHUNK_SIZE);
+}
+
+uint get_data_unchecked(uvec3 global_pos) {
+    return imageLoad(voxels, get_index(global_pos)).x;
 }
 
 uint get_data(uvec3 global_pos) {

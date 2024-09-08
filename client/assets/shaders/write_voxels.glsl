@@ -4,9 +4,7 @@
 layout(local_size_x = 256) in;
 
 layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks;
-layout(set = 0, binding = 1) buffer VoxelBuffer {
-    uint voxels[];
-};
+layout(set = 0, binding = 1, r32ui) uniform uimage3D voxels;
 layout(set = 0, binding = 6) buffer VoxelWrites {
     uvec4 voxel_writes[];
 };
@@ -25,14 +23,19 @@ layout(push_constant) uniform SimData {
     uint worldgen_seed;
 } sim_data;
 
-uint get_index(uvec3 global_pos) {
+ivec3 get_index(uvec3 global_pos) {
     uvec4 indicies = get_indicies(global_pos, sim_data.render_size);
-    return imageLoad(chunks, ivec3(indicies.xyz)).x * CHUNK_VOLUME + indicies.w;
+    uint z = imageLoad(chunks, ivec3(indicies.xyz)).x;
+    uint y = z/1024;
+    z = z % 1024;
+    uint x = y/1024;
+    y = y % 1024;
+    return ivec3(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE) + ivec3(global_pos % CHUNK_SIZE);
 }
 
 void set_data(uvec3 global_pos, uint data) {
-    uint index = get_index(global_pos);
-    voxels[index] = data;
+    ivec3 index = get_index(global_pos);
+    imageStore(voxels, index, uvec4(data, 0, 0, 0));
 }
 
 void main() {

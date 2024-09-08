@@ -2,26 +2,22 @@ use std::f32::consts::PI;
 
 use cgmath::{
     vec3, ElementWise, EuclideanSpace, InnerSpace, One, Point3, Quaternion, Rad, Rotation,
-    Rotation3, Vector2, Vector3,
+    Rotation3, Vector3,
 };
 use itertools::Itertools;
-
-use vulkano::buffer::subbuffer::BufferReadGuard;
 
 use crate::{
     card_system::{
         BaseCard, CardManager, DirectionCard, ReferencedCooldown, ReferencedEffect,
         ReferencedStatusEffect, ReferencedStatusEffects, ReferencedTrigger, SimpleStatusEffectType,
-        StatusEffect, VoxelMaterial,
+        StatusEffect,
     },
-    game_manager::GameState,
     game_modes::GameMode,
     rollback_manager::Action,
     voxel_sim_manager::{Collision, Projectile, VoxelComputePipeline},
-    CHUNK_SIZE, PLAYER_BASE_MAX_HEALTH, PLAYER_DENSITY, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
+    PLAYER_BASE_MAX_HEALTH, PLAYER_HITBOX_OFFSET, PLAYER_HITBOX_SIZE,
     RESPAWN_TIME,
 };
-use voxel_shared::GameSettings;
 
 #[derive(Clone, Debug)]
 pub struct WorldState {
@@ -155,12 +151,9 @@ impl WorldState {
         card_manager: &CardManager,
         time_step: f32,
         vox_compute: &mut VoxelComputePipeline,
-        game_state: &GameState,
-        game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
         collisions: Option<Vec<Collision>>,
     ) {
-        let voxels = vox_compute.voxels();
         let mut new_effects = NewEffects::default();
 
         let player_stats: Vec<PlayerEffectStats> = self.get_player_effect_stats();
@@ -196,28 +189,21 @@ impl WorldState {
             player.status_effects.retain(|x| x.time_left > 0.0);
         }
 
+        for (player_idx, (player, entity_action)) in self
+            .players
+            .iter_mut()
+            .zip(player_actions.into_iter())
+            .enumerate()
         {
-            let voxel_reader = voxels.read().unwrap();
-            for (player_idx, (player, entity_action)) in self
-                .players
-                .iter_mut()
-                .zip(player_actions.into_iter())
-                .enumerate()
-            {
-                player.simple_step(
-                    time_step,
-                    entity_action,
-                    &player_stats,
-                    player_idx,
-                    card_manager,
-                    &voxel_reader,
-                    &vox_compute.cpu_chunks(),
-                    &mut new_effects,
-                    game_state,
-                    game_settings,
-                    game_mode,
-                );
-            }
+            player.simple_step(
+                time_step,
+                entity_action,
+                &player_stats,
+                player_idx,
+                card_manager,
+                &mut new_effects,
+                game_mode,
+            );
         }
 
         self.projectiles.iter_mut().for_each(|proj| {
@@ -1100,39 +1086,6 @@ impl Projectile {
     }
 }
 
-pub fn is_inbounds(
-    global_pos: Point3<u32>,
-    game_state: &GameState,
-    game_settings: &GameSettings,
-) -> bool {
-    (global_pos / CHUNK_SIZE as u32).zip(game_state.start_pos, |a, b| a >= b)
-        == Point3::new(true, true, true)
-        && (global_pos / CHUNK_SIZE as u32)
-            .zip(game_state.start_pos + game_settings.render_size, |a, b| {
-                a < b
-            })
-            == Point3::new(true, true, true)
-}
-
-pub fn get_index(
-    global_pos: Point3<u32>,
-    cpu_chunks: &Vec<Vec<Vec<u32>>>,
-    game_state: &GameState,
-    game_settings: &GameSettings,
-) -> Option<u32> {
-    if !is_inbounds(global_pos, game_state, game_settings) {
-        return None;
-    }
-    let chunk_pos = (global_pos / CHUNK_SIZE as u32)
-        .zip(Point3::from_vec(game_settings.render_size), |a, b| a % b);
-    let pos_in_chunk = global_pos % CHUNK_SIZE as u32;
-    let chunk_idx = cpu_chunks[chunk_pos.x as usize][chunk_pos.y as usize][chunk_pos.z as usize];
-    let idx_in_chunk = pos_in_chunk.x * CHUNK_SIZE as u32 * CHUNK_SIZE as u32
-        + pos_in_chunk.y * CHUNK_SIZE as u32
-        + pos_in_chunk.z;
-    Some(chunk_idx * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 * CHUNK_SIZE as u32 + idx_in_chunk)
-}
-
 #[derive(Debug, Clone)]
 struct Hitsphere {
     offset: Vector3<f32>,
@@ -1181,11 +1134,7 @@ impl Entity {
         player_stats: &Vec<PlayerEffectStats>,
         player_idx: usize,
         card_manager: &CardManager,
-        voxel_reader: &BufferReadGuard<'_, [u32]>,
-        cpu_chunks: &Vec<Vec<Vec<u32>>>,
         new_effects: &mut NewEffects,
-        game_state: &GameState,
-        game_settings: &GameSettings,
         game_mode: &Box<dyn GameMode>,
     ) {
         let size_change = player_stats[player_idx].size - self.size;
@@ -1359,75 +1308,6 @@ impl Entity {
         }
         self.hurtmarkers.retain(|hurtmarker| hurtmarker.2 > 0.0);
 
-        //volume effects
-        let start_pos =
-            self.pos + self.size * PLAYER_HITBOX_OFFSET - self.size * PLAYER_HITBOX_SIZE / 2.0;
-        let end_pos =
-            self.pos + self.size * PLAYER_HITBOX_OFFSET + self.size * PLAYER_HITBOX_SIZE / 2.0;
-        let start_voxel_pos = start_pos.map(|c| c.floor() as u32);
-        let iter_counts = end_pos.zip(start_voxel_pos, |a, b| a.floor() as u32 - b + 1);
-        let mut nearby_density = 0.0;
-        let mut directional_density = Vector3::new(0.0, 0.0, 0.0);
-        for x in 0..iter_counts.x {
-            for y in 0..iter_counts.y {
-                for z in 0..iter_counts.z {
-                    let voxel_pos = start_voxel_pos + Vector3::new(x, y, z);
-                    let overlapping_volume = voxel_pos.zip(end_pos, |a, b| b.min(a as f32 + 1.0))
-                        - voxel_pos.zip(start_pos, |a, b| b.max(a as f32));
-                    let overlapping_volume =
-                        overlapping_volume.x * overlapping_volume.y * overlapping_volume.z;
-                    let material = if is_inbounds(voxel_pos, game_state, game_settings) {
-                        let idx = get_index(voxel_pos, cpu_chunks, game_state, game_settings);
-                        if let Some(idx) = idx {
-                            VoxelMaterial::from_memory(voxel_reader[idx as usize])
-                        } else {
-                            VoxelMaterial::Unloaded
-                        }
-                    } else {
-                        VoxelMaterial::Unloaded
-                    };
-                    let density = material.density();
-                    nearby_density += overlapping_volume * density;
-                    directional_density += overlapping_volume
-                        * density
-                        * (voxel_pos.map(|c| c as f32 + 0.5)
-                            - (self.pos + self.size * PLAYER_HITBOX_OFFSET))
-                        / self.size;
-                }
-            }
-        }
-        nearby_density /=
-            self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
-        directional_density /=
-            self.size.powi(3) * PLAYER_HITBOX_SIZE.x * PLAYER_HITBOX_SIZE.y * PLAYER_HITBOX_SIZE.z;
-
-        if game_mode.player_mode(self).has_world_collison() {
-            self.vel += (PLAYER_DENSITY - nearby_density)
-                * player_stats[player_idx].gravity
-                * 11.428571428571429
-                * time_step;
-            if directional_density.magnitude() * time_step > 0.001 {
-                self.vel -= 0.5 * directional_density * time_step;
-            }
-            if self.vel.magnitude() > 0.0 {
-                self.vel -= nearby_density * 0.0375 * self.vel * self.vel.magnitude() * time_step
-                    + 0.2 * self.vel.normalize() * time_step;
-            }
-            let prev_collision_vec = self.collision_vec.clone();
-            self.collision_vec = Vector3::new(0, 0, 0);
-            self.collide_player(
-                time_step,
-                voxel_reader,
-                cpu_chunks,
-                prev_collision_vec,
-                game_state,
-                game_settings,
-            );
-        } else {
-            self.pos += self.vel;
-            self.vel *= 0.5;
-        }
-
         for health_section in self.health.iter_mut() {
             match health_section {
                 HealthSection::Overhealth(_health, duration) => {
@@ -1440,193 +1320,6 @@ impl Entity {
             HealthSection::Health(_health, _max_health) => true,
             HealthSection::Overhealth(health, duration) => *health > 0.0 && *duration > 0.0,
         });
-    }
-
-    fn collide_player(
-        &mut self,
-        time_step: f32,
-        voxel_reader: &BufferReadGuard<'_, [u32]>,
-        cpu_chunks: &Vec<Vec<Vec<u32>>>,
-        prev_collision_vec: Vector3<i32>,
-        game_state: &GameState,
-        game_settings: &GameSettings,
-    ) {
-        let collision_corner_offset = self
-            .vel
-            .map(|c| c.signum())
-            .zip(PLAYER_HITBOX_SIZE, |a, b| a * b)
-            * 0.5
-            * self.size;
-        let mut distance_to_move = self.vel * time_step;
-        let mut iteration_counter = 0;
-
-        while distance_to_move.magnitude() > 0.0 {
-            iteration_counter += 1;
-
-            let player_move_pos =
-                self.pos + PLAYER_HITBOX_OFFSET * self.size + collision_corner_offset;
-            let vel_dir = distance_to_move.normalize();
-            let delta = ray_box_dist(player_move_pos, vel_dir);
-            let mut dist_diff = delta.x.min(delta.y).min(delta.z);
-            if dist_diff == 0.0 {
-                dist_diff = distance_to_move.magnitude();
-                if delta.x != 0.0 {
-                    dist_diff = dist_diff.min(delta.x);
-                }
-                if delta.y != 0.0 {
-                    dist_diff = dist_diff.min(delta.y);
-                }
-                if delta.z != 0.0 {
-                    dist_diff = dist_diff.min(delta.z);
-                }
-            } else if dist_diff > distance_to_move.magnitude() {
-                self.pos += distance_to_move;
-                break;
-            }
-
-            if iteration_counter > 100 {
-                println!(
-                    "iteration counter exceeded with dtm {:?} and delta {:?}",
-                    distance_to_move, delta
-                );
-                break;
-            }
-
-            distance_to_move -= dist_diff * vel_dir;
-            'component_loop: for component in 0..3 {
-                let mut fake_pos = self.pos;
-                fake_pos[component] += dist_diff * vel_dir[component];
-                let player_move_pos =
-                    fake_pos + PLAYER_HITBOX_OFFSET * self.size + collision_corner_offset;
-                if delta[component] <= delta[(component + 1) % 3]
-                    && delta[component] <= delta[(component + 2) % 3]
-                {
-                    let mut start_pos = fake_pos + PLAYER_HITBOX_OFFSET * self.size
-                        - 0.5 * self.size * PLAYER_HITBOX_SIZE;
-                    start_pos[component] = player_move_pos[component];
-                    let x_iter_count = (start_pos[(component + 1) % 3]
-                        + self.size * PLAYER_HITBOX_SIZE[(component + 1) % 3])
-                        .floor()
-                        - (start_pos[(component + 1) % 3]).floor();
-                    let z_iter_count = (start_pos[(component + 2) % 3]
-                        + self.size * PLAYER_HITBOX_SIZE[(component + 2) % 3])
-                        .floor()
-                        - (start_pos[(component + 2) % 3]).floor();
-
-                    let mut x_vec = Vector3::new(0.0, 0.0, 0.0);
-                    let mut z_vec = Vector3::new(0.0, 0.0, 0.0);
-                    x_vec[(component + 1) % 3] = 1.0;
-                    z_vec[(component + 2) % 3] = 1.0;
-                    for x_iter in 0..=(x_iter_count as u32) {
-                        for z_iter in 0..=(z_iter_count as u32) {
-                            let pos = start_pos + x_iter as f32 * x_vec + z_iter as f32 * z_vec;
-                            let voxel_pos = pos.map(|c| c.floor() as u32);
-                            let voxel = if let Some(index) =
-                                get_index(voxel_pos, cpu_chunks, game_state, game_settings)
-                            {
-                                voxel_reader[index as usize]
-                            } else {
-                                VoxelMaterial::Unloaded.to_memory()
-                            };
-                            let voxel_material = VoxelMaterial::from_memory(voxel);
-                            if !voxel_material.is_passthrough() {
-                                if component != 1
-                                    && prev_collision_vec[1] == 1
-                                    && (pos - start_pos).y < 1.0
-                                    && self.can_step_up(
-                                        voxel_reader,
-                                        cpu_chunks,
-                                        component,
-                                        player_move_pos,
-                                        game_state,
-                                        game_settings,
-                                    )
-                                {
-                                    self.pos = fake_pos;
-                                    self.pos[1] += 1.0;
-                                    continue 'component_loop;
-                                }
-
-                                self.vel[component] = 0.0;
-                                // apply friction
-                                let perp_vel = Vector2::new(
-                                    self.vel[(component + 1) % 3],
-                                    self.vel[(component + 2) % 3],
-                                );
-                                if perp_vel.magnitude() > 0.0 {
-                                    let friction_factor = voxel_material.get_friction();
-                                    let friction = Vector2::new(
-                                        (friction_factor * 0.5 * perp_vel.normalize().x
-                                            + friction_factor * perp_vel.x)
-                                            * time_step,
-                                        (friction_factor * 0.5 * perp_vel.normalize().y
-                                            + friction_factor * perp_vel.y)
-                                            * time_step,
-                                    );
-                                    if friction.magnitude() > perp_vel.magnitude() {
-                                        self.vel[(component + 1) % 3] = 0.0;
-                                        self.vel[(component + 2) % 3] = 0.0;
-                                    } else {
-                                        self.vel[(component + 1) % 3] -= friction.x;
-                                        self.vel[(component + 2) % 3] -= friction.y;
-                                    }
-                                }
-                                self.collision_vec[component] = -vel_dir[component].signum() as i32;
-                                distance_to_move[component] = 0.0;
-                                continue 'component_loop;
-                            }
-                        }
-                    }
-                }
-                self.pos = fake_pos;
-            }
-        }
-    }
-
-    fn can_step_up(
-        &self,
-        voxel_reader: &BufferReadGuard<'_, [u32]>,
-        cpu_chunks: &Vec<Vec<Vec<u32>>>,
-        component: usize,
-        player_move_pos: Point3<f32>,
-        game_state: &GameState,
-        game_settings: &GameSettings,
-    ) -> bool {
-        let mut start_pos =
-            self.pos + PLAYER_HITBOX_OFFSET * self.size - 0.5 * self.size * PLAYER_HITBOX_SIZE;
-        start_pos[component] = player_move_pos[component];
-        start_pos[1] += 1.0;
-        let x_iter_count = (start_pos[(component + 1) % 3]
-            + self.size * PLAYER_HITBOX_SIZE[(component + 1) % 3])
-            .floor()
-            - (start_pos[(component + 1) % 3]).floor();
-        let z_iter_count = (start_pos[(component + 2) % 3]
-            + self.size * PLAYER_HITBOX_SIZE[(component + 2) % 3])
-            .floor()
-            - (start_pos[(component + 2) % 3]).floor();
-
-        let mut x_vec = Vector3::new(0.0, 0.0, 0.0);
-        let mut z_vec = Vector3::new(0.0, 0.0, 0.0);
-        x_vec[(component + 1) % 3] = 1.0;
-        z_vec[(component + 2) % 3] = 1.0;
-        for x_iter in 0..=(x_iter_count as u32) {
-            for z_iter in 0..=(z_iter_count as u32) {
-                let pos = start_pos + x_iter as f32 * x_vec + z_iter as f32 * z_vec;
-                let voxel_pos = pos.map(|c| c.floor() as u32);
-                let voxel = if let Some(index) =
-                    get_index(voxel_pos, cpu_chunks, game_state, game_settings)
-                {
-                    voxel_reader[index as usize]
-                } else {
-                    VoxelMaterial::Unloaded.to_memory()
-                };
-                let voxel_material = VoxelMaterial::from_memory(voxel);
-                if !voxel_material.is_passthrough() {
-                    return false;
-                }
-            }
-        }
-        true
     }
 
     pub fn adjust_health(&mut self, adjustment: f32) {
@@ -1787,14 +1480,4 @@ impl Entity {
             lockout,
         }
     }
-}
-
-fn ray_box_dist(pos: Point3<f32>, ray: Vector3<f32>) -> Vector3<f32> {
-    let vmin = pos.map(|c| c.floor());
-    let vmax = pos.map(|c| c.ceil());
-    let norm_min_diff: Vector3<f32> =
-        (vmin - pos).zip(ray, |n, d| if d == 0.0 { 2.0 } else { n / d });
-    let norm_max_diff: Vector3<f32> =
-        (vmax - pos).zip(ray, |n, d| if d == 0.0 { 2.0 } else { n / d });
-    return norm_min_diff.zip(norm_max_diff, |min_diff, max_diff| min_diff.max(max_diff));
 }

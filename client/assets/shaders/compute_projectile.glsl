@@ -4,9 +4,7 @@
 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
 layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks;
-layout(set = 0, binding = 1) buffer VoxelBuffer {
-    uint voxels[];
-};
+layout(set = 0, binding = 1, r32ui) uniform uimage3D voxels;
 layout(set = 0, binding = 2) buffer Projectiles {
     Projectile projectiles[];
 };
@@ -31,13 +29,18 @@ layout(push_constant) uniform SimData {
     uint worldgen_seed;
 } sim_data;
 
-uint get_index(uvec3 global_pos) {
+ivec3 get_index(uvec3 global_pos) {
     uvec4 indicies = get_indicies(global_pos, sim_data.render_size);
-    return imageLoad(chunks, ivec3(indicies.xyz)).x * CHUNK_VOLUME + indicies.w;
+    uint z = imageLoad(chunks, ivec3(indicies.xyz)).x;
+    uint y = z/1024;
+    z = z % 1024;
+    uint x = y/1024;
+    y = y % 1024;
+    return ivec3(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE) + ivec3(global_pos % CHUNK_SIZE);
 }
 
 uint get_data_unchecked(uvec3 global_pos) {
-    return voxels[get_index(global_pos)];
+    return imageLoad(voxels, get_index(global_pos)).x;
 }
 
 uint get_data(uvec3 global_pos) {
@@ -53,8 +56,8 @@ void set_data(uvec3 global_pos, uint data) {
     if (any(lessThan(global_pos, start_offset))) return;
     uvec3 rel_pos = global_pos - start_offset;
     if (any(greaterThanEqual(rel_pos, CHUNK_SIZE * sim_data.render_size))) return;
-    uint index = get_index(global_pos);
-    voxels[index] = data;
+    ivec3 index = get_index(global_pos);
+    imageStore(voxels, index, uvec4(data, 0, 0, 0));
 }
 
 vec3 ray_box_dist(vec3 pos, vec3 ray, vec3 vmin, vec3 vmax) {
@@ -225,8 +228,8 @@ void main() {
                 }
 
                 if (projectile.damage > 0) {
-                    uint vox_index = get_index(voxel_pos);
-                    atomicAdd(voxels[vox_index], int(projectile.damage));
+                    ivec3 vox_index = get_index(voxel_pos);
+                    imageAtomicAdd(voxels, vox_index, int(projectile.damage));
                 }
 
                 projectile.chunk_update_pos = ivec4(voxel_pos, 1);

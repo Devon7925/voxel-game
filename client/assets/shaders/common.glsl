@@ -27,11 +27,14 @@ struct Projectile {
 struct Player {
     vec4 pos;
     vec4 rot;
-    vec4 size;
     vec4 vel;
     vec4 dir;
     vec4 up;
     vec4 right;
+    ivec3 collision_vec;
+    float size;
+    vec3 gravity;
+    uint has_world_collision;
 };
 
 struct Collision {
@@ -56,6 +59,10 @@ const Hitsphere HITSPHERES[] = {
     Hitsphere(vec3(0.0, -3.8, 0.0), 0.6, false),
     };
 
+const vec3 PLAYER_HITBOX_OFFSET = vec3(0.0, -2.0, 0.0);
+const vec3 PLAYER_HITBOX_SIZE = vec3(1.8, 4.8, 1.8);
+const float PLAYER_DENSITY = 3.8;
+
 const uint MAT_AIR = 0;
 const uint MAT_STONE = 1;
 const uint MAT_OOB = 2;
@@ -75,22 +82,24 @@ struct PhysicsProperties {
     bool is_fluid;
     bool is_data_damage;
     bool is_data_standard_distance;
+    float friction;
+    float density;
 };
 
 const PhysicsProperties physics_properties[] = {
-    PhysicsProperties(true, false, true), //MAT_AIR
-    PhysicsProperties(false, true, false), //MAT_STONE
-    PhysicsProperties(false, false, false), //MAT_OOB
-    PhysicsProperties(false, true, false), //MAT_DIRT
-    PhysicsProperties(false, true, false), //MAT_GRASS
-    PhysicsProperties(false, false, false), //MAT_PROJECTILE
-    PhysicsProperties(false, true, false), //MAT_ICE
-    PhysicsProperties(true, false, true), //MAT_WATER
-    PhysicsProperties(false, false, false), //MAT_PLAYER
-    PhysicsProperties(true, false, false), //MAT_AIR_OOB
-    PhysicsProperties(false, true, false), //MAT_WOOD
-    PhysicsProperties(false, false, true), //MAT_LEAF
-    PhysicsProperties(false, false, false), //MAT_UNBREAKABLE
+    PhysicsProperties(true, false, true, 0.0, 1.0), //MAT_AIR
+    PhysicsProperties(false, true, false, 5.0, 1.0), //MAT_STONE
+    PhysicsProperties(false, false, false, 0.0, 1.0), //MAT_OOB
+    PhysicsProperties(false, true, false, 5.0, 1.0), //MAT_DIRT
+    PhysicsProperties(false, true, false, 5.0, 1.0), //MAT_GRASS
+    PhysicsProperties(false, false, false, 0.0, 0.0), //MAT_PROJECTILE
+    PhysicsProperties(false, true, false, 0.1, 1.0), //MAT_ICE
+    PhysicsProperties(true, false, true, 1.0, 4.4), //MAT_WATER
+    PhysicsProperties(false, false, false, 0.0, 0.0), //MAT_PLAYER
+    PhysicsProperties(true, false, false, 0.0, 1.0), //MAT_AIR_OOB
+    PhysicsProperties(false, true, false, 5.0, 1.0), //MAT_WOOD
+    PhysicsProperties(false, false, true, 4.0, 1.0), //MAT_LEAF
+    PhysicsProperties(false, false, false, 5.0, 1.0), //MAT_UNBREAKABLE
     };
 
 const bool is_transparent[] = {

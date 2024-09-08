@@ -11,7 +11,7 @@ use egui_winit_vulkano::egui::{
     text::LayoutJob,
     vec2, Align2, Color32, CursorIcon, DragValue, FontId, Id, InnerResponse, Label, LayerId,
     Layout, Order, Pos2, Rect, Rgba, RichText, Rounding, ScrollArea, Sense, Shape, Stroke,
-    TextFormat, TextStyle, Ui, Vec2, Widget,
+    TextFormat, TextStyle, Ui, Vec2,
 };
 use itertools::Itertools;
 
