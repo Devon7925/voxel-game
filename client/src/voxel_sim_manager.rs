@@ -142,7 +142,7 @@ fn empty_chunk_grid(
         memory_allocator,
         ImageCreateInfo {
             image_type: ImageType::Dim3d,
-            format: Format::R32_UINT,
+            format: Format::R16_UINT,
             extent,
             usage: ImageUsage::STORAGE,
             ..Default::default()
@@ -952,7 +952,7 @@ impl VoxelComputePipeline {
             builder
                 .bind_pipeline_compute(self.compute_entity_pipeline.clone())
                 .unwrap()
-                .dispatch([((self.upload_player_count + 127) / 128) as u32, 1, 1])
+                .dispatch([((self.upload_player_count + 31) / 32) as u32, 1, 1])
                 .unwrap();
         }
 

@@ -24,7 +24,7 @@ do_profiling: false
 crash_log: crash_log.txt
 preset_settings:
 - name: "Open World"
-  delta_time: 0.02
+  delta_time: 0.01
   is_remote: false
   rollback_buffer_size: 2
   player_count: 1

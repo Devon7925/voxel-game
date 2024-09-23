@@ -11,7 +11,7 @@ cgmath = { version = "0.18", features = ["serde"] }
 winit = { version = "0.28.2", features = ["serde"] }
 vulkano = "0.34.1"
 vulkano-util = "0.34.1"
-vulkano-shaders = "0.34.0"
+vulkano-shaders = { version = "0.34.0", features = ["shaderc-debug"] }
 rand = "0.8.4"
 bytemuck = "1.13.1"
 matchbox_socket = "0.9.0"

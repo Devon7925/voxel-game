@@ -3,7 +3,7 @@
 
 layout(local_size_x = 256) in;
 
-layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks;
+layout(set = 0, binding = 0, r16ui) uniform uimage3D chunks;
 layout(set = 0, binding = 3) buffer ChunkLoads {
     ivec4 chunk_loads[];
 };

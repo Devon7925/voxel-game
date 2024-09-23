@@ -1,7 +1,7 @@
 #version 450
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(set = 0, binding = 0, r32ui) uniform uimage3D chunks_image;
+layout(set = 0, binding = 0, r16ui) uniform uimage3D chunks_image;
 
 layout(push_constant) uniform SimData {
     uvec3 render_size;
